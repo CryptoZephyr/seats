@@ -1,0 +1,11 @@
+{
+  "network": "testnet",
+  "status": "not_deployed",
+  "prior_global_contract": {
+    "code_hash": "4ZQhU4fA6uAmWv4jMQ6vqQPpxqJszxaqSN9WB672w8mN",
+    "source": "spikes/seats-spikes/seat-nft/raw.json"
+  },
+  "accounts": {},
+  "code_hashes": {},
+  "transactions": []
+}

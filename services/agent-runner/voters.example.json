@@ -1,0 +1,6 @@
+[
+  {
+    "voter_id": "voter.example.testnet",
+    "agent_key_file": "/path/to/voter-agent-key.json"
+  }
+]

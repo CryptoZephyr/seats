@@ -7,3 +7,8 @@ __pycache__/
 *.pyc
 *.hex
 !contracts/tests/fixtures/sputnikdao2.wasm
+services/agent-runner/state.json
+services/agent-runner/state.json.tmp
+services/agent-runner/voters.json
+services/agent-runner/dist/
+scripts/deploy-testnet.json

@@ -1,0 +1,21 @@
+{
+  "network": "testnet",
+  "rpc_url": "https://rpc.testnet.near.org",
+  "secrets_dir": "/path/to/near-spike/secrets",
+  "funder_account_id": "funder.testnet",
+  "funder_key_file": ".near-credentials/testnet/funder.testnet.json",
+  "verifier_account_id": "verifier.testnet",
+  "verifier_key_file": ".near-credentials/testnet/verifier.testnet.json",
+  "dao_name": "seats-demo",
+  "member_account_id": "member.testnet",
+  "member_key_file": ".near-credentials/testnet/member.testnet.json",
+  "seat_account_id": "seats.funder.testnet",
+  "seat_key_file": ".near-credentials/testnet/seats.funder.testnet.json",
+  "agent_key_file": "seat-voter-spike-v2/voter-a-agent.json",
+  "quote_args_file": "/path/to/fresh-register-args.json",
+  "model": "example-model",
+  "brief_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "agent_wasm_url": "https://example.invalid/agent-job.wasm",
+  "agent_wasm_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "window_seconds": 120
+}

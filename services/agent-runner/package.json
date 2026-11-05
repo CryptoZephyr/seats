@@ -1,0 +1,26 @@
+{
+  "name": "seats-agent-runner",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22 <23"
+  },
+  "scripts": {
+    "build": "tsc --noEmit false --outDir dist",
+    "start": "node dist/services/agent-runner/src/index.js",
+    "deploy:testnet": "node dist/scripts/deploy-testnet.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@near-js/crypto": "2.5.1",
+    "@near-js/providers": "2.5.1",
+    "@near-js/signers": "2.5.1",
+    "@near-js/transactions": "2.5.1",
+    "@near-js/utils": "2.5.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.15",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  }
+}

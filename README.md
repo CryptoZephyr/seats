@@ -17,9 +17,9 @@ Seats runs on NEAR testnet only. Don't deploy these contracts to mainnet.
 - `contracts/tee-verifier` verifies the captured TDX quote and stores the model signer.
 - `outlayer/vault-job` checks the requester's seat ownership and encrypts the vault response to the requester's public key.
 - `outlayer/agent-job` checks the voter brief hash, reads a DAO proposal, requests a signed model response, and returns the result for the voter to validate.
+- `services/agent-runner` watches DAO proposals, requests agent votes with voter FunctionCall keys, and casts expired pending votes with a keeper key.
+- `scripts/deploy-testnet.ts` deploys and configures the contracts on testnet from an external config file.
 - `spikes/` preserves the tested source and run reports used to build this scaffold.
-
-The agent runner and testnet deployment scripts from the broader plan are not included in this scaffold.
 
 ## Tests and builds
 
@@ -57,3 +57,27 @@ cargo build --release --target wasm32-wasip2 \
 ```
 
 The jobs read their runtime configuration from OutLayer. Keep API keys and vault text in OutLayer's encrypted secrets, never in source, job arguments, or this repository. `.env.example` lists variable names only.
+
+## Agent runner
+
+Install dependencies and check the runner:
+
+```sh
+cd services/agent-runner
+npm ci
+npm test
+npx tsc --noEmit
+```
+
+Copy `voters.example.json` to the ignored `voters.json`, then set `NEAR_RPC_URL`, `DAO_ID`, `VOTERS` to that file path, `KEEPER_ACCOUNT_ID`, and `KEEPER_KEY_FILE`. The voter file contains `voter_id` and `agent_key_file` paths. Run `npm run build && npm start` from `services/agent-runner`. The runner writes its non-secret proposal cursor and known pending IDs to the ignored `state.json`.
+
+## Testnet deployment
+
+Build the contracts first. Copy `scripts/deploy-testnet.example.json` to the ignored `scripts/deploy-testnet.json`, fill in account IDs and paths to keys under the external spike secrets directory, and provide a fresh quote-arguments file. The script is restricted to testnet, stores only account IDs, transaction hashes, and code hashes in `deployments/testnet.json`, and never copies key contents into the repository.
+
+```sh
+cd services/agent-runner
+npm ci
+npm run build
+node dist/scripts/deploy-testnet.js --config ../../scripts/deploy-testnet.json
+```
