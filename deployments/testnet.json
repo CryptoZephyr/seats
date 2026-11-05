@@ -125,6 +125,24 @@
       "receiver": "seats2-1793847972.sputnikv2.testnet",
       "hash": "5oYLgZM37VdgxhKZV13THVTCusvmXsetnxeRL2EqoHsF",
       "note": "Default 8 NEAR treasury could not cover the mint plus DAO storage (LackBalanceForState 2.42 NEAR)."
+    },
+    {
+      "label": "add_update_proposal_period",
+      "signer": "seatsfund1-1793846395.testnet",
+      "receiver": "seats2-1793847972.sputnikv2.testnet",
+      "hash": "EyWr4eQeBAU9x5ACpgwPiU9LnhK3odRf5CiKNo6y9w5A"
+    },
+    {
+      "label": "approve_update_proposal_period",
+      "signer": "seatsfund1-1793846395.testnet",
+      "receiver": "seats2-1793847972.sputnikv2.testnet",
+      "hash": "81NzMzystKu5PuLzCAFHQq1CbUiFZqyMU3qTWkok2hN3"
+    },
+    {
+      "label": "update_proposal_period",
+      "signer": "seatsfund1-1793846395.testnet",
+      "receiver": "seats2-1793847972.sputnikv2.testnet",
+      "hash": "81NzMzystKu5PuLzCAFHQq1CbUiFZqyMU3qTWkok2hN3"
     }
   ],
   "superseded_attempts": [
