@@ -23,6 +23,8 @@ Seat voting weight sits with the voter account, not the member's wallet. Members
 - `scripts/deploy-testnet.ts` deploys and configures the contracts on testnet from an external config file.
 - `spikes/` preserves the tested source and run reports used to build this scaffold.
 
+The seat NFT artwork is compiled into the contract and added when tokens are viewed, so every seat, including already-minted seats, shows it. Changing the art requires redeploying the contract code.
+
 ## Tests and builds
 
 Install the Rust targets:

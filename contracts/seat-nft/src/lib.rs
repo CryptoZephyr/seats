@@ -7,13 +7,17 @@ use near_contract_standards::non_fungible_token::metadata::{
 use near_contract_standards::non_fungible_token::{
     NonFungibleToken, NonFungibleTokenApproval, Token, TokenId,
 };
+use near_sdk::base64::{engine::general_purpose::STANDARD, Engine as _};
 use near_sdk::collections::LazyOption;
-use near_sdk::json_types::{Base58CryptoHash, U128};
+use near_sdk::json_types::{Base58CryptoHash, Base64VecU8, U128};
 use near_sdk::store::LookupMap;
 use near_sdk::{
     env, ext_contract, near, AccountId, Allowance, CryptoHash, Gas, NearToken, PanicOnDefault,
     Promise, PromiseOrValue, PromiseResult, PublicKey,
 };
+
+const SEAT_SVG: &str = include_str!("../../../design/nft/seat-label.svg");
+const DAO_SVG: &str = include_str!("../../../design/nft/dao-label.svg");
 
 const VOTER_INIT_GAS: Gas = Gas::from_tgas(30);
 const DAO_CALL_GAS: Gas = Gas::from_tgas(30);
@@ -22,6 +26,21 @@ const VOTER_CREATED_CALLBACK_GAS: Gas = Gas::from_tgas(80);
 const REGISTRATION_CALLBACK_GAS: Gas = Gas::from_tgas(40);
 const BUY_CALLBACK_GAS: Gas = Gas::from_tgas(40);
 const MIN_VOTER_FUNDING: u128 = 10_000_000_000_000_000_000_000;
+
+fn svg_data_url(svg: &str) -> String {
+    format!(
+        "data:image/svg+xml;base64,{}",
+        STANDARD.encode(svg.as_bytes())
+    )
+}
+
+fn with_art(mut token: Token) -> Token {
+    if let Some(metadata) = token.metadata.as_mut() {
+        metadata.media = Some(svg_data_url(SEAT_SVG));
+        metadata.media_hash = Some(Base64VecU8(env::sha256(SEAT_SVG.as_bytes())));
+    }
+    token
+}
 
 #[near(serializers = [borsh, json])]
 #[derive(Clone)]
@@ -496,7 +515,7 @@ impl NonFungibleTokenCore for SeatNft {
     }
 
     fn nft_token(&self, token_id: TokenId) -> Option<Token> {
-        NonFungibleTokenCore::nft_token(&self.tokens, token_id)
+        NonFungibleTokenCore::nft_token(&self.tokens, token_id).map(with_art)
     }
 }
 
@@ -506,12 +525,12 @@ impl NonFungibleTokenEnumeration for SeatNft {
         self.tokens.nft_total_supply()
     }
 
-    fn nft_tokens(
-        &self,
-        from_index: Option<U128>,
-        limit: Option<u64>,
-    ) -> Vec<Token> {
-        self.tokens.nft_tokens(from_index, limit)
+    fn nft_tokens(&self, from_index: Option<U128>, limit: Option<u64>) -> Vec<Token> {
+        self.tokens
+            .nft_tokens(from_index, limit)
+            .into_iter()
+            .map(with_art)
+            .collect()
     }
 
     fn nft_supply_for_owner(&self, account_id: AccountId) -> U128 {
@@ -524,14 +543,20 @@ impl NonFungibleTokenEnumeration for SeatNft {
         from_index: Option<U128>,
         limit: Option<u64>,
     ) -> Vec<Token> {
-        self.tokens.nft_tokens_for_owner(account_id, from_index, limit)
+        self.tokens
+            .nft_tokens_for_owner(account_id, from_index, limit)
+            .into_iter()
+            .map(with_art)
+            .collect()
     }
 }
 
 #[near]
 impl NonFungibleTokenMetadataProvider for SeatNft {
     fn nft_metadata(&self) -> NFTContractMetadata {
-        self.metadata.get().expect("ERR_NO_METADATA")
+        let mut metadata = self.metadata.get().expect("ERR_NO_METADATA");
+        metadata.icon = Some(svg_data_url(DAO_SVG));
+        metadata
     }
 }
 
@@ -615,6 +640,74 @@ mod tests {
             account_id(VOTER),
         );
         contract
+    }
+
+    #[test]
+    fn nft_views_include_compiled_art_without_storing_it() {
+        let contract = contract_with_seat();
+        let stored_metadata = contract
+            .tokens
+            .token_metadata_by_id
+            .as_ref()
+            .unwrap()
+            .get(&"1".to_string())
+            .unwrap();
+        assert!(stored_metadata.media.is_none());
+        assert!(stored_metadata.media_hash.is_none());
+
+        let seat_media = svg_data_url(SEAT_SVG);
+        let seat_hash = Base64VecU8(env::sha256(SEAT_SVG.as_bytes()));
+        let mut expected_token_metadata = stored_metadata.clone();
+        expected_token_metadata.media = Some(seat_media.clone());
+        expected_token_metadata.media_hash = Some(seat_hash.clone());
+
+        let token = contract.nft_token("1".to_string()).unwrap();
+        let token_metadata = token.metadata.as_ref().unwrap();
+        assert_eq!(token_metadata, &expected_token_metadata);
+        let seat_payload = token_metadata
+            .media
+            .as_deref()
+            .unwrap()
+            .strip_prefix("data:image/svg+xml;base64,")
+            .unwrap();
+        assert_eq!(
+            STANDARD.decode(seat_payload).unwrap().as_slice(),
+            SEAT_SVG.as_bytes()
+        );
+        assert_eq!(token_metadata.media.as_deref(), Some(seat_media.as_str()));
+        assert_eq!(token_metadata.media_hash.as_ref(), Some(&seat_hash));
+
+        let all_tokens = contract.nft_tokens(None, None);
+        assert_eq!(all_tokens.len(), 1);
+        assert_eq!(
+            all_tokens[0].metadata.as_ref(),
+            Some(&expected_token_metadata)
+        );
+        let owner_tokens = contract.nft_tokens_for_owner(account_id(SELLER), None, None);
+        assert_eq!(owner_tokens.len(), 1);
+        assert_eq!(
+            owner_tokens[0].metadata.as_ref(),
+            Some(&expected_token_metadata)
+        );
+
+        let metadata = contract.nft_metadata();
+        let icon = metadata.icon.as_deref().unwrap();
+        let dao_payload = icon.strip_prefix("data:image/svg+xml;base64,").unwrap();
+        assert_eq!(
+            STANDARD.decode(dao_payload).unwrap().as_slice(),
+            DAO_SVG.as_bytes()
+        );
+        assert_eq!(icon, svg_data_url(DAO_SVG));
+        assert!(contract.metadata.get().unwrap().icon.is_none());
+        assert!(contract
+            .tokens
+            .token_metadata_by_id
+            .as_ref()
+            .unwrap()
+            .get(&"1".to_string())
+            .unwrap()
+            .media
+            .is_none());
     }
 
     fn approve_sale(contract: &mut SeatNft, buyer: &str, price: u128, expires_in_ns: u64) {

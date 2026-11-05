@@ -13,7 +13,56 @@
   "code_hashes": {
     "tee_verifier": "2Xxmex5tQgNi51iWK825hA36YJuVrGiYcU1WpPxwseEh",
     "seat_voter": "425aVstaWC75Vcg7Kq9hTCagpeaCj5MMgapfKyKdEHFg",
-    "seat_nft": "7jXG55cfrcaXWv4ZpaW9Umhyp6KJDvsgG18iQAHudjot"
+    "seat_nft": "2SJo9Aj8zskG5PR2j9UrbSkakLcrPyYjB9qVJkjYs6cA"
+  },
+  "seat_nft_art_upgrade": {
+    "account_id": "seatsnft3-1793848334.testnet",
+    "tx_hash": "BChW3fKJx4NXKWWgF4Qm4wjEG192sA7bKRMraUwG5YHc",
+    "source_commit": "b91380da2cdc2dfdf9cf3af468e0891bcd3578c5",
+    "previous_code_hash": "7jXG55cfrcaXWv4ZpaW9Umhyp6KJDvsgG18iQAHudjot",
+    "new_code_hash": "66Yxinu7DaBUiYtQ5yLiC6grqH5cecjR9SRCHLCFj3Yk",
+    "wasm_bytes": 319620,
+    "init_call": false,
+    "note": "Code-only upgrade with no state migration. Seat NFT art is compiled into the contract and added by the token and metadata views.",
+    "verification": {
+      "non_art_fields_unchanged": [
+        "nft_token",
+        "nft_total_supply",
+        "nft_tokens",
+        "nft_tokens_for_owner",
+        "nft_metadata",
+        "get_seat"
+      ],
+      "token_1_media_matches": "design/nft/seat-label.svg",
+      "token_1_media_hash": "sha256 of design/nft/seat-label.svg",
+      "collection_icon_matches": "design/nft/dao-label.svg",
+      "storage_usage_bytes": {
+        "before": 311580,
+        "after": 320824
+      },
+      "balance_yocto": {
+        "before": "9997331888052798900000000"
+      },
+      "runner_health_after": "ok"
+    },
+    "fix_redeploy": {
+      "tx_hash": "3BS1WnkJv7KJphuSgbE7pDKN2zKkTPbhscrdSafJwmww",
+      "source_commit": "b3dd11644e4b225be58907a01b6744edb260f02c",
+      "previous_code_hash": "66Yxinu7DaBUiYtQ5yLiC6grqH5cecjR9SRCHLCFj3Yk",
+      "new_code_hash": "2SJo9Aj8zskG5PR2j9UrbSkakLcrPyYjB9qVJkjYs6cA",
+      "wasm_bytes": 320288,
+      "init_call": false,
+      "reason": "The first upgrade's mint_seat used the test fixture title and description. No seat was minted under that code, and Seat 1 keeps its stored title.",
+      "verification": {
+        "views_unchanged_except_storage_usage": true,
+        "storage_usage_bytes": {
+          "before": 320824,
+          "after": 321492
+        },
+        "art_matches_svgs": true,
+        "runner_health_after": "ok"
+      }
+    }
   },
   "status": "deployed",
   "accounts": {
