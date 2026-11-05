@@ -130,11 +130,12 @@ async function main(args: string[]): Promise<void> {
   const agentFile = keyPath(config, config.agent_key_file);
   const agentPublicKey = publicKeyFromFile(agentFile);
   const record = readJson(resolve(ROOT, "deployments/testnet.json"));
+  const nonceCache = new Map<string, bigint>();
   const tx = async (
     credential: Credential,
     receiver: string,
     actions: Action[],
-  ) => sendActions(provider, credential, receiver, actions);
+  ) => sendActions(provider, credential, receiver, actions, nonceCache);
   const call = async (
     credential: Credential,
     receiver: string,
@@ -159,13 +160,13 @@ async function main(args: string[]): Promise<void> {
     const sent = await tx(credentials.verifier, config.verifier_account_id, [actionCreators.deployContract(verifierWasm)]);
     recordTx(record, "deploy_tee_verifier", credentials.verifier.accountId, config.verifier_account_id, sent.hash);
   }
-  let verifierInitialized = false;
+  let verifierSigner: string | null = null;
   try {
-    verifierInitialized = Boolean(await callView(provider, config.verifier_account_id, "get_model_signer", {}));
+    verifierSigner = await callView<string>(provider, config.verifier_account_id, "get_model_signer", {});
   } catch {
-    verifierInitialized = false;
+    verifierSigner = null;
   }
-  if (!verifierInitialized) {
+  if (!verifierSigner) {
     const sent = await call(credentials.verifier, config.verifier_account_id, "new", {});
     recordTx(record, "init_tee_verifier", credentials.verifier.accountId, config.verifier_account_id, sent.hash);
   }
@@ -176,18 +177,27 @@ async function main(args: string[]): Promise<void> {
     expected_signer: string;
   };
   if (!quote.expected_signer) throw new Error("Fresh quote args must include expected_signer");
-  const registered = await call(credentials.verifier, config.verifier_account_id, "register_model_signer", {
-    quote_hex: quote.quote_hex,
-    collateral_json: quote.collateral_json,
-    nonce: quote.nonce,
-  });
-  if (registered.value !== quote.expected_signer) throw new Error("Verifier signer did not match the fresh quote");
-  recordTx(record, "register_model_signer", credentials.verifier.accountId, config.verifier_account_id, registered.hash);
+  if (verifierSigner?.toLowerCase() !== quote.expected_signer.toLowerCase()) {
+    const registered = await call(credentials.verifier, config.verifier_account_id, "register_model_signer", {
+      quote_hex: quote.quote_hex,
+      collateral_json: quote.collateral_json,
+      nonce: quote.nonce,
+    });
+    if (registered.value !== quote.expected_signer) throw new Error("Verifier signer did not match the fresh quote");
+    recordTx(record, "register_model_signer", credentials.verifier.accountId, config.verifier_account_id, registered.hash);
+  }
 
-  const previousGlobal = (record.seat_voter_global ?? record.prior_global_contract) as
-    | { code_hash?: string }
-    | undefined;
-  if (previousGlobal?.code_hash !== hashes.seat_voter) {
+  const recordedGlobal = record.seat_voter_global as { code_hash?: string; [key: string]: unknown } | undefined;
+  const priorGlobal = record.prior_global_contract as { code_hash?: string } | undefined;
+  const previousGlobalHash = recordedGlobal?.code_hash ?? priorGlobal?.code_hash;
+  const globalAlreadyDeployed = previousGlobalHash === hashes.seat_voter;
+  const globalRecord = {
+    ...recordedGlobal,
+    code_hash: hashes.seat_voter,
+    reused: globalAlreadyDeployed,
+    previous_code_hash: previousGlobalHash ?? null,
+  };
+  if (!globalAlreadyDeployed) {
     const sizeEstimate = BigInt(voterWasm.length) * GLOBAL_STORAGE_COST_PER_BYTE + NEAR;
     const funder = await provider.viewAccount(config.funder_account_id);
     if (BigInt(funder.amount) < sizeEstimate) {
@@ -197,14 +207,12 @@ async function main(args: string[]): Promise<void> {
     const sent = await tx(credentials.funder, config.funder_account_id, [
       actionCreators.deployGlobalContract(voterWasm, deployMode),
     ]);
+    record.seat_voter_global = globalRecord;
     recordTx(record, "deploy_seat_voter_global", credentials.funder.accountId, config.funder_account_id, sent.hash);
+  } else {
+    record.seat_voter_global = globalRecord;
+    writeRecord(record);
   }
-  record.seat_voter_global = {
-    code_hash: hashes.seat_voter,
-    reused: previousGlobal?.code_hash === hashes.seat_voter,
-    previous_code_hash: previousGlobal?.code_hash ?? null,
-  };
-  writeRecord(record);
 
   const daoId = `${config.dao_name}.sputnikv2.testnet`;
   const daoArgs = {
@@ -305,12 +313,23 @@ async function main(args: string[]): Promise<void> {
     url: config.agent_wasm_url,
     sha256: config.agent_wasm_sha256,
   }), "Pin agent job", record, call);
-  const brief = await call(credentials.member, voterId, "set_brief", {
-    brief_hash: config.brief_hash,
-    secrets_account_id: config.brief_secrets_account_id,
-    secrets_profile: config.brief_secrets_profile,
-  });
-  recordTx(record, "set_brief", credentials.member.accountId, voterId, brief.hash);
+  const currentBrief = await callView<{
+    brief_hash: string;
+    secrets_account_id: string | null;
+    secrets_profile: string | null;
+  }>(provider, voterId, "get_brief", {});
+  if (
+    currentBrief.brief_hash !== config.brief_hash ||
+    currentBrief.secrets_account_id !== config.brief_secrets_account_id ||
+    currentBrief.secrets_profile !== config.brief_secrets_profile
+  ) {
+    const brief = await call(credentials.member, voterId, "set_brief", {
+      brief_hash: config.brief_hash,
+      secrets_account_id: config.brief_secrets_account_id,
+      secrets_profile: config.brief_secrets_profile,
+    });
+    recordTx(record, "set_brief", credentials.member.accountId, voterId, brief.hash);
+  }
   const votersFile = resolve(config.secrets_dir, "voters.json");
   writeFileSync(votersFile, `${JSON.stringify([{ voter_id: voterId, agent_key_file: agentFile }], null, 2)}\n`, { mode: 0o600 });
   record.runner_voters_file = votersFile;
@@ -376,42 +395,77 @@ async function sendActions(
   credential: Credential,
   receiver: string,
   actions: Action[],
+  nonceCache: Map<string, bigint>,
 ): Promise<{ hash: string; value: unknown }> {
   const publicKey = await credential.signer.getPublicKey();
-  const accessKey = await provider.viewAccessKey(credential.accountId, publicKey, { finality: "final" });
-  const block = await provider.viewBlock({ finality: "optimistic" });
-  const transaction = createTransaction(
-    credential.accountId,
-    publicKey,
-    receiver,
-    BigInt(accessKey.nonce) + 1n,
-    actions,
-    baseDecode(block.header.hash),
-  );
-  const [hashBytes, signed] = await credential.signer.signTransaction(transaction);
-  const outcome = await provider.sendTransaction(signed);
-  const result = outcome as unknown as {
-    status?: { Failure?: unknown; SuccessValue?: string };
-    transaction_outcome?: { outcome?: { status?: { Failure?: unknown } } };
-    receipts_outcome?: Array<{ outcome?: { status?: { Failure?: unknown } } }>;
-  };
-  const failures = [
-    result.status?.Failure,
-    result.transaction_outcome?.outcome?.status?.Failure,
-    ...(result.receipts_outcome ?? []).map((receipt) => receipt.outcome?.status?.Failure),
-  ].filter(Boolean);
-  if (failures.length) throw new Error(JSON.stringify(failures));
-  const successValue = result.status?.SuccessValue;
-  let value: unknown = null;
-  if (successValue) {
-    const decoded = Buffer.from(successValue, "base64").toString("utf8");
-    try {
-      value = JSON.parse(decoded);
-    } catch {
-      value = decoded;
+  return sendWithNonceRetry(provider, credential.accountId, publicKey, nonceCache, async (nonce) => {
+    const block = await provider.viewBlock({ finality: "optimistic" });
+    const transaction = createTransaction(
+      credential.accountId,
+      publicKey,
+      receiver,
+      nonce,
+      actions,
+      baseDecode(block.header.hash),
+    );
+    const [hashBytes, signed] = await credential.signer.signTransaction(transaction);
+    const outcome = await provider.sendTransaction(signed);
+    const result = outcome as unknown as {
+      status?: { Failure?: unknown; SuccessValue?: string };
+      transaction_outcome?: { outcome?: { status?: { Failure?: unknown } } };
+      receipts_outcome?: Array<{ outcome?: { status?: { Failure?: unknown } } }>;
+    };
+    const failures = [
+      result.status?.Failure,
+      result.transaction_outcome?.outcome?.status?.Failure,
+      ...(result.receipts_outcome ?? []).map((receipt) => receipt.outcome?.status?.Failure),
+    ].filter(Boolean);
+    if (failures.length) throw new Error(JSON.stringify(failures));
+    const successValue = result.status?.SuccessValue;
+    let value: unknown = null;
+    if (successValue) {
+      const decoded = Buffer.from(successValue, "base64").toString("utf8");
+      try {
+        value = JSON.parse(decoded);
+      } catch {
+        value = decoded;
+      }
     }
+    return { hash: baseEncode(hashBytes), value };
+  });
+}
+
+export function selectNextNonce(cachedNonce: bigint | undefined, onchainNonce: bigint): bigint {
+  const cachedNext = cachedNonce === undefined ? onchainNonce + 1n : cachedNonce + 1n;
+  const onchainNext = onchainNonce + 1n;
+  return cachedNext > onchainNext ? cachedNext : onchainNext;
+}
+
+export async function sendWithNonceRetry<T>(
+  provider: Pick<JsonRpcProvider, "viewAccessKey">,
+  accountId: string,
+  publicKey: Awaited<ReturnType<KeyPairSigner["getPublicKey"]>>,
+  nonceCache: Map<string, bigint>,
+  send: (nonce: bigint) => Promise<T>,
+): Promise<T> {
+  const cacheKey = `${accountId}:${publicKey.toString()}`;
+  const attempt = async (): Promise<T> => {
+    const accessKey = await provider.viewAccessKey(accountId, publicKey, { finality: "optimistic" });
+    const nonce = selectNextNonce(nonceCache.get(cacheKey), BigInt(accessKey.nonce));
+    nonceCache.set(cacheKey, nonce);
+    return send(nonce);
+  };
+  try {
+    return await attempt();
+  } catch (error) {
+    const message = error instanceof Error
+      ? `${error.name} ${error.message}`
+      : JSON.stringify(error) ?? String(error);
+    if (!/InvalidNonce|Transaction nonce .* must be larger than nonce of the used access key/i.test(message)) {
+      throw error;
+    }
+    return attempt();
   }
-  return { hash: baseEncode(hashBytes), value };
 }
 
 function daoPolicy(funder: string): object {
