@@ -21,6 +21,31 @@ jobs:
       - name: Test and type-check agent runner
         working-directory: services/agent-runner
         run: npm ci && npm test && npx tsc --noEmit
+      - name: Build and smoke-test agent runner runtime
+        working-directory: services/agent-runner
+        run: |
+          npm run build
+          set +e
+          deploy_output=$(node dist/scripts/deploy-testnet.js 2>&1)
+          deploy_status=$?
+          runner_output=$(env -i "$(command -v node)" dist/services/agent-runner/src/index.js 2>&1)
+          runner_status=$?
+          set -e
+          if [ "$deploy_status" -ne 1 ] || ! printf '%s\n' "$deploy_output" | grep -Fq 'Usage: deploy-testnet.js'; then
+            printf '%s\n' "$deploy_output"
+            echo "deploy-testnet runtime smoke test failed"
+            exit 1
+          fi
+          if [ "$runner_status" -ne 1 ] || ! printf '%s\n' "$runner_output" | grep -Fq 'Error: VOTERS is required'; then
+            printf '%s\n' "$runner_output"
+            echo "agent-runner runtime smoke test failed"
+            exit 1
+          fi
+          if printf '%s\n' "$deploy_output" "$runner_output" | grep -Fq 'exports is not defined'; then
+            printf '%s\n' "$deploy_output" "$runner_output"
+            echo "agent-runner runtime emitted a module-format error"
+            exit 1
+          fi
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown,wasm32-wasip2
