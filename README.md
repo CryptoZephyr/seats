@@ -1,8 +1,14 @@
 # Seats
 
-Ada belongs to a DAO and wants to delegate a vote without giving up her membership. Seats represents that membership as an NFT paired with a voter account. The voter can act only for its current controller and within the member's chosen window. If Ada resells her seat with DAO approval, control moves with the NFT and the sale is split between Ada and the DAO.
+Club memberships you can sell, with an AI that votes for you while you're away.
 
-Seats is an early backend scaffold for DAO memberships managed by voters and AI agents. It is testnet-only. Do not deploy or use these contracts on mainnet.
+Seats is for clubs and communities that run on a NEAR Sputnik DAO. Each membership is a seat, an NFT that carries one vote in the club's DAO and opens the club's private vault. A member can sell their seat, but only to a buyer the club approves, and the club keeps a 5% levy on every sale.
+
+Every seat comes with an AI delegate. The member writes a private brief, and the delegate reads each DAO proposal and prepares a vote with a signed receipt from NEAR AI. The member gets a window to override it before the vote is cast, and the contract enforces that window.
+
+Example: Ada's brief says "back community events, reject any spend over 50 NEAR". A proposal asks for 80 NEAR to rent a venue. Her delegate votes Reject and gives its reason, and Ada lets it stand. Later she sells her seat to Ben with the club's approval. Ada gets 95% of the price, the club gets 5%, and the vote now belongs to Ben.
+
+Seats runs on NEAR testnet only. Don't deploy these contracts to mainnet.
 
 ## Components
 
@@ -34,6 +40,8 @@ Build the three NEAR contracts and run the sandbox integration test:
 ```sh
 cargo build --release --target wasm32-unknown-unknown \
   -p seat-voter -p seat-nft -p tee-verifier
+cargo build --release --target wasm32-unknown-unknown \
+  -p seat-nft --features sandbox-test
 cargo test -p seats-integration-tests --test seat_flow -- --ignored
 ```
 
