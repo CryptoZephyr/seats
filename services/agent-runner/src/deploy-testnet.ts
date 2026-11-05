@@ -52,6 +52,7 @@ interface DeployConfig {
   agent_wasm_url: string;
   agent_wasm_sha256: string;
   window_seconds: number;
+  voter_funding_near?: number;
 }
 
 type Credential = {
@@ -254,6 +255,7 @@ async function main(args: string[]): Promise<void> {
     await proposeAndApprove(provider, credentials.funder, daoId, stakingKind, "Set seat staking contract", record, call);
   }
 
+  const voterFunding = BigInt(config.voter_funding_near ?? 5) * NEAR;
   const mintKind = {
     FunctionCall: {
       receiver_id: config.seat_account_id,
@@ -263,7 +265,7 @@ async function main(args: string[]): Promise<void> {
           receiver_id: config.member_account_id,
           agent_public_key: agentPublicKey,
         })).toString("base64"),
-        deposit: String(50n * NEAR),
+        deposit: String(voterFunding),
         gas: String(200n * TGAS),
       }],
     },
