@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { baseEncode } from "@near-js/utils";
@@ -191,7 +191,7 @@ function deploymentFixture(mode: "fresh" | "midway" | "complete") {
     verifierInitialized: mode !== "fresh",
     verifierSigner: mode === "fresh" ? null : expectedSigner,
     daoExists: mode !== "fresh",
-    daoBalance: mode === "fresh" ? 0n : 10n ** 25n,
+    daoBalance: mode === "fresh" ? 0n : mode === "midway" ? 8n * 10n ** 24n : 12n * 10n ** 24n,
     seatCodeHash: mode === "fresh" ? "" : codeHashes.seat_nft,
     seatInitialized: mode !== "fresh",
     seat: mode === "complete" ? { voter_id: voterId } : null as { voter_id: string } | null,
@@ -251,10 +251,11 @@ function deploymentFixture(mode: "fresh" | "midway" | "complete") {
     agent_wasm_sha256: "c".repeat(64),
     window_seconds: 120,
     voter_funding_near: 5,
-    dao_funding_near: 8,
+    dao_funding_near: mode === "midway" ? 8 : undefined,
   }));
   const methodCalls: string[] = [];
   const transactions: string[] = [];
+  const transferAmounts: bigint[] = [];
   const provider = {
     viewAccount: async (accountId: string) => {
       if (accountId === daoId && !state.daoExists) {
@@ -262,6 +263,7 @@ function deploymentFixture(mode: "fresh" | "midway" | "complete") {
       }
       return {
         amount: accountId === daoId ? String(state.daoBalance) : String(100n * 10n ** 24n),
+        storage_usage: accountId === daoId ? 242_000 : 0,
         code_hash: accountId === seatId
           ? state.seatCodeHash
           : accountId === "verifier.testnet"
@@ -340,11 +342,17 @@ function deploymentFixture(mode: "fresh" | "midway" | "complete") {
     _provider: JsonRpcProvider,
     _credential: unknown,
     receiver: string,
+    actions: unknown[],
   ): Promise<{ hash: string; value: unknown }> => {
     transactions.push(receiver);
     if (receiver === "verifier.testnet") state.verifierCodeHash = codeHashes.tee_verifier;
     if (receiver === seatId) state.seatCodeHash = codeHashes.seat_nft;
-    if (receiver === daoId) state.daoBalance = 8n * 10n ** 24n;
+    if (receiver === daoId) {
+      const action = actions[0] as { transfer?: { deposit?: unknown } };
+      const amount = BigInt(String(action.transfer?.deposit));
+      transferAmounts.push(amount);
+      state.daoBalance += amount;
+    }
     return { hash: `action-${transactions.length}`, value: null };
   };
   const loadCredential = (_path: string, accountId: string) => ({
@@ -359,6 +367,7 @@ function deploymentFixture(mode: "fresh" | "midway" | "complete") {
     state,
     methodCalls,
     transactions,
+    transferAmounts,
     recordPath,
     dependencies: {
       provider,
@@ -396,6 +405,8 @@ describe("deployment reruns with an in-memory provider", () => {
         "set_brief",
       ]);
       expect(fresh.transactions).toHaveLength(4);
+      expect(fresh.state.daoBalance).toBe(11n * 10n ** 24n);
+      expect(fresh.transferAmounts).toEqual([5n * 10n ** 24n]);
 
       await main(["--config", midway.configPath], midway.dependencies);
       expect(midway.methodCalls).toEqual([
@@ -409,6 +420,13 @@ describe("deployment reruns with an in-memory provider", () => {
         "set_brief",
       ]);
       expect(midway.state.proposals[0]?.status).toBe("Approved");
+      expect(midway.transactions).toEqual(["club.sputnikv2.testnet"]);
+      expect(midway.transferAmounts).toEqual([42n * 10n ** 22n]);
+      expect(
+        (JSON.parse(readFileSync(midway.recordPath, "utf8")) as {
+          transactions: Array<{ label: string }>;
+        }).transactions.filter(({ label }) => label === "dao_topup"),
+      ).toHaveLength(1);
 
       await main(["--config", complete.configPath], complete.dependencies);
       expect(complete.methodCalls).toEqual([]);

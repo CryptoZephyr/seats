@@ -199,7 +199,7 @@ export async function main(
   }
   const config = readJson(resolve(args[configFlag + 1])) as unknown as DeployConfig;
   const voterFundingNear = config.voter_funding_near ?? 5;
-  const daoFundingNear = config.dao_funding_near ?? voterFundingNear + 3;
+  const daoFundingNear = config.dao_funding_near ?? voterFundingNear + 6;
   assertTestnet(config);
   const artifactRoot = resolve(dependencies.artifactRoot ?? ROOT);
   const recordPath = dependencies.recordPath ?? resolve(artifactRoot, "deployments/testnet.json");
@@ -393,6 +393,15 @@ export async function main(
     },
   };
   if (!seatView) {
+    const daoAccount = await provider.viewAccount(daoId, { finality: "optimistic" });
+    const storageCost = BigInt(daoAccount.storage_usage) * 10n ** 19n;
+    const availableAfterStorage = BigInt(daoAccount.amount) - storageCost;
+    const minimumMintBalance = voterFunding + NEAR;
+    if (availableAfterStorage < minimumMintBalance) {
+      const topUp = minimumMintBalance - availableAfterStorage;
+      const sent = await tx(credentials.funder, daoId, [actionCreators.transfer(topUp)]);
+      recordTx(record, "dao_topup", credentials.funder.accountId, daoId, sent.hash, persistRecord);
+    }
     const approvedMint = await findProposalIdByStatus(provider, daoId, mintKind, "Approved");
     if (approvedMint !== null) {
       throw new Error(`Mint proposal ${approvedMint} is approved but seat 1 is not visible, refusing to submit another mint`);
