@@ -106,8 +106,29 @@ function isUninitializedContractError(error: unknown): boolean {
   return /Contract must be initialized before usage|ERR_NOT_INITIALIZED/i.test(errorMessage(error));
 }
 
-function isMissingAccountError(error: unknown): boolean {
-  return /UNKNOWN_ACCOUNT|account[^\n]*(?:does not exist|not found)/i.test(errorMessage(error));
+export function isMissingAccountError(error: unknown): boolean {
+  const seen = new Set<object>();
+  let current: unknown = error;
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    const details = current as { type?: unknown; name?: unknown; message?: unknown; cause?: unknown };
+    if (
+      [details.type, details.name].some(
+        (value) => typeof value === "string" && value.toUpperCase() === "UNKNOWN_ACCOUNT",
+      )
+    ) {
+      return true;
+    }
+    if (
+      typeof details.message === "string" &&
+      /account[^\n]*(?:doesn't exist|does not exist|not found)/i.test(details.message)
+    ) {
+      return true;
+    }
+    current = details.cause;
+  }
+  return typeof error === "string" &&
+    /account[^\n]*(?:doesn't exist|does not exist|not found)/i.test(error);
 }
 
 function isVoterConfig(value: unknown): value is { voter_id: string; agent_key_file: string } {

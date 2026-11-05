@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   daoPolicy,
   findPendingProposalId,
+  isMissingAccountError,
   parseProposalId,
 } from "../src/deploy-testnet.js";
 import { selectNextNonce, sendWithNonceRetry } from "../src/nonce.js";
@@ -23,6 +24,20 @@ describe("proposal IDs", () => {
       expect(() => parseProposalId(value))
         .toThrow("Sputnik add_proposal did not return a non-negative integer proposal ID");
     }
+  });
+});
+
+describe("missing account detection", () => {
+  it("recognizes near-api-js missing-account messages and UNKNOWN_ACCOUNT errors", () => {
+    expect(isMissingAccountError(
+      new Error("Can't complete the action because account fresh-dao.sputnikv2.testnet doesn't exist"),
+    )).toBe(true);
+    expect(isMissingAccountError(new Error("account fresh-dao.sputnikv2.testnet does not exist"))).toBe(true);
+    expect(isMissingAccountError({ type: "UNKNOWN_ACCOUNT" })).toBe(true);
+    expect(isMissingAccountError(new Error("wrapped RPC failure", {
+      cause: { name: "UNKNOWN_ACCOUNT" },
+    }))).toBe(true);
+    expect(isMissingAccountError(new Error("connection refused"))).toBe(false);
   });
 });
 
