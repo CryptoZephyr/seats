@@ -13,7 +13,7 @@
   "code_hashes": {
     "tee_verifier": "2Xxmex5tQgNi51iWK825hA36YJuVrGiYcU1WpPxwseEh",
     "seat_voter": "425aVstaWC75Vcg7Kq9hTCagpeaCj5MMgapfKyKdEHFg",
-    "seat_nft": "66Yxinu7DaBUiYtQ5yLiC6grqH5cecjR9SRCHLCFj3Yk"
+    "seat_nft": "2SJo9Aj8zskG5PR2j9UrbSkakLcrPyYjB9qVJkjYs6cA"
   },
   "seat_nft_art_upgrade": {
     "account_id": "seatsnft3-1793848334.testnet",
@@ -44,6 +44,24 @@
         "before": "9997331888052798900000000"
       },
       "runner_health_after": "ok"
+    },
+    "fix_redeploy": {
+      "tx_hash": "3BS1WnkJv7KJphuSgbE7pDKN2zKkTPbhscrdSafJwmww",
+      "source_commit": "b3dd11644e4b225be58907a01b6744edb260f02c",
+      "previous_code_hash": "66Yxinu7DaBUiYtQ5yLiC6grqH5cecjR9SRCHLCFj3Yk",
+      "new_code_hash": "2SJo9Aj8zskG5PR2j9UrbSkakLcrPyYjB9qVJkjYs6cA",
+      "wasm_bytes": 320288,
+      "init_call": false,
+      "reason": "The first upgrade's mint_seat used the test fixture title and description. No seat was minted under that code, and Seat 1 keeps its stored title.",
+      "verification": {
+        "views_unchanged_except_storage_usage": true,
+        "storage_usage_bytes": {
+          "before": 320824,
+          "after": 321492
+        },
+        "art_matches_svgs": true,
+        "runner_health_after": "ok"
+      }
     }
   },
   "status": "deployed",
