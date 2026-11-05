@@ -4,7 +4,6 @@ import { fileURLToPath } from "node:url";
 import type { Server } from "node:http";
 import { loadCredential, NearAgentRpc } from "./rpc.js";
 import {
-  healthStatus,
   parseKeepaliveConfig,
   startHealthServer,
   startKeepalive,
@@ -164,7 +163,7 @@ async function main(): Promise<void> {
   let lastTickAtMs: number | null = null;
   let lastTickOkAtMs: number | null = null;
   if (config.port !== undefined) {
-    healthServer = await startHealthServer(config.port, () => healthStatus({
+    healthServer = await startHealthServer(config.port, () => ({
       daoId: config.daoId,
       voters: config.voters.map((voter) => voter.voter_id),
       cursor: state?.cursor ?? null,
