@@ -341,9 +341,11 @@ async fn dao_mint_resale_refund_and_member_vote() -> Result<()> {
     let bad_owner = view_json(&seat, "nft_token", json!({"token_id": "2"})).await?;
     let bad_controller = bad_voter.view("get_controller").await?.json::<String>()?;
     ensure!(
-        failed_buy.logs().iter().any(|line| line.contains("ERR_NOT_ADMIN")),
+        failed_buy.receipt_failures().iter().any(|outcome| {
+            format!("{outcome:?}").contains("ERR_NOT_ADMIN")
+        }),
         "failed sale did not reach the controller guard: {:?}",
-        failed_buy.logs()
+        failed_buy
     );
     ensure!(
         buyer_before.saturating_sub(buyer_after) < 10_000_000_000_000_000_000_000,
