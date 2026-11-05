@@ -9,6 +9,9 @@ use near_workspaces::{
 use serde_json::{json, Value};
 
 const DAO_WASM: &[u8] = include_bytes!("../fixtures/sputnikdao2.wasm");
+const SEAT_SVG: &str = include_str!("../../../design/nft/seat-label.svg");
+const DAO_SVG: &str = include_str!("../../../design/nft/dao-label.svg");
+const SVG_DATA_URL_PREFIX: &str = "data:image/svg+xml;base64,";
 const PRICE: u128 = 100_000_000_000_000_000_000_000;
 const MINT_DEPOSIT: u128 = 50_000_000_000_000_000_000_000;
 const STAKING_DEPOSIT: u128 = 160_000_000_000_000_000_000;
@@ -151,6 +154,39 @@ async fn mint_through_proposal(
     ensure!(
         token["owner_id"] == receiver_id.as_str(),
         "DAO proposal did not mint token {token_id}: {token}"
+    );
+    let media = token["metadata"]["media"]
+        .as_str()
+        .context("NFT token media is missing")?;
+    ensure!(
+        media.starts_with(SVG_DATA_URL_PREFIX),
+        "NFT token media is not an SVG data URL"
+    );
+    let media_payload = STANDARD.decode(&media[SVG_DATA_URL_PREFIX.len()..])?;
+    ensure!(
+        media_payload.as_slice() == SEAT_SVG.as_bytes(),
+        "NFT token media does not match the compiled SEAT SVG"
+    );
+    let media_hash = token["metadata"]["media_hash"]
+        .as_str()
+        .context("NFT token media hash is missing")?;
+    ensure!(
+        STANDARD.decode(media_hash)?.len() == 32,
+        "NFT token media hash is not a SHA-256 hash"
+    );
+
+    let contract_metadata = view_json(seat, "nft_metadata", json!({})).await?;
+    let icon = contract_metadata["icon"]
+        .as_str()
+        .context("NFT contract icon is missing")?;
+    ensure!(
+        icon.starts_with(SVG_DATA_URL_PREFIX),
+        "NFT contract icon is not an SVG data URL"
+    );
+    let icon_payload = STANDARD.decode(&icon[SVG_DATA_URL_PREFIX.len()..])?;
+    ensure!(
+        icon_payload.as_slice() == DAO_SVG.as_bytes(),
+        "NFT contract icon does not match the compiled DAO SVG"
     );
     Ok(())
 }
