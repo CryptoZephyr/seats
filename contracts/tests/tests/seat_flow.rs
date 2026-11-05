@@ -269,6 +269,7 @@ async fn dao_mint_resale_refund_and_member_vote() -> Result<()> {
     let dao_before = dao.as_account().view_account().await?.balance.as_yoctonear();
     let bought = buyer
         .call(seat.id(), "buy")
+        .args_json(json!({"token_id": "1"}))
         .deposit(NearToken::from_yoctonear(PRICE))
         .gas(Gas::from_tgas(300))
         .transact()
@@ -331,6 +332,7 @@ async fn dao_mint_resale_refund_and_member_vote() -> Result<()> {
     let buyer_before = buyer.view_account().await?.balance.as_yoctonear();
     let failed_buy = buyer
         .call(seat.id(), "buy")
+        .args_json(json!({"token_id": "2"}))
         .deposit(NearToken::from_yoctonear(PRICE))
         .gas(Gas::from_tgas(300))
         .transact()
