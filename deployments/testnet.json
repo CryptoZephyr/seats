@@ -184,6 +184,38 @@
         ],
         "new_agent_key_allowance_near": "1"
       }
+    },
+    "override_window": {
+      "proposal_id": 6,
+      "description": "Pay 0.01 NEAR for snacks at the community meetup",
+      "add_proposal_tx": "CNMZxMcSMJGkU4pSMeyTPyRMr7JrkmaxjogAPDFaQr35",
+      "controller": "rb.seatsfund1-1793846395.testnet",
+      "buyer_set_brief_tx": "3vMvUWQg8pUdpavQGvr3mpjPhgcGadATbEGwCdWH84JA",
+      "agent_vote": "Approve",
+      "agent_reason": "This small spend supports a community event and is well under the 50 NEAR limit.",
+      "receipt_hash": "5f8bd6496cc91e91061650ada237077e91cfd006614f8f6abb98dedaaea5475c",
+      "window_seconds": 120,
+      "deadline_ns": "1793861543029742187",
+      "in_window_override": {
+        "vote": "Reject",
+        "tx": "8UJ9FTgsQauPy6rZK8LhMp4ihXy4BWyLkwsx344tTypR",
+        "result": "success"
+      },
+      "post_deadline_override": {
+        "vote": "Approve",
+        "sent_at_unix": 1793861550,
+        "result": "ERR_WINDOW_CLOSED",
+        "tx": "not captured: near-cli-rs prints no hash on a failed call; controller key nonce moved from ...003 to ...004",
+        "pending_vote_after": "Reject"
+      },
+      "cast_tx": "GbQe2qZdswMHhAFWKEq4eGSJ9948KaR6TWWsCKsdsFP4",
+      "cast_by": "seatsfund1-1793846395.testnet as manual keeper (first try at 100 Tgas ran out of gas, retried at 300 Tgas)",
+      "dao_votes": {
+        "s1.seatsnft3-1793848334.testnet": "Reject"
+      },
+      "dao_status": "Expired",
+      "dao_status_note": "The cast landed after the 300 s proposal period because request_vote sends hit RPC timeouts and the manual cast needed a retry. The overridden Reject was recorded.",
+      "funds_moved": false
     }
   }
 }
