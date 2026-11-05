@@ -6,3 +6,4 @@ secrets/
 __pycache__/
 *.pyc
 *.hex
+!contracts/tests/fixtures/sputnikdao2.wasm

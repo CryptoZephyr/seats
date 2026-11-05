@@ -67,7 +67,7 @@ mod tests {
         let context = VMContextBuilder::new()
             .current_account_id(verifier.clone())
             .predecessor_account_id(verifier)
-            .block_timestamp(1_793_835_136_000_000_000)
+            .block_timestamp(1_793_840_400_000_000_000)
             .build();
         testing_env!(context);
     }

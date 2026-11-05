@@ -3,7 +3,9 @@ members = [
     "contracts/seat-voter",
     "contracts/seat-nft",
     "contracts/tee-verifier",
+    "contracts/tests",
 ]
+exclude = ["outlayer/vault-job", "outlayer/agent-job"]
 resolver = "2"
 
 [profile.release]
