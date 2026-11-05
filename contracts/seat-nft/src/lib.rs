@@ -11,8 +11,8 @@ use near_sdk::collections::LazyOption;
 use near_sdk::json_types::{Base58CryptoHash, U128};
 use near_sdk::store::LookupMap;
 use near_sdk::{
-    env, ext_contract, near, AccountId, CryptoHash, Gas, NearToken, PanicOnDefault, Promise,
-    PromiseOrValue, PromiseResult,
+    env, ext_contract, near, AccountId, Allowance, CryptoHash, Gas, NearToken, PanicOnDefault,
+    Promise, PromiseOrValue, PromiseResult, PublicKey,
 };
 
 const VOTER_INIT_GAS: Gas = Gas::from_tgas(30);
@@ -61,6 +61,8 @@ pub struct SeatNft {
 #[ext_contract(ext_voter)]
 trait ExtVoter {
     fn set_controller(&mut self, new_controller: AccountId);
+    fn set_model_signer(&mut self, address_hex: String, model: String);
+    fn pin_agent_wasm(&mut self, url: String, sha256: String);
 }
 
 #[ext_contract(ext_dao)]
@@ -124,7 +126,7 @@ impl SeatNft {
     }
 
     #[payable]
-    pub fn mint_seat(&mut self, receiver_id: AccountId) -> Promise {
+    pub fn mint_seat(&mut self, receiver_id: AccountId, agent_public_key: PublicKey) -> Promise {
         self.assert_dao();
         let attached = env::attached_deposit().as_yoctonear();
         assert!(attached >= MIN_VOTER_FUNDING, "ERR_INSUFFICIENT_DEPOSIT");
@@ -145,6 +147,12 @@ impl SeatNft {
         Promise::new(voter_id.clone())
             .create_account()
             .transfer(NearToken::from_yoctonear(voter_funding))
+            .add_access_key_allowance(
+                agent_public_key,
+                Allowance::limited(NearToken::from_near(1)).expect("ERR_AGENT_KEY_ALLOWANCE"),
+                voter_id.clone(),
+                "request_vote",
+            )
             .use_global_contract(self.voter_code_hash)
             .function_call(
                 "new".to_string(),
@@ -157,6 +165,42 @@ impl SeatNft {
                     .with_static_gas(VOTER_CREATED_CALLBACK_GAS)
                     .on_voter_created(token_id, receiver_id, voter_id, U128(attached)),
             )
+    }
+
+    pub fn set_voter_model_signer(
+        &self,
+        token_id: TokenId,
+        address_hex: String,
+        model: String,
+    ) -> Promise {
+        self.assert_dao();
+        let voter_id = self
+            .seats
+            .get(&token_id)
+            .expect("ERR_NO_SEAT")
+            .voter_id
+            .clone();
+        ext_voter::ext(voter_id)
+            .with_static_gas(VOTER_CALL_GAS)
+            .set_model_signer(address_hex, model)
+    }
+
+    pub fn pin_voter_agent(
+        &self,
+        token_id: TokenId,
+        url: String,
+        sha256: String,
+    ) -> Promise {
+        self.assert_dao();
+        let voter_id = self
+            .seats
+            .get(&token_id)
+            .expect("ERR_NO_SEAT")
+            .voter_id
+            .clone();
+        ext_voter::ext(voter_id)
+            .with_static_gas(VOTER_CALL_GAS)
+            .pin_agent_wasm(url, sha256)
     }
 
     #[private]
@@ -653,6 +697,22 @@ mod tests {
         set_context(BUYER, 1_001, 100);
         SeatNft::set_buy_in_progress("1", true);
         contract.buy("1".to_string());
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_NOT_DAO")]
+    fn pin_voter_agent_is_dao_only() {
+        let contract = contract_with_seat();
+        set_context(OTHER, 1_000, 0);
+        contract.pin_voter_agent("1".to_string(), "https://example.test/agent.wasm".to_string(), "00".repeat(32));
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_NOT_DAO")]
+    fn set_voter_model_signer_is_dao_only() {
+        let contract = contract_with_seat();
+        set_context(OTHER, 1_000, 0);
+        contract.set_voter_model_signer("1".to_string(), "0x0000000000000000000000000000000000000000".to_string(), "model".to_string());
     }
 
     #[test]
