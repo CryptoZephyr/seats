@@ -60,7 +60,7 @@ pub struct SeatNft {
 
 #[ext_contract(ext_voter)]
 trait ExtVoter {
-    fn set_controller(&mut self, new_controller: AccountId);
+    fn set_controller(&mut self, new_controller: AccountId, agent_public_key: PublicKey);
     fn set_model_signer(&mut self, address_hex: String, model: String);
     fn pin_agent_wasm(&mut self, url: String, sha256: String);
 }
@@ -136,11 +136,13 @@ impl SeatNft {
         let registration_deposit = env::storage_byte_cost().as_yoctonear() * 16;
         assert!(attached > registration_deposit, "ERR_INSUFFICIENT_DEPOSIT");
         let voter_funding = attached - registration_deposit;
+        let voter_agent_public_key = agent_public_key.clone();
         let args = near_sdk::serde_json::to_vec(&near_sdk::serde_json::json!({
             "dao": self.dao,
             "admin": env::current_account_id(),
             "controller": receiver_id,
             "window_ns": self.window_ns,
+            "agent_public_key": voter_agent_public_key,
         }))
         .expect("ERR_SERIALIZE");
 
@@ -305,7 +307,7 @@ impl SeatNft {
     }
 
     #[payable]
-    pub fn buy(&mut self, token_id: TokenId) -> Promise {
+    pub fn buy(&mut self, token_id: TokenId, agent_public_key: PublicKey) -> Promise {
         let record = self.seats.get(&token_id).cloned().expect("ERR_NO_TOKEN");
         let approval = record.approval.expect("ERR_NO_APPROVAL");
         let buyer = env::predecessor_account_id();
@@ -321,7 +323,7 @@ impl SeatNft {
         Self::set_buy_in_progress(&token_id, true);
         ext_voter::ext(record.voter_id)
             .with_static_gas(VOTER_CALL_GAS)
-            .set_controller(buyer.clone())
+            .set_controller(buyer.clone(), agent_public_key)
             .then(
                 ext_self::ext(env::current_account_id())
                     .with_static_gas(BUY_CALLBACK_GAS)
@@ -582,6 +584,12 @@ mod tests {
         value.parse().unwrap()
     }
 
+    fn test_agent_key() -> PublicKey {
+        "ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp"
+            .parse()
+            .unwrap()
+    }
+
     fn set_context(predecessor: &str, timestamp: u64, deposit: u128) {
         let context = VMContextBuilder::new()
             .current_account_id(account_id(SEAT))
@@ -659,7 +667,7 @@ mod tests {
     fn buy_requires_approval() {
         let mut contract = contract_with_seat();
         set_context(BUYER, 1_001, 100);
-        contract.buy("1".to_string());
+        contract.buy("1".to_string(), test_agent_key());
     }
 
     #[test]
@@ -668,7 +676,7 @@ mod tests {
         let mut contract = contract_with_seat();
         approve_sale(&mut contract, BUYER, 100, 10);
         set_context(OTHER, 1_001, 100);
-        contract.buy("1".to_string());
+        contract.buy("1".to_string(), test_agent_key());
     }
 
     #[test]
@@ -677,7 +685,7 @@ mod tests {
         let mut contract = contract_with_seat();
         approve_sale(&mut contract, BUYER, 100, 10);
         set_context(BUYER, 1_001, 99);
-        contract.buy("1".to_string());
+        contract.buy("1".to_string(), test_agent_key());
     }
 
     #[test]
@@ -686,7 +694,7 @@ mod tests {
         let mut contract = contract_with_seat();
         approve_sale(&mut contract, BUYER, 100, 10);
         set_context(BUYER, 1_010, 100);
-        contract.buy("1".to_string());
+        contract.buy("1".to_string(), test_agent_key());
     }
 
     #[test]
@@ -696,7 +704,7 @@ mod tests {
         approve_sale(&mut contract, BUYER, 100, 10);
         set_context(BUYER, 1_001, 100);
         SeatNft::set_buy_in_progress("1", true);
-        contract.buy("1".to_string());
+        contract.buy("1".to_string(), test_agent_key());
     }
 
     #[test]

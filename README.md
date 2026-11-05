@@ -13,7 +13,7 @@ Seats runs on NEAR testnet only. Don't deploy these contracts to mainnet.
 ## Components
 
 - `contracts/seat-voter` holds voting weight, enforces the controller window, and checks signed receipts and the member brief before recording a pending vote.
-- `contracts/seat-nft` issues membership seats, gates resale on DAO approval, updates voter control before completing a sale, and pays the seller and DAO in a 95/5 split.
+- `contracts/seat-nft` issues membership seats, gates resale on DAO approval, rotates the voter's restricted agent key with its controller, and pays the seller and DAO in a 95/5 split.
 - `contracts/tee-verifier` verifies the captured TDX quote and stores the model signer.
 - `outlayer/vault-job` checks the requester's seat ownership and encrypts the vault response to the requester's public key.
 - `outlayer/agent-job` checks the voter brief hash, reads a DAO proposal, requests a signed model response, and returns the result for the voter to validate.
@@ -45,7 +45,7 @@ cargo build --release --target wasm32-unknown-unknown \
 cargo test -p seats-integration-tests --test seat_flow -- --ignored
 ```
 
-The sandbox test uses a vendored Sputnik DAO WASM. near-workspaces 0.24 does not expose a global-contract deployment action, so the test deploys a voter account per seat and mints through the DAO's restricted test mint method. It covers DAO-mediated minting, approved resale, the 95/5 payout, failed-sale refunds, and a member vote recorded under the voter. The global-voter `mint_seat` path still needs a testnet integration run.
+The sandbox test uses a vendored Sputnik DAO WASM. near-workspaces 0.24 does not expose a global-contract deployment action, so the test deploys a voter account per seat and mints through the DAO's restricted test mint method. It covers DAO-mediated minting, approved resale, the 95/5 payout, seller-key removal, buyer-key permissions, failed-sale refunds, and a member vote recorded under the voter. The global-voter `mint_seat` path still needs a testnet integration run.
 
 Build the OutLayer WASI jobs:
 

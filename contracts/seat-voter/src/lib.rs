@@ -1,7 +1,10 @@
 use near_sdk::json_types::U64;
 use near_sdk::serde_json::{self, Value};
 use near_sdk::store::{LookupSet, UnorderedMap};
-use near_sdk::{env, near, AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseResult};
+use near_sdk::{
+    env, near, AccountId, Allowance, Gas, NearToken, PanicOnDefault, Promise, PromiseResult,
+    PublicKey,
+};
 
 const DAO_CALL_GAS: Gas = Gas::from_tgas(150);
 const CALLBACK_GAS: Gas = Gas::from_tgas(20);
@@ -59,6 +62,7 @@ pub struct SeatVoter {
     dao: AccountId,
     admin: AccountId,
     controller: AccountId,
+    agent_public_key: Option<PublicKey>,
     window_ns: u64,
     model_signer: [u8; 20],
     model: String,
@@ -74,11 +78,18 @@ pub struct SeatVoter {
 #[near]
 impl SeatVoter {
     #[init]
-    pub fn new(dao: AccountId, admin: AccountId, controller: AccountId, window_ns: u64) -> Self {
+    pub fn new(
+        dao: AccountId,
+        admin: AccountId,
+        controller: AccountId,
+        window_ns: u64,
+        agent_public_key: PublicKey,
+    ) -> Self {
         Self {
             dao,
             admin,
             controller,
+            agent_public_key: Some(agent_public_key),
             window_ns,
             model_signer: [0; 20],
             model: String::new(),
@@ -417,7 +428,7 @@ impl SeatVoter {
         self.schedule_vote(proposal_id, vote, kind_json, "member".to_string(), None)
     }
 
-    pub fn set_controller(&mut self, new_controller: AccountId) {
+    pub fn set_controller(&mut self, new_controller: AccountId, agent_public_key: PublicKey) {
         assert_eq!(env::predecessor_account_id(), self.admin, "ERR_NOT_ADMIN");
         for proposal_id in std::mem::take(&mut self.pending_ids) {
             if let Some(pending) = self.pending.remove(&proposal_id) {
@@ -432,6 +443,21 @@ impl SeatVoter {
                 });
             }
         }
+        let voter_id = env::current_account_id();
+        let key_rotation = match self.agent_public_key.take() {
+            Some(old_key) => Promise::new(voter_id.clone()).delete_key(old_key),
+            None => Promise::new(voter_id.clone()),
+        };
+        key_rotation
+            .add_access_key_allowance(
+                agent_public_key.clone(),
+                Allowance::limited(NearToken::from_near(1)).expect("ERR_AGENT_KEY_ALLOWANCE"),
+                voter_id,
+                "request_vote",
+            )
+            .detach();
+        // This detached receipt can fail without rolling back the controller change.
+        self.agent_public_key = Some(agent_public_key);
         self.controller = new_controller;
     }
 
@@ -629,6 +655,18 @@ mod tests {
         value.parse().unwrap()
     }
 
+    fn test_agent_key() -> PublicKey {
+        "ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp"
+            .parse()
+            .unwrap()
+    }
+
+    fn next_agent_key() -> PublicKey {
+        "ed25519:H3C2AVAWKq5Qm7FkyDB5cHKcYKHgbiiB2BzX8DQX8CJ"
+            .parse()
+            .unwrap()
+    }
+
     fn set_context(predecessor: &str, timestamp: u64) {
         let context = VMContextBuilder::new()
             .current_account_id(account_id(VOTER))
@@ -646,6 +684,7 @@ mod tests {
             account_id(ADMIN),
             account_id(CONTROLLER),
             60,
+            test_agent_key(),
         );
         set_context(ADMIN, 100);
         contract.set_model_signer(fixture.signing_address, fixture.model.clone());
@@ -696,6 +735,7 @@ mod tests {
             account_id(ADMIN),
             account_id(CONTROLLER),
             60,
+            test_agent_key(),
         );
         set_context(ADMIN, 100);
         contract.set_model_signer(receipt.signing_address, receipt.model.clone());
@@ -734,6 +774,7 @@ mod tests {
             account_id(ADMIN),
             account_id(CONTROLLER),
             60,
+            test_agent_key(),
         );
         set_context(ADMIN, 100);
         contract.set_model_signer(receipt.signing_address, receipt.model.clone());
@@ -758,6 +799,7 @@ mod tests {
             account_id(ADMIN),
             account_id(CONTROLLER),
             60,
+            test_agent_key(),
         );
         set_context(ADMIN, 100);
         contract.set_model_signer(receipt.signing_address, receipt.model.clone());
@@ -798,6 +840,7 @@ mod tests {
             account_id(ADMIN),
             account_id(CONTROLLER),
             60,
+            test_agent_key(),
         );
         set_context(ADMIN, 100);
         contract.pin_agent_wasm("https://example.com/agent.wasm".to_string(), "a".repeat(64));
@@ -821,6 +864,7 @@ mod tests {
             account_id(ADMIN),
             account_id(CONTROLLER),
             60,
+            test_agent_key(),
         );
         contract.on_agent_result(1);
     }
@@ -834,6 +878,7 @@ mod tests {
             account_id(ADMIN),
             account_id(CONTROLLER),
             60,
+            test_agent_key(),
         );
         set_context(CONTROLLER, 100);
         contract.pin_agent_wasm(
@@ -903,6 +948,7 @@ mod tests {
             account_id(ADMIN),
             account_id(CONTROLLER),
             60,
+            test_agent_key(),
         );
         set_context(CONTROLLER, 100);
         let brief_hash = "a".repeat(64);
@@ -919,6 +965,7 @@ mod tests {
             account_id(ADMIN),
             account_id(CONTROLLER),
             60,
+            test_agent_key(),
         );
         set_context(ADMIN, 100);
         contract.set_brief_hash("a".repeat(64));
@@ -933,20 +980,23 @@ mod tests {
             account_id(ADMIN),
             account_id(CONTROLLER),
             60,
+            test_agent_key(),
         );
         contract.request_vote(7);
     }
 
     #[test]
-    fn admin_controller_change_clears_pending_vote() {
+    fn admin_controller_change_clears_pending_and_stores_new_key() {
         let mut contract = contract_with_pending();
         let proposal_id = fixture().proposal_id;
         let next_controller = account_id("buyer.testnet");
+        let next_key = next_agent_key();
         set_context(ADMIN, 101);
 
-        contract.set_controller(next_controller.clone());
+        contract.set_controller(next_controller.clone(), next_key.clone());
 
         assert_eq!(contract.get_controller(), next_controller);
+        assert_eq!(contract.agent_public_key, Some(next_key));
         assert!(contract.get_pending(proposal_id).is_none());
         assert!(contract
             .get_results()
@@ -954,5 +1004,20 @@ mod tests {
             .iter()
             .any(|result| result.proposal_id == proposal_id
                 && result.status == "ClearedControllerChange"));
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_NOT_ADMIN")]
+    fn non_admin_cannot_change_controller() {
+        set_context(VOTER, 100);
+        let mut contract = SeatVoter::new(
+            account_id(DAO),
+            account_id(ADMIN),
+            account_id(CONTROLLER),
+            60,
+            test_agent_key(),
+        );
+        set_context(CONTROLLER, 101);
+        contract.set_controller(account_id("buyer.testnet"), next_agent_key());
     }
 }

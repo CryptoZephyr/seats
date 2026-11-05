@@ -1,7 +1,9 @@
 use anyhow::{ensure, Context, Result};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use near_workspaces::{
-    types::{AccountId, Gas, NearToken},
+    types::{
+        AccessKey, AccessKeyPermission, AccountId, Gas, KeyType, NearToken, PublicKey, SecretKey,
+    },
     Account, Contract,
 };
 use serde_json::{json, Value};
@@ -81,6 +83,7 @@ async fn deploy_voter(
     dao_id: &AccountId,
     admin_id: &AccountId,
     controller_id: &AccountId,
+    agent_public_key: PublicKey,
 ) -> Result<Contract> {
     let voter = account.deploy(wasm).await?.into_result()?;
     let initialized = voter
@@ -89,11 +92,26 @@ async fn deploy_voter(
             "dao": dao_id,
             "admin": admin_id,
             "controller": controller_id,
-            "window_ns": 60_000_000_000_u64
+            "window_ns": 60_000_000_000_u64,
+            "agent_public_key": agent_public_key.clone(),
         }))
         .transact()
         .await?;
     ensure!(initialized.is_success(), "voter initialization failed");
+    let key_added = voter
+        .as_account()
+        .batch(voter.id())
+        .add_key(
+            agent_public_key,
+            AccessKey::function_call_access(
+                voter.id(),
+                &["request_vote"],
+                Some(NearToken::from_near(1)),
+            ),
+        )
+        .transact()
+        .await?;
+    ensure!(key_added.is_success(), "agent key initialization failed");
     Ok(voter)
 }
 
@@ -150,6 +168,9 @@ async fn dao_mint_resale_refund_and_member_vote() -> Result<()> {
     let seller = worker.dev_create_account().await?;
     let buyer = worker.dev_create_account().await?;
     let other = worker.dev_create_account().await?;
+    let seller_agent_key = SecretKey::from_seed(KeyType::ED25519, "seller-agent").public_key();
+    let buyer_agent_key = SecretKey::from_seed(KeyType::ED25519, "buyer-agent").public_key();
+    let other_agent_key = SecretKey::from_seed(KeyType::ED25519, "other-agent").public_key();
     let seat_account = worker.dev_create_account().await?;
     let seat_wasm = wasm("seat_nft.wasm")?;
     let voter_wasm = wasm("seat_voter.wasm")?;
@@ -229,7 +250,15 @@ async fn dao_mint_resale_refund_and_member_vote() -> Result<()> {
     .await?;
 
     let voter_account = worker.dev_create_account().await?;
-    let voter = deploy_voter(voter_account, &voter_wasm, dao.id(), seat.id(), seller.id()).await?;
+    let voter = deploy_voter(
+        voter_account,
+        &voter_wasm,
+        dao.id(),
+        seat.id(),
+        seller.id(),
+        seller_agent_key.clone(),
+    )
+    .await?;
     let registered = seat
         .as_account()
         .call(dao.id(), "register_delegation")
@@ -239,6 +268,7 @@ async fn dao_mint_resale_refund_and_member_vote() -> Result<()> {
         .transact()
         .await?;
     ensure!(registered.is_success(), "register_delegation failed");
+    voter.view_access_key(&seller_agent_key).await?;
     let delegated = seat
         .as_account()
         .call(dao.id(), "delegate")
@@ -269,7 +299,7 @@ async fn dao_mint_resale_refund_and_member_vote() -> Result<()> {
     let dao_before = dao.as_account().view_account().await?.balance.as_yoctonear();
     let bought = buyer
         .call(seat.id(), "buy")
-        .args_json(json!({"token_id": "1"}))
+        .args_json(json!({"token_id": "1", "agent_public_key": buyer_agent_key.clone()}))
         .deposit(NearToken::from_yoctonear(PRICE))
         .gas(Gas::from_tgas(300))
         .transact()
@@ -283,6 +313,26 @@ async fn dao_mint_resale_refund_and_member_vote() -> Result<()> {
     ensure!(controller_after == buyer.id().as_str(), "voter controller did not change");
     ensure!(seller_after - seller_before == PRICE * 95 / 100, "seller payout was not 95%");
     ensure!(dao_after - dao_before == PRICE * 5 / 100, "DAO levy was not 5%");
+    ensure!(
+        voter.view_access_key(&seller_agent_key).await.is_err(),
+        "seller agent key remains on the voter"
+    );
+    let buyer_access_key = voter.view_access_key(&buyer_agent_key).await?;
+    match buyer_access_key.permission {
+        AccessKeyPermission::FunctionCall(permission) => {
+            ensure!(
+                permission.method_names == vec!["request_vote".to_string()],
+                "buyer agent key has unexpected methods: {:?}",
+                permission.method_names
+            );
+            ensure!(
+                permission.receiver_id == voter.id().as_str(),
+                "buyer agent key has unexpected receiver: {}",
+                permission.receiver_id
+            );
+        }
+        AccessKeyPermission::FullAccess => anyhow::bail!("buyer agent key is full access"),
+    }
 
     let vote_kind = function_call_kind(
         seat.id(),
@@ -314,8 +364,15 @@ async fn dao_mint_resale_refund_and_member_vote() -> Result<()> {
     );
 
     let bad_voter_account = worker.dev_create_account().await?;
-    let bad_voter =
-        deploy_voter(bad_voter_account, &voter_wasm, dao.id(), other.id(), seller.id()).await?;
+    let bad_voter = deploy_voter(
+        bad_voter_account,
+        &voter_wasm,
+        dao.id(),
+        other.id(),
+        seller.id(),
+        other_agent_key,
+    )
+    .await?;
     mint_through_proposal(&owner, &dao, &seat, "2", seller.id(), bad_voter.id()).await?;
     let bad_sale_approval = function_call_kind(
         seat.id(),
@@ -332,7 +389,7 @@ async fn dao_mint_resale_refund_and_member_vote() -> Result<()> {
     let buyer_before = buyer.view_account().await?.balance.as_yoctonear();
     let failed_buy = buyer
         .call(seat.id(), "buy")
-        .args_json(json!({"token_id": "2"}))
+        .args_json(json!({"token_id": "2", "agent_public_key": buyer_agent_key.clone()}))
         .deposit(NearToken::from_yoctonear(PRICE))
         .gas(Gas::from_tgas(300))
         .transact()
