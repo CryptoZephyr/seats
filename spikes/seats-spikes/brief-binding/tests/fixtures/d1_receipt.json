@@ -1,0 +1,23 @@
+{
+  "model": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+  "proposal_id": 55,
+  "proposal_kind": {
+    "Transfer": {
+      "token_id": "",
+      "receiver_id": "seatfunder-1793834028.testnet",
+      "amount": "80000000000000000000000000",
+      "msg": null
+    }
+  },
+  "request_hash": "06636e4a5eabdb53c9ff0bec9b387ba4cc63c03fd1d6b59f18b583b4e20b2e59",
+  "response_body": "{\"id\":\"chatcmpl-eb0b61d6-1aec-423d-8f01-37108beaeb6d\",\"object\":\"chat.completion\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"proposal_id\\\":55,\\\"vote\\\":\\\"reject\\\",\\\"reason\\\":\\\"Although it supports a community event, the 80 NEAR venue cost exceeds the 50 NEAR spending limit.\\\"}\",\"reasoning_content\":\"We need answer only JSON. Need interpret: club member voting delegate brief: back community events; reject any spend over 50 NEAR. Proposal 55 pay 80 NEAR venue November meetup. Spend over 50, reject despite community event. Reason one sentence. JSON only. Need proposal_id 55 vote reject reason. Ensure valid JSON.\"},\"finish_reason\":\"stop\",\"logprobs\":null}],\"model\":\"deepseek-ai/DeepSeek-V4.1-Flash-1017\",\"created\":1793839844,\"usage\":{\"prompt_tokens\":102,\"total_tokens\":213,\"completion_tokens\":111,\"prompt_tokens_details\":{\"cached_tokens\":0,\"created_cache_tokens\":64},\"completion_tokens_details\":{\"reasoning_tokens\":71}},\"system_fingerprint\":\"vllm-0.32.0-dp4-ep-94283194\"}",
+  "signature": "0x81687643074d3e5bfba1e42b72cc5e4f6337927e8aea997d2f00c53019ba679d0367314f12bad7ba25902016f5db2f85732266f4f4a4a9cf26c7192ca0766e521b",
+  "signing_address": "0xfe0071895500a9755c18044948ab4f4e1a7f337e",
+  "recovered_address": "0xfe0071895500a9755c18044948ab4f4e1a7f337e",
+  "signed_text": "deepseek-ai/DeepSeek-V4.1-Flash-1017:06636e4a5eabdb53c9ff0bec9b387ba4cc63c03fd1d6b59f18b583b4e20b2e59:8d01aa388741ccd0b936dc332940bba0070c006c3c599a0d0b41e3d02c8f0211",
+  "response_bytes": 994,
+  "nonce": "fd79516a0d76b3e2e0558f9c07f31a768580bd39a780185f48216ef19fad7db4",
+  "attestation_request_nonce": "fd79516a0d76b3e2e0558f9c07f31a768580bd39a780185f48216ef19fad7db4",
+  "attestation_signing_address": "0xfe0071895500a9755c18044948ab4f4e1a7f337e",
+  "attestation_intel_quote_sha256": "e88628a1b5a9c4218ddd96e0693e7a09197d9077df7d1ee48efd4eca044cd106"
+}

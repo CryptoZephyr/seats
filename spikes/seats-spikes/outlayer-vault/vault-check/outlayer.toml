@@ -1,0 +1,17 @@
+network = "testnet"
+
+[project]
+name = "vault-check"
+owner = "seatfunder-1793834028.testnet"
+
+[build]
+target = "wasm32-wasip2"
+source = "wasm_url"
+
+[deploy]
+
+[run]
+max_instructions = 1000000000
+max_memory_mb = 128
+max_execution_seconds = 60
+secrets_profile = "default"

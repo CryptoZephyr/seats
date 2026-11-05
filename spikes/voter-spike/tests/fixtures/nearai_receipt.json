@@ -1,0 +1,12 @@
+{
+  "model": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+  "proposal_id": 52,
+  "request_hash": "510ce857c1658827d001b718fd400394c405a5bf8d9ef20ca84f50e997274a6f",
+  "response_hash": "6b5a60c0a26fa3d873dcbc2d6ec482bba57975953a429e58e20146185086fe56",
+  "response_body_bytes": 920,
+  "response_body": "{\"id\":\"chatcmpl-c22126e3-e3e9-4136-909b-2484f206c3f3\",\"object\":\"chat.completion\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"proposal_id\\\":52,\\\"vote\\\":\\\"reject\\\",\\\"reason\\\":\\\"Although it supports a community event, the 80 NEAR spend exceeds the 50 NEAR cap.\\\"}\",\"reasoning_content\":\"We need answer only JSON. Need decide per brief: back community events; reject any spend over 50 NEAR. Proposal 52 spend 80 NEAR venue November meetup. Community event but over 50 reject. Need proposal_id 52 vote reject reason one sentence. Ensure JSON only.\"},\"finish_reason\":\"stop\",\"logprobs\":null}],\"model\":\"deepseek-ai/DeepSeek-V4.1-Flash-1017\",\"created\":1793831751,\"usage\":{\"prompt_tokens\":102,\"total_tokens\":200,\"completion_tokens\":98,\"prompt_tokens_details\":{\"cached_tokens\":0,\"created_cache_tokens\":64},\"completion_tokens_details\":{\"reasoning_tokens\":60}},\"system_fingerprint\":\"vllm-0.32.0-dp8-ep-188bbe50\"}",
+  "signature": "0x320689367922100b584c9fb9d2bae750d5b95e386bdc00aa0d3acfd1f3262b70227199d6a8bb6b417368b5f97ae146f9194e22de193a0a004316cf2e618dc05b1c",
+  "signing_address": "0xfe0071895500a9755c18044948ab4f4e1a7f337e",
+  "recovered_address": "0xfe0071895500a9755c18044948ab4f4e1a7f337e",
+  "request_body": "{\"model\":\"deepseek-ai/DeepSeek-V4.1-Flash-1017\",\"max_tokens\":400,\"messages\":[{\"role\":\"system\",\"content\":\"You are a club member's voting delegate. Member brief: back community events; reject any spend over 50 NEAR. Reply with only JSON {\\\"proposal_id\\\":<id>,\\\"vote\\\":\\\"approve|reject\\\",\\\"reason\\\":\\\"one sentence\\\"}.\"},{\"role\":\"user\",\"content\":\"Proposal 52: Pay 80 NEAR to rent a venue for the November meetup.\"}]}"
+}

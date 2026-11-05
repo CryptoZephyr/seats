@@ -1,0 +1,10 @@
+[package]
+name = "collateral-fetcher"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+dcap-qvl = { version = "0.7.1", default-features = false, features = ["report", "rustcrypto", "default-x509"] }
+hex = "0.4"
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
