@@ -51,6 +51,8 @@ The sandbox test uses a vendored Sputnik DAO WASM. near-workspaces 0.24 does not
 
 Build the OutLayer WASI jobs:
 
+The deployed vault-check job is v0.2.0, built from `outlayer/vault-job`.
+
 ```sh
 cargo build --release --target wasm32-wasip2 \
   --manifest-path outlayer/vault-job/Cargo.toml
