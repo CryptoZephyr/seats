@@ -1,0 +1,153 @@
+{
+  "network": "testnet",
+  "status": "superseded",
+  "prior_global_contract": {
+    "code_hash": "4ZQhU4fA6uAmWv4jMQ6vqQPpxqJszxaqSN9WB672w8mN",
+    "source": "spikes/seats-spikes/seat-nft/raw.json"
+  },
+  "accounts": {
+    "dao": "seats-1793846703.sputnikv2.testnet",
+    "seat": "seatsnft-1793846395.testnet",
+    "voter": "s1.seatsnft-1793846395.testnet",
+    "verifier": "tdxv-1793838446.testnet"
+  },
+  "code_hashes": {
+    "tee_verifier": "2Xxmex5tQgNi51iWK825hA36YJuVrGiYcU1WpPxwseEh",
+    "seat_voter": "425aVstaWC75Vcg7Kq9hTCagpeaCj5MMgapfKyKdEHFg",
+    "seat_nft": "7jXG55cfrcaXWv4ZpaW9Umhyp6KJDvsgG18iQAHudjot"
+  },
+  "transactions": [
+    {
+      "label": "deploy_tee_verifier",
+      "signer": "tdxv-1793838446.testnet",
+      "receiver": "tdxv-1793838446.testnet",
+      "hash": "DsjFQ5HpJ66nxACGgnuMk3KuoGWqF5qGyZjGgeYE9qMY"
+    },
+    {
+      "label": "register_model_signer",
+      "signer": "tdxv-1793838446.testnet",
+      "receiver": "tdxv-1793838446.testnet",
+      "hash": "DKgbHtmu83h6sriHfXT7prr9uAM43C1xeutLyu5QoSdc"
+    },
+    {
+      "label": "deploy_seat_voter_global",
+      "signer": "seatsfund1-1793846395.testnet",
+      "receiver": "seatsfund1-1793846395.testnet",
+      "hash": "GHb7PNbR6zPoFqE5e59QLFdozXRhbTnWz1rao6hJdUsL"
+    },
+    {
+      "label": "create_dao",
+      "signer": "seatsfund1-1793846395.testnet",
+      "receiver": "sputnikv2.testnet",
+      "hash": "GAkqvaZkg6tiTMeQHVZkz79gABKGVy3QvqAuppAZu6Tx"
+    },
+    {
+      "label": "fund_dao_treasury",
+      "signer": "seatsfund1-1793846395.testnet",
+      "receiver": "seats-1793846703.sputnikv2.testnet",
+      "hash": "7Hdz2H5X7rGFaiLQXQ5THBro3wFSkpqSRr97cuHkNSEd"
+    },
+    {
+      "label": "deploy_seat_nft",
+      "signer": "seatsnft-1793846395.testnet",
+      "receiver": "seatsnft-1793846395.testnet",
+      "hash": "F9iYSpw2188tEhE8dtWzvfXg4TzcihnYvB7svtRaReYa"
+    },
+    {
+      "label": "init_seat_nft",
+      "signer": "seatsnft-1793846395.testnet",
+      "receiver": "seatsnft-1793846395.testnet",
+      "hash": "3TFJh7NHV1LaG8Vmuf6xKMoTXfjCeCk2ksMcnQvr4MLU"
+    },
+    {
+      "label": "add_set_seat_staking_contract",
+      "signer": "seatsfund1-1793846395.testnet",
+      "receiver": "seats-1793846703.sputnikv2.testnet",
+      "hash": "Duneuj5Af5WRidAgLwK42msUyk4C6BbYXdZa5LxWm36J"
+    },
+    {
+      "label": "approve_set_seat_staking_contract",
+      "signer": "seatsfund1-1793846395.testnet",
+      "receiver": "seats-1793846703.sputnikv2.testnet",
+      "hash": "FHUg3bSEWvYGD3qrwVfgSicmXnMXfU4eqYxe2BdQcdev"
+    },
+    {
+      "label": "add_mint_first_seat",
+      "signer": "seatsfund1-1793846395.testnet",
+      "receiver": "seats-1793846703.sputnikv2.testnet",
+      "hash": "HJaPCNw6afD2wVcMQj1uPtiu5mjqsafhaLdiSddRHcRL"
+    },
+    {
+      "label": "add_set_seat_staking_contract",
+      "signer": "seatsfund1-1793846395.testnet",
+      "receiver": "seats-1793846703.sputnikv2.testnet",
+      "hash": "FqPTyHnrqSESFmzz5yNWZeWV21R3uN6B43HvvBkf8zYx"
+    },
+    {
+      "label": "approve_set_seat_staking_contract",
+      "signer": "seatsfund1-1793846395.testnet",
+      "receiver": "seats-1793846703.sputnikv2.testnet",
+      "hash": "4xJVU4EYvcHBK5Xbfy6UkoLyQf57yuJNd3uZNBdjCQem"
+    },
+    {
+      "label": "approve_mint_first_seat",
+      "signer": "seatsfund1-1793846395.testnet",
+      "receiver": "seats-1793846703.sputnikv2.testnet",
+      "hash": "2P2WpAj8LehbL6UdaUUawX3TN924Qb3BM6y2Sdb7qfsk"
+    },
+    {
+      "label": "add_set_model_signer",
+      "signer": "seatsfund1-1793846395.testnet",
+      "receiver": "seats-1793846703.sputnikv2.testnet",
+      "hash": "ELWvTzeNcHdr8H2sgD29SrWiDJak8tArsdatJAq25sXp"
+    },
+    {
+      "label": "approve_set_model_signer",
+      "signer": "seatsfund1-1793846395.testnet",
+      "receiver": "seats-1793846703.sputnikv2.testnet",
+      "hash": "A6f4j5TFWtZfjnAu6HdGGm42zZs54KM2Nugepq99xLvd"
+    },
+    {
+      "label": "add_pin_agent_job",
+      "signer": "seatsfund1-1793846395.testnet",
+      "receiver": "seats-1793846703.sputnikv2.testnet",
+      "hash": "FUEHW3t3hCptpUDUw2DB3tSYcPtEyKYcKdZD7HEJ3qsU"
+    },
+    {
+      "label": "approve_pin_agent_job",
+      "signer": "seatsfund1-1793846395.testnet",
+      "receiver": "seats-1793846703.sputnikv2.testnet",
+      "hash": "8hGybHJY5xQwBy2ok4QDzLqQgNqMBDjXZ51PwZ6DTQwx"
+    },
+    {
+      "label": "set_brief",
+      "signer": "buyer-1793829831.testnet",
+      "receiver": "s1.seatsnft-1793846395.testnet",
+      "hash": "58TVm3gmDPdBnXjQtGoLiPksgkC84BLcoV65bdmz2fvk"
+    },
+    {
+      "label": "manual_dao_topup_5_near",
+      "signer": "seatsfund1-1793846395.testnet",
+      "receiver": "seats-1793846703.sputnikv2.testnet",
+      "hash": "8sKz85Ff4mHQ5whhV8v1TVsoSSG3pJsjPSKshqJy8Sv9"
+    }
+  ],
+  "seat_voter_global": {
+    "code_hash": "425aVstaWC75Vcg7Kq9hTCagpeaCj5MMgapfKyKdEHFg",
+    "reused": true,
+    "previous_code_hash": "425aVstaWC75Vcg7Kq9hTCagpeaCj5MMgapfKyKdEHFg",
+    "account_id": "s1.seatsnft-1793846395.testnet"
+  },
+  "agent_configuration": {
+    "voter_id": "s1.seatsnft-1793846395.testnet",
+    "model_signer": {
+      "address_hex": "0xfe0071895500a9755c18044948ab4f4e1a7f337e",
+      "model": "deepseek-ai/DeepSeek-V4.1-Flash-1017"
+    },
+    "pinned_agent": {
+      "url": "https://github.com/CryptoZephyr/outlayer-spike/releases/download/brief-agent-v0.1.0/brief-agent.wasm",
+      "sha256": "a2db80036766e04aab58c50b09387c033f0617a7cb3580d82482ca8756b6519d"
+    }
+  },
+  "runner_voters_file": "/home/ubuntu/near-spike/secrets/voters.json"
+}

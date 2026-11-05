@@ -1,11 +1,189 @@
 {
   "network": "testnet",
-  "status": "not_deployed",
   "prior_global_contract": {
     "code_hash": "4ZQhU4fA6uAmWv4jMQ6vqQPpxqJszxaqSN9WB672w8mN",
     "source": "spikes/seats-spikes/seat-nft/raw.json"
   },
-  "accounts": {},
-  "code_hashes": {},
-  "transactions": []
+  "seat_voter_global": {
+    "code_hash": "425aVstaWC75Vcg7Kq9hTCagpeaCj5MMgapfKyKdEHFg",
+    "reused": true,
+    "previous_code_hash": "425aVstaWC75Vcg7Kq9hTCagpeaCj5MMgapfKyKdEHFg",
+    "account_id": "s1.seatsnft3-1793848334.testnet"
+  },
+  "code_hashes": {
+    "tee_verifier": "2Xxmex5tQgNi51iWK825hA36YJuVrGiYcU1WpPxwseEh",
+    "seat_voter": "425aVstaWC75Vcg7Kq9hTCagpeaCj5MMgapfKyKdEHFg",
+    "seat_nft": "7jXG55cfrcaXWv4ZpaW9Umhyp6KJDvsgG18iQAHudjot"
+  },
+  "status": "deployed",
+  "accounts": {
+    "verifier": "tdxv-1793838446.testnet",
+    "dao": "seats2-1793847972.sputnikv2.testnet",
+    "seat": "seatsnft3-1793848334.testnet",
+    "voter": "s1.seatsnft3-1793848334.testnet"
+  },
+  "transactions": [
+    {
+      "label": "deploy_tee_verifier",
+      "signer": "tdxv-1793838446.testnet",
+      "receiver": "tdxv-1793838446.testnet",
+      "hash": "DsjFQ5HpJ66nxACGgnuMk3KuoGWqF5qGyZjGgeYE9qMY"
+    },
+    {
+      "label": "register_model_signer",
+      "signer": "tdxv-1793838446.testnet",
+      "receiver": "tdxv-1793838446.testnet",
+      "hash": "DKgbHtmu83h6sriHfXT7prr9uAM43C1xeutLyu5QoSdc"
+    },
+    {
+      "label": "deploy_seat_voter_global",
+      "signer": "seatsfund1-1793846395.testnet",
+      "receiver": "seatsfund1-1793846395.testnet",
+      "hash": "GHb7PNbR6zPoFqE5e59QLFdozXRhbTnWz1rao6hJdUsL"
+    },
+    {
+      "label": "create_dao",
+      "signer": "seatsfund1-1793846395.testnet",
+      "receiver": "sputnikv2.testnet",
+      "hash": "F7LvW2RPki399DVg7DydWiyUTfaJ6ukUEnnETCgLaZAR"
+    },
+    {
+      "label": "fund_dao_treasury",
+      "signer": "seatsfund1-1793846395.testnet",
+      "receiver": "seats2-1793847972.sputnikv2.testnet",
+      "hash": "A15JErXhJcaYeLyp3RwSTx7Ae3pTWfAd9nHgBYC7cMtr"
+    },
+    {
+      "label": "deploy_seat_nft",
+      "signer": "seatsnft3-1793848334.testnet",
+      "receiver": "seatsnft3-1793848334.testnet",
+      "hash": "8Q6y1AQxPDXQsVnMUFxRMwfvUhnd4AGdHUWVrWrvvbRx"
+    },
+    {
+      "label": "init_seat_nft",
+      "signer": "seatsnft3-1793848334.testnet",
+      "receiver": "seatsnft3-1793848334.testnet",
+      "hash": "pDjsvAUur6vdhoYDZxfmENKwfZaEWrWXEqs4qpDvAkc"
+    },
+    {
+      "label": "add_set_seat_staking_contract",
+      "signer": "seatsfund1-1793846395.testnet",
+      "receiver": "seats2-1793847972.sputnikv2.testnet",
+      "hash": "AsiDxAHYEqSkvggS5sG4KMnh3D2XnjbkDTBTwQRjzskn"
+    },
+    {
+      "label": "approve_set_seat_staking_contract",
+      "signer": "seatsfund1-1793846395.testnet",
+      "receiver": "seats2-1793847972.sputnikv2.testnet",
+      "hash": "CdP3Cwjrk6ddXpaucTjn4anz43f9Micv3PtbyxbiugD2"
+    },
+    {
+      "label": "add_mint_first_seat",
+      "signer": "seatsfund1-1793846395.testnet",
+      "receiver": "seats2-1793847972.sputnikv2.testnet",
+      "hash": "HCcQ6Z5dSZrhSHNicXiNTqxdXHECFsWbgotNJS9oimQe"
+    },
+    {
+      "label": "approve_mint_first_seat",
+      "signer": "seatsfund1-1793846395.testnet",
+      "receiver": "seats2-1793847972.sputnikv2.testnet",
+      "hash": "HWo7g5rWwEc2RjF5gTDzjTSkgWkDUsXWMkdc8uBzJZJt"
+    },
+    {
+      "label": "add_set_model_signer",
+      "signer": "seatsfund1-1793846395.testnet",
+      "receiver": "seats2-1793847972.sputnikv2.testnet",
+      "hash": "69oHkRa2Ai5sYUowyoG1CRssynL79BqG4QZpWuVQQCy9"
+    },
+    {
+      "label": "approve_set_model_signer",
+      "signer": "seatsfund1-1793846395.testnet",
+      "receiver": "seats2-1793847972.sputnikv2.testnet",
+      "hash": "GEDa1R6HiyHA8FUufsaW3NDfh3wurmihYmjAaaagXKz7"
+    },
+    {
+      "label": "add_pin_agent_job",
+      "signer": "seatsfund1-1793846395.testnet",
+      "receiver": "seats2-1793847972.sputnikv2.testnet",
+      "hash": "TBxJQvw3a7TgUf7VX3RTUJJ86dgeaBvuAbuBS3xW1X3"
+    },
+    {
+      "label": "approve_pin_agent_job",
+      "signer": "seatsfund1-1793846395.testnet",
+      "receiver": "seats2-1793847972.sputnikv2.testnet",
+      "hash": "3pSnXSPD5zCCtu7abFsZTi5qpxrNLsHFCaK5uEGUEkX4"
+    },
+    {
+      "label": "set_brief",
+      "signer": "buyer-1793829831.testnet",
+      "receiver": "s1.seatsnft3-1793848334.testnet",
+      "hash": "3N5e4sMxiAyb4BYdEVj8LZxos39BoZ7aNgh3QRZyiLeT"
+    },
+    {
+      "label": "manual_dao_topup_3_near",
+      "signer": "seatsfund1-1793846395.testnet",
+      "receiver": "seats2-1793847972.sputnikv2.testnet",
+      "hash": "5oYLgZM37VdgxhKZV13THVTCusvmXsetnxeRL2EqoHsF",
+      "note": "Default 8 NEAR treasury could not cover the mint plus DAO storage (LackBalanceForState 2.42 NEAR)."
+    }
+  ],
+  "superseded_attempts": [
+    {
+      "file": "deployments/testnet-attempt1-stuck-dao.json",
+      "reason": "Council had no vote policy so its votes weighed 0 after the seat became the staking contract; set model signer and pin agent proposals stayed InProgress."
+    }
+  ],
+  "agent_configuration": {
+    "voter_id": "s1.seatsnft3-1793848334.testnet",
+    "model_signer": {
+      "address_hex": "0xfe0071895500a9755c18044948ab4f4e1a7f337e",
+      "model": "deepseek-ai/DeepSeek-V4.1-Flash-1017"
+    },
+    "pinned_agent": {
+      "url": "https://github.com/CryptoZephyr/outlayer-spike/releases/download/brief-agent-v0.1.0/brief-agent.wasm",
+      "sha256": "a2db80036766e04aab58c50b09387c033f0617a7cb3580d82482ca8756b6519d"
+    }
+  },
+  "runner_voters_file": "/home/ubuntu/near-spike/secrets/voters.json",
+  "e2e": {
+    "agent_vote": {
+      "proposal_id": 4,
+      "description": "Pay 80 NEAR to rent the venue for the club meetup",
+      "add_proposal_tx": "AXjxpxok2zsUSyUMhCj1cJGGK4x82Vh9oWeCjLZXHzwy",
+      "pending_vote": "Reject",
+      "reason": "The proposal spends 80 NEAR, which exceeds the mandated 50 NEAR cap.",
+      "receipt_hash": "dadae39fe5495796639c49b381590256bb20928891686d8584a2d4402d84bae7",
+      "window_seconds": 120,
+      "cast_by": "keeper (agent runner)",
+      "cast_tx": "not captured",
+      "dao_status": "Rejected",
+      "dao_votes": {
+        "s1.seatsnft3-1793848334.testnet": "Reject"
+      },
+      "funds_moved": false
+    },
+    "resale": {
+      "token_id": "1",
+      "seller": "buyer-1793829831.testnet",
+      "buyer": "rb.seatsfund1-1793846395.testnet",
+      "price_near": "0.5",
+      "add_approve_sale_proposal_tx": "ByLXCu19QFzcKxLfnBEREQ85931Zb13v3B2rx6RAoBFw",
+      "approve_sale_vote_tx": "D95A7WWMX8ZjRGw6b2Fek8kj85c3RGvZSGWfEWAjznYC",
+      "buy_tx": "CHTc8EBxop8t6Z3qL3XzSDnCHBWejRxAvVKbaABFRahu",
+      "seller_paid_near": "0.475",
+      "dao_levy_near": "0.025",
+      "failed_receipts": 0,
+      "after": {
+        "nft_owner": "rb.seatsfund1-1793846395.testnet",
+        "voter_controller": "rb.seatsfund1-1793846395.testnet",
+        "brief_cleared": true,
+        "access_keys": 1,
+        "old_agent_key_present": false,
+        "new_agent_key_methods": [
+          "request_vote"
+        ],
+        "new_agent_key_allowance_near": "1"
+      }
+    }
+  }
 }
