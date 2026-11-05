@@ -47,6 +47,8 @@ interface DeployConfig {
   quote_args_file: string;
   model: string;
   brief_hash: string;
+  brief_secrets_account_id: string;
+  brief_secrets_profile: string;
   agent_wasm_url: string;
   agent_wasm_sha256: string;
   window_seconds: number;
@@ -301,8 +303,12 @@ async function main(args: string[]): Promise<void> {
     url: config.agent_wasm_url,
     sha256: config.agent_wasm_sha256,
   }), "Pin agent job", record, call);
-  const brief = await call(credentials.member, voterId, "set_brief_hash", { brief_hash: config.brief_hash });
-  recordTx(record, "set_brief_hash", credentials.member.accountId, voterId, brief.hash);
+  const brief = await call(credentials.member, voterId, "set_brief", {
+    brief_hash: config.brief_hash,
+    secrets_account_id: config.brief_secrets_account_id,
+    secrets_profile: config.brief_secrets_profile,
+  });
+  recordTx(record, "set_brief", credentials.member.accountId, voterId, brief.hash);
   const votersFile = resolve(config.secrets_dir, "voters.json");
   writeFileSync(votersFile, `${JSON.stringify([{ voter_id: voterId, agent_key_file: agentFile }], null, 2)}\n`, { mode: 0o600 });
   record.runner_voters_file = votersFile;

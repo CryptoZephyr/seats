@@ -10,10 +10,15 @@ const DAO_CALL_GAS: Gas = Gas::from_tgas(150);
 const CALLBACK_GAS: Gas = Gas::from_tgas(20);
 const STALE_ERROR_GAS: Gas = Gas::from_tgas(5);
 const OUTLAYER: &str = "outlayer.testnet";
-const OUTLAYER_SECRETS_ACCOUNT: &str = "seatfunder-1793834028.testnet";
 const OUTLAYER_CALL_GAS: Gas = Gas::from_tgas(250);
 const OUTLAYER_CALLBACK_GAS: Gas = Gas::from_tgas(30);
 const OUTLAYER_DEPOSIT: NearToken = NearToken::from_yoctonear(4_000_000_500_000_000_000_000_000);
+
+#[near(serializers = [borsh])]
+struct BriefSecrets {
+    account_id: AccountId,
+    profile: String,
+}
 
 #[near(serializers = [borsh])]
 #[derive(Clone)]
@@ -56,6 +61,13 @@ pub struct ResultsView {
     storage_usage_bytes: u64,
 }
 
+#[near(serializers = [json])]
+pub struct BriefView {
+    brief_hash: String,
+    secrets_account_id: Option<AccountId>,
+    secrets_profile: Option<String>,
+}
+
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
 pub struct SeatVoter {
@@ -67,6 +79,7 @@ pub struct SeatVoter {
     model_signer: [u8; 20],
     model: String,
     brief_hash: String,
+    brief_secrets: Option<BriefSecrets>,
     agent_wasm_url: String,
     agent_wasm_hash: String,
     pending: UnorderedMap<u64, PendingVote>,
@@ -94,6 +107,7 @@ impl SeatVoter {
             model_signer: [0; 20],
             model: String::new(),
             brief_hash: String::new(),
+            brief_secrets: None,
             agent_wasm_url: String::new(),
             agent_wasm_hash: String::new(),
             pending: UnorderedMap::new(b"p"),
@@ -114,10 +128,23 @@ impl SeatVoter {
         self.model = model;
     }
 
-    pub fn set_brief_hash(&mut self, brief_hash: String) {
+    pub fn set_brief(
+        &mut self,
+        brief_hash: String,
+        secrets_account_id: AccountId,
+        secrets_profile: String,
+    ) {
         self.assert_controller();
         assert!(is_lower_hex_32(&brief_hash), "ERR_BAD_BRIEF_HASH");
+        assert!(
+            !secrets_profile.is_empty() && secrets_profile.chars().count() <= 64,
+            "ERR_BAD_BRIEF_PROFILE"
+        );
         self.brief_hash = brief_hash;
+        self.brief_secrets = Some(BriefSecrets {
+            account_id: secrets_account_id,
+            profile: secrets_profile,
+        });
     }
 
     pub fn pin_agent_wasm(&mut self, url: String, sha256: String) {
@@ -130,6 +157,21 @@ impl SeatVoter {
 
     pub fn get_brief_hash(&self) -> String {
         self.brief_hash.clone()
+    }
+
+    pub fn get_brief(&self) -> BriefView {
+        match &self.brief_secrets {
+            Some(secrets) => BriefView {
+                brief_hash: self.brief_hash.clone(),
+                secrets_account_id: Some(secrets.account_id.clone()),
+                secrets_profile: Some(secrets.profile.clone()),
+            },
+            None => BriefView {
+                brief_hash: self.brief_hash.clone(),
+                secrets_account_id: None,
+                secrets_profile: None,
+            },
+        }
     }
 
     pub fn get_dao(&self) -> AccountId {
@@ -168,6 +210,7 @@ impl SeatVoter {
             "ERR_ONLY_SELF"
         );
         assert!(!self.brief_hash.is_empty(), "ERR_BRIEF_NOT_SET");
+        let brief_secrets = self.brief_secrets.as_ref().expect("ERR_BRIEF_NOT_SET");
         assert!(!self.agent_wasm_url.is_empty(), "ERR_AGENT_WASM_NOT_PINNED");
         assert!(
             self.pending.get(&proposal_id).is_none(),
@@ -187,7 +230,10 @@ impl SeatVoter {
                 "max_execution_seconds": 30
             },
             "input_data": input,
-            "secrets_ref": {"profile": "brief", "account_id": OUTLAYER_SECRETS_ACCOUNT},
+            "secrets_ref": {
+                "profile": brief_secrets.profile.clone(),
+                "account_id": brief_secrets.account_id.clone()
+            },
             "response_format": "Json",
             "payer_account_id": null,
             "params": null
@@ -459,6 +505,8 @@ impl SeatVoter {
         // This detached receipt can fail without rolling back the controller change.
         self.agent_public_key = Some(agent_public_key);
         self.controller = new_controller;
+        self.brief_hash.clear();
+        self.brief_secrets = None;
     }
 
     pub fn get_pending(&self, proposal_id: u64) -> Option<PendingView> {
@@ -941,7 +989,7 @@ mod tests {
     }
 
     #[test]
-    fn controller_can_set_brief_hash() {
+    fn controller_can_set_brief() {
         set_context(VOTER, 100);
         let mut contract = SeatVoter::new(
             account_id(DAO),
@@ -952,13 +1000,23 @@ mod tests {
         );
         set_context(CONTROLLER, 100);
         let brief_hash = "a".repeat(64);
-        contract.set_brief_hash(brief_hash.clone());
-        assert_eq!(contract.get_brief_hash(), brief_hash);
+        contract.set_brief(
+            brief_hash.clone(),
+            account_id("secrets.testnet"),
+            "brief".to_string(),
+        );
+        let brief = contract.get_brief();
+        assert_eq!(brief.brief_hash, brief_hash);
+        assert_eq!(
+            brief.secrets_account_id,
+            Some(account_id("secrets.testnet"))
+        );
+        assert_eq!(brief.secrets_profile.as_deref(), Some("brief"));
     }
 
     #[test]
     #[should_panic(expected = "ERR_NOT_CONTROLLER")]
-    fn non_controller_cannot_change_brief_hash() {
+    fn non_controller_cannot_set_brief() {
         set_context(VOTER, 100);
         let mut contract = SeatVoter::new(
             account_id(DAO),
@@ -968,7 +1026,49 @@ mod tests {
             test_agent_key(),
         );
         set_context(ADMIN, 100);
-        contract.set_brief_hash("a".repeat(64));
+        contract.set_brief(
+            "a".repeat(64),
+            account_id("secrets.testnet"),
+            "brief".to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_BAD_BRIEF_HASH")]
+    fn set_brief_rejects_bad_hash() {
+        set_context(VOTER, 100);
+        let mut contract = SeatVoter::new(
+            account_id(DAO),
+            account_id(ADMIN),
+            account_id(CONTROLLER),
+            60,
+            test_agent_key(),
+        );
+        set_context(CONTROLLER, 100);
+        contract.set_brief(
+            "not-a-hash".to_string(),
+            account_id("secrets.testnet"),
+            "brief".to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_BAD_BRIEF_PROFILE")]
+    fn set_brief_rejects_empty_profile() {
+        set_context(VOTER, 100);
+        let mut contract = SeatVoter::new(
+            account_id(DAO),
+            account_id(ADMIN),
+            account_id(CONTROLLER),
+            60,
+            test_agent_key(),
+        );
+        set_context(CONTROLLER, 100);
+        contract.set_brief(
+            "a".repeat(64),
+            account_id("secrets.testnet"),
+            String::new(),
+        );
     }
 
     #[test]
@@ -986,17 +1086,40 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "ERR_BRIEF_NOT_SET")]
+    fn request_vote_requires_brief_secrets() {
+        set_context(VOTER, 100);
+        let mut contract = SeatVoter::new(
+            account_id(DAO),
+            account_id(ADMIN),
+            account_id(CONTROLLER),
+            60,
+            test_agent_key(),
+        );
+        contract.brief_hash = "a".repeat(64);
+        contract.request_vote(7);
+    }
+
+    #[test]
     fn admin_controller_change_clears_pending_and_stores_new_key() {
         let mut contract = contract_with_pending();
         let proposal_id = fixture().proposal_id;
         let next_controller = account_id("buyer.testnet");
         let next_key = next_agent_key();
-        set_context(ADMIN, 101);
+        set_context(CONTROLLER, 101);
+        contract.set_brief(
+            "a".repeat(64),
+            account_id("secrets.testnet"),
+            "brief".to_string(),
+        );
+        set_context(ADMIN, 102);
 
         contract.set_controller(next_controller.clone(), next_key.clone());
 
         assert_eq!(contract.get_controller(), next_controller);
         assert_eq!(contract.agent_public_key, Some(next_key));
+        assert!(contract.brief_hash.is_empty());
+        assert!(contract.brief_secrets.is_none());
         assert!(contract.get_pending(proposal_id).is_none());
         assert!(contract
             .get_results()

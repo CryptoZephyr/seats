@@ -15,6 +15,8 @@
   "quote_args_file": "/path/to/fresh-register-args.json",
   "model": "example-model",
   "brief_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "brief_secrets_account_id": "briefs.testnet",
+  "brief_secrets_profile": "brief",
   "agent_wasm_url": "https://example.invalid/agent-job.wasm",
   "agent_wasm_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
   "window_seconds": 120
