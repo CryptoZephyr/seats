@@ -358,5 +358,113 @@
       "seller_tx_hash": "HvJkMAJdhY4q3bqUUoJSQiaRsSFY3v75wBhrMdcPYFdm",
       "note": "The v0.1.0 WASM hardcoded the old spike NFT, reversing the expected outputs. These results are superseded by the v0.2.0 runs above."
     }
+  },
+  "hosted_runner": {
+    "service_id": "srv-dbm7iubbc2fs738hta7g",
+    "public_url": "https://seats-agent-runner.onrender.com",
+    "branch": "devin/1793880480-render-runner",
+    "deployed_commit": "dbfa8b05b1b80269f05dbbc1b81d9b360ac5fe59",
+    "deployment_id": "dep-dbm7sjt9fdbs73c3sajg",
+    "runtime_rpc_url": "https://rpc.testnet.fastnear.com",
+    "rpc_update": {
+      "from": "https://rpc.testnet.near.org",
+      "to": "https://rpc.testnet.fastnear.com",
+      "reason": "Render logs from the original endpoint returned RPC error -429 for get_last_proposal_id."
+    },
+    "keeper_account_id": "keeper.seatsfund1-1793846395.testnet",
+    "health": {
+      "status": "ok",
+      "dao_id": "seats2-1793847972.sputnikv2.testnet",
+      "voters": [
+        "s1.seatsnft3-1793848334.testnet"
+      ],
+      "cursor": 8,
+      "started_at": "2026-11-05T13:02:43.915Z",
+      "uptime_s": 337,
+      "last_tick_at": "2026-11-05T13:08:06.858Z",
+      "last_tick_ok_at": "2026-11-05T13:08:10.950Z",
+      "observed_at": "2026-11-05T13:08:21Z"
+    },
+    "secret_material_detected_in_render_logs": false,
+    "prior_keepalive_success": {
+      "timestamp": "2026-11-05T12:52:14.063365903Z",
+      "status": "ok",
+      "note": "Logged before the RPC endpoint update deployment."
+    },
+    "proposal": {
+      "id": 8,
+      "description": "Pay 80 NEAR to rent the venue for the club meetup",
+      "kind": "Transfer",
+      "receiver_id": "seatsfund2-1793846395.testnet",
+      "amount_yocto": "80000000000000000000000000",
+      "submission_time_ns": "1793883542587403740",
+      "proposal_period_ns": "600000000000",
+      "reconciliation": {
+        "pre_resubmission_get_last_proposal_id": 8,
+        "pre_resubmission_proposal_ids_at_or_above_8": [],
+        "original_timed_out_tx_hash": "5Wth5yQE5wyunwgrBqmnXmoRXVjvTv717jL1nKqQJKN5",
+        "original_timed_out_tx_status": "not found during read-only reconciliation",
+        "funder_nonce_before_resubmission": "276282352000040",
+        "funder_nonce_block_height": 276344282,
+        "resubmission_tx_hash": "6DrAjmwgMmXcZdXLBTpWQH6TyZjAcxGEWerQNykWzCCj",
+        "post_resubmission_get_last_proposal_id": 9,
+        "post_resubmission_proposal_ids_at_or_above_8": [
+          8
+        ],
+        "final_get_last_proposal_id": 9,
+        "final_proposal_ids_at_or_above_8": [
+          8
+        ]
+      },
+      "request_vote": {
+        "on_chain_request_count": 1,
+        "tx_hash": "41ULmjaoKmLvuJNBFwZFuNtDCqVFvkiJJneG8i3xEaV9",
+        "tx_block_height": 276344965,
+        "tx_block_timestamp_ns": "1793883947397183018",
+        "hosted_log_attempts": [
+          {
+            "timestamp": "2026-11-05T13:02:58.949579279Z",
+            "status": "error",
+            "error": "Error: Timeout error"
+          },
+          {
+            "timestamp": "2026-11-05T13:06:06.622614113Z",
+            "status": "ok",
+            "reason": "request_retry_after_ttl",
+            "tx_hash": "41ULmjaoKmLvuJNBFwZFuNtDCqVFvkiJJneG8i3xEaV9"
+          }
+        ],
+        "note": "The first hosted attempt timed out. The retry produced the single successful on-chain request_vote transaction."
+      },
+      "pending_vote": {
+        "vote": "Reject",
+        "reason": "The proposal requests 80 NEAR, which exceeds the mandated 50 NEAR spending limit.",
+        "controller_at_submit": "rb.seatsfund1-1793846395.testnet",
+        "receipt_hash": "995b96f5a6652d050f7f55fc761485eef9460d64877052589801acb459008e15",
+        "deadline_ns": "1793884085613967032",
+        "observed_at": "2026-11-05T13:06:37Z"
+      },
+      "keeper_cast": {
+        "tx_hash": "9q1NuQoV1LXGCto7CuChzWzyADuBDk4f2JJHRy8YfQ8r",
+        "timestamp": "2026-11-05T13:08:10.950613039Z",
+        "timestamp_ns": "1793884090950613039",
+        "after_window": true,
+        "nanoseconds_after_pending_deadline": "5336646007",
+        "seconds_from_submission": 548.363209299,
+        "within_600_second_proposal_period": true
+      },
+      "final_result": {
+        "dao_status": "Rejected",
+        "vote": "Reject",
+        "status": "Cast",
+        "source": "pending",
+        "cast": true,
+        "receipt_hash": "995b96f5a6652d050f7f55fc761485eef9460d64877052589801acb459008e15",
+        "observed_at": "2026-11-05T13:08:17.261Z",
+        "block_height": 276345215,
+        "chain_time_ns": "1793884097261674653",
+        "seconds_from_submission": 554.674270913
+      }
+    }
   }
 }

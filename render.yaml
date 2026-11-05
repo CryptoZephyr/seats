@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: seats-agent-runner
+    runtime: node
+    plan: free
+    rootDir: services/agent-runner
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NEAR_RPC_URL
+        value: https://rpc.testnet.fastnear.com
+      - key: DAO_ID
+        value: seats2-1793847972.sputnikv2.testnet
+      - key: VOTERS
+        value: /etc/secrets/voters.json
+      - key: KEEPER_KEY_FILE
+        value: /etc/secrets/keeper.json
+      - key: KEEPER_ACCOUNT_ID
+        sync: false

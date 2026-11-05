@@ -1,7 +1,13 @@
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { Server } from "node:http";
 import { loadCredential, NearAgentRpc } from "./rpc.js";
+import {
+  parseKeepaliveConfig,
+  startHealthServer,
+  startKeepalive,
+} from "./health.js";
 import {
   initialRunnerState,
   isProposalPeriodTooShort,
@@ -25,9 +31,16 @@ interface Config {
   windowSeconds: number;
   requestTtlMs: number;
   startProposalId?: number;
+  lookbackProposals: number;
+  port?: number;
+  keepaliveUrl?: string;
+  keepaliveMs: number;
   votersFile: string;
   stateFile: string;
 }
+
+let healthServer: Server | undefined;
+let keepaliveTimer: NodeJS.Timeout | undefined;
 
 function required(name: string): string {
   const value = process.env[name]?.trim();
@@ -65,6 +78,17 @@ function loadConfig(): Config {
   if (startProposalId !== undefined && (!Number.isSafeInteger(startProposalId) || startProposalId < 0)) {
     throw new Error("START_PROPOSAL_ID must be a non-negative integer");
   }
+  const lookbackValue = process.env.LOOKBACK_PROPOSALS;
+  const lookbackProposals = lookbackValue === undefined ? 20 : Number(lookbackValue);
+  if (!Number.isSafeInteger(lookbackProposals) || lookbackProposals < 0) {
+    throw new Error("LOOKBACK_PROPOSALS must be a non-negative integer");
+  }
+  const portValue = process.env.PORT;
+  const port = portValue === undefined ? undefined : Number(portValue);
+  if (port !== undefined && (!Number.isSafeInteger(port) || port < 0 || port > 65_535)) {
+    throw new Error("PORT must be an integer between 0 and 65535");
+  }
+  const keepalive = parseKeepaliveConfig(process.env);
   return {
     rpcUrl: required("NEAR_RPC_URL"),
     daoId: required("DAO_ID"),
@@ -75,6 +99,10 @@ function loadConfig(): Config {
     windowSeconds,
     requestTtlMs,
     startProposalId,
+    lookbackProposals,
+    port,
+    keepaliveUrl: keepalive.url,
+    keepaliveMs: keepalive.intervalMs,
     votersFile,
     stateFile: resolve(process.cwd(), "state.json"),
   };
@@ -130,6 +158,23 @@ function log(entry: ActionLog): void {
 
 async function main(): Promise<void> {
   const config = loadConfig();
+  const startedAtMs = Date.now();
+  let state: RunnerState | null = null;
+  let lastTickAtMs: number | null = null;
+  let lastTickOkAtMs: number | null = null;
+  if (config.port !== undefined) {
+    healthServer = await startHealthServer(config.port, () => ({
+      daoId: config.daoId,
+      voters: config.voters.map((voter) => voter.voter_id),
+      cursor: state?.cursor ?? null,
+      startedAtMs,
+      nowMs: Date.now(),
+      pollMs: config.pollMs,
+      lastTickAtMs,
+      lastTickOkAtMs,
+    }));
+  }
+  keepaliveTimer = startKeepalive(config.keepaliveUrl, config.keepaliveMs, log);
   const keeper = loadCredential(config.keeperKeyFile, config.keeperAccountId);
   const voters = config.voters.map((voter) => ({
     voterId: voter.voter_id,
@@ -140,10 +185,16 @@ async function main(): Promise<void> {
     { ...keeper, accountId: config.keeperAccountId },
     voters.map((voter) => voter.credential),
   );
-  let state = readState(config.stateFile);
+  state = readState(config.stateFile);
   if (state === null) {
-    const currentNextProposalId = config.startProposalId ?? await rpc.getLastProposalId(config.daoId);
-    state = initialRunnerState(config.startProposalId, currentNextProposalId);
+    const currentNextProposalId = config.startProposalId === undefined
+      ? await rpc.getLastProposalId(config.daoId)
+      : config.startProposalId;
+    state = initialRunnerState(
+      config.startProposalId,
+      currentNextProposalId,
+      config.lookbackProposals,
+    );
     writeState(config.stateFile, state);
   }
 
@@ -153,8 +204,9 @@ async function main(): Promise<void> {
     voters: voters.map((voter) => voter.voterId),
     poll_ms: config.pollMs,
   })}\n`);
+  let proposalPeriodNs: bigint | undefined;
   try {
-    const proposalPeriodNs = await rpc.getProposalPeriodNs(config.daoId);
+    proposalPeriodNs = await rpc.getProposalPeriodNs(config.daoId);
     if (isProposalPeriodTooShort(proposalPeriodNs, config.windowSeconds)) {
       log({
         action: "proposal_period",
@@ -168,6 +220,7 @@ async function main(): Promise<void> {
 
   while (true) {
     const started = Date.now();
+    lastTickAtMs = started;
     try {
       await runTick({
         rpc,
@@ -177,9 +230,12 @@ async function main(): Promise<void> {
         nowNanoseconds: BigInt(started) * 1_000_000n,
         nowMilliseconds: started,
         requestTtlMs: config.requestTtlMs,
+        proposalPeriodNs,
+        windowSeconds: config.windowSeconds,
         persistState: writeState.bind(null, config.stateFile),
         log,
       });
+      lastTickOkAtMs = Date.now();
       writeState(config.stateFile, state);
     } catch (error) {
       log({ action: "poll", status: "error", error: String(error) });
@@ -191,6 +247,10 @@ async function main(): Promise<void> {
 const currentFile = fileURLToPath(import.meta.url);
 if (resolve(process.argv[1] ?? "") === currentFile) {
   void main().catch((error: unknown) => {
+    if (keepaliveTimer) {
+      clearInterval(keepaliveTimer);
+    }
+    healthServer?.close();
     process.stderr.write(`${redact(String(error))}\n`);
     process.exitCode = 1;
   });

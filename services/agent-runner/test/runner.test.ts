@@ -45,6 +45,12 @@ describe("initial runner state", () => {
     });
   });
 
+  it("uses the configured lookback for a fresh cursor unless START_PROPOSAL_ID overrides it", () => {
+    expect(initialRunnerState(undefined, 8, 20).cursor).toBe(-1);
+    expect(initialRunnerState(undefined, 50, 20).cursor).toBe(29);
+    expect(initialRunnerState(12, 50, 20).cursor).toBe(11);
+  });
+
   it("warns when the DAO proposal period is below the voter window plus the safety margin", () => {
     expect(isProposalPeriodTooShort(419_000_000_000n, 120)).toBe(true);
     expect(isProposalPeriodTooShort(420_000_000_000n, 120)).toBe(false);
@@ -99,6 +105,104 @@ describe("runTick with mocked RPC", () => {
 
     expect(requestVote.mock.calls.map(([, id]) => id)).toEqual([0, 1]);
     expect(maximumActiveCalls).toBe(1);
+  });
+
+  it("skips requests for proposals the voter has already voted on and advances the cursor", async () => {
+    const rpc = createRpc({
+      getLastProposalId: vi.fn(async () => 1),
+      getProposals: vi.fn(async () => [{
+        id: 0,
+        status: "InProgress",
+        votes: { "voter.testnet": "Approve" },
+      }]),
+    });
+    const logs: Array<{ action: string; reason?: string }> = [];
+    const result = await runTick({
+      rpc,
+      daoId: "club.testnet",
+      voters: [{ voterId: "voter.testnet" }],
+      state: state(),
+      nowNanoseconds: 0n,
+      nowMilliseconds: 0,
+      requestTtlMs: 180_000,
+      persistState: () => undefined,
+      log: (entry) => logs.push(entry),
+    });
+
+    expect(rpc.requestVote).not.toHaveBeenCalled();
+    expect(logs).toContainEqual(expect.objectContaining({
+      action: "request_vote",
+      status: "skipped",
+      reason: "already_voted",
+    }));
+    expect(result.cursor).toBe(0);
+  });
+
+  it("skips requests that cannot finish before the proposal's safety window and advances the cursor", async () => {
+    const rpc = createRpc({
+      getLastProposalId: vi.fn(async () => 1),
+      getProposals: vi.fn(async () => [{
+        id: 0,
+        status: "InProgress",
+        submission_time: "1000000000",
+      }]),
+    });
+    const logs: Array<{ action: string; reason?: string }> = [];
+    const result = await runTick({
+      rpc,
+      daoId: "club.testnet",
+      voters: [{ voterId: "voter.testnet" }],
+      state: state(),
+      nowNanoseconds: 242_000_000_000n,
+      nowMilliseconds: 0,
+      requestTtlMs: 180_000,
+      proposalPeriodNs: 300_000_000_000n,
+      windowSeconds: 120,
+      persistState: () => undefined,
+      log: (entry) => logs.push(entry),
+    });
+
+    expect(rpc.requestVote).not.toHaveBeenCalled();
+    expect(logs).toContainEqual(expect.objectContaining({
+      action: "request_vote",
+      status: "skipped",
+      reason: "too_late",
+    }));
+    expect(result.cursor).toBe(0);
+  });
+
+  it("casts an existing pending vote even when a new request would be too late", async () => {
+    const rpc = createRpc({
+      getLastProposalId: vi.fn(async () => 1),
+      getProposals: vi.fn(async () => [{
+        id: 0,
+        status: "InProgress",
+        submission_time: "1000000000",
+      }]),
+      getPending: vi.fn(async () => ({ deadline: "0", casting: false })),
+    });
+    const currentState: RunnerState = {
+      cursor: -1,
+      pendingByVoter: { "voter.testnet": [0] },
+      inFlight: {},
+    };
+
+    await runTick({
+      rpc,
+      daoId: "club.testnet",
+      voters: [{ voterId: "voter.testnet" }],
+      state: currentState,
+      nowNanoseconds: 242_000_000_000n,
+      nowMilliseconds: 0,
+      requestTtlMs: 180_000,
+      proposalPeriodNs: 300_000_000_000n,
+      windowSeconds: 120,
+      persistState: () => undefined,
+      log: () => undefined,
+    });
+
+    expect(rpc.requestVote).not.toHaveBeenCalled();
+    expect(rpc.cast).toHaveBeenCalledWith("voter.testnet", 0);
   });
 
   it("does not retry a failed request in the same tick and leaves its cursor for a later tick", async () => {
