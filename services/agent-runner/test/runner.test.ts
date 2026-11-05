@@ -131,7 +131,7 @@ describe("runTick with mocked RPC", () => {
 
     expect(rpc.requestVote).not.toHaveBeenCalled();
     expect(logs).toContainEqual(expect.objectContaining({
-      action: "request",
+      action: "request_vote",
       status: "skipped",
       reason: "already_voted",
     }));
@@ -164,7 +164,7 @@ describe("runTick with mocked RPC", () => {
 
     expect(rpc.requestVote).not.toHaveBeenCalled();
     expect(logs).toContainEqual(expect.objectContaining({
-      action: "request",
+      action: "request_vote",
       status: "skipped",
       reason: "too_late",
     }));

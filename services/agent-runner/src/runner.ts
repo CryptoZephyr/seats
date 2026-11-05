@@ -284,7 +284,7 @@ export async function runTick(options: TickOptions): Promise<RunnerState> {
       const skipReason = requestSkipReason(proposal, voter.voterId, options);
       if (skipReason) {
         log({
-          action: "request",
+          action: "request_vote",
           status: "skipped",
           voter_id: voter.voterId,
           proposal_id: id,
