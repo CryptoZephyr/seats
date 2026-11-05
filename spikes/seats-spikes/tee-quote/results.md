@@ -1,6 +1,6 @@
 # NEAR AI hardware quote
 
-Final status: PASS for TDX verification and on-chain signer registration. GPU evidence passed. Measurement matching is partial.
+Final status: PASS for TDX verification and on-chain signer registration. GPU evidence passed. Measurement matching is partial; see [docs/nearai-measurements.md](../../../docs/nearai-measurements.md).
 
 | Check | Result | Final evidence |
 |---|---|---|

@@ -16,7 +16,7 @@ Seat voting weight sits with the voter account, not the member's wallet. Members
 
 - `contracts/seat-voter` holds voting weight, enforces the controller window, and checks signed receipts and the member brief before recording a pending vote.
 - `contracts/seat-nft` issues membership seats, gates resale on DAO approval, rotates the voter's restricted agent key with its controller, and pays the seller and DAO in a 95/5 split.
-- `contracts/tee-verifier` verifies the captured TDX quote and stores the model signer.
+- `contracts/tee-verifier` verifies the captured TDX quote and stores the model signer. The model's Intel TDX quote and NVIDIA GPU evidence verify, and its MRTD, RTMR0-2 and OS image hash reproduce exactly from the public dstack-nvidia-0.5.12 image (see docs/nearai-measurements.md). The model-serving containers are pulled at runtime by NEAR AI's compose-manager, so the hardware measurement doesn't cover which serving code ran.
 - `outlayer/vault-job` checks the requester's seat ownership and encrypts the vault response to the requester's public key.
 - `outlayer/agent-job` checks the voter brief hash, reads a DAO proposal, requests a signed model response, and returns the result for the voter to validate.
 - `services/agent-runner` watches DAO proposals, requests agent votes with voter FunctionCall keys, and casts expired pending votes with a keeper key.
