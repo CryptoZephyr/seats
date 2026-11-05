@@ -59,6 +59,18 @@ jobs:
             echo "default seat NFT WASM contains mint_test_seat"
             exit 1
           fi
+          if strings target/wasm32-unknown-unknown/release/seat_nft.wasm | grep -Fq 'Test fixture with an externally administered voter'; then
+            echo "default seat NFT WASM contains the test fixture description"
+            exit 1
+          fi
+          if strings target/wasm32-unknown-unknown/release/seat_nft.wasm | grep -Fq 'Test seat'; then
+            echo "default seat NFT WASM contains the test title"
+            exit 1
+          fi
+          if ! strings target/wasm32-unknown-unknown/release/seat_nft.wasm | grep -F 'A DAO-governed membership seat' >/dev/null; then
+            echo "default seat NFT WASM is missing the production seat description"
+            exit 1
+          fi
       - name: Build sandbox-test seat NFT WASM
         run: cargo build --release --target wasm32-unknown-unknown -p seat-nft --features sandbox-test
       - name: Run Sputnik DAO sandbox integration

@@ -242,8 +242,8 @@ impl SeatNft {
             token_id.clone(),
             receiver_id,
             Some(TokenMetadata {
-                title: Some(format!("Test seat {token_id}")),
-                description: Some("Test fixture with an externally administered voter".to_string()),
+                title: Some(format!("Seat {token_id}")),
+                description: Some("A DAO-governed membership seat".to_string()),
                 media: None,
                 media_hash: None,
                 copies: Some(1),
@@ -448,8 +448,8 @@ impl SeatNft {
             token_id.clone(),
             receiver_id,
             Some(TokenMetadata {
-                title: Some(format!("Seat {token_id}")),
-                description: Some("A DAO-governed membership seat".to_string()),
+                title: Some(format!("Test seat {token_id}")),
+                description: Some("Test fixture with an externally administered voter".to_string()),
                 media: None,
                 media_hash: None,
                 copies: Some(1),
