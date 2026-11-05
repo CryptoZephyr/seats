@@ -12,6 +12,7 @@ import {
   type Action,
 } from "@near-js/transactions";
 import { baseDecode, baseEncode } from "@near-js/utils";
+import { sendWithNonceRetry } from "./nonce.js";
 import { loadCredential } from "./rpc.js";
 
 const TGAS = 1_000_000_000_000n;
@@ -628,44 +629,39 @@ async function sendActions(
   });
 }
 
-export function selectNextNonce(cachedNonce: bigint | undefined, onchainNonce: bigint): bigint {
-  const cachedNext = cachedNonce === undefined ? onchainNonce + 1n : cachedNonce + 1n;
-  const onchainNext = onchainNonce + 1n;
-  return cachedNext > onchainNext ? cachedNext : onchainNext;
-}
-
-export async function sendWithNonceRetry<T>(
-  provider: Pick<JsonRpcProvider, "viewAccessKey">,
-  accountId: string,
-  publicKey: Awaited<ReturnType<KeyPairSigner["getPublicKey"]>>,
-  nonceCache: Map<string, bigint>,
-  send: (nonce: bigint) => Promise<T>,
-): Promise<T> {
-  const cacheKey = `${accountId}:${publicKey.toString()}`;
-  const attempt = async (): Promise<T> => {
-    const accessKey = await provider.viewAccessKey(accountId, publicKey, { finality: "optimistic" });
-    const nonce = selectNextNonce(nonceCache.get(cacheKey), BigInt(accessKey.nonce));
-    nonceCache.set(cacheKey, nonce);
-    return send(nonce);
-  };
-  try {
-    return await attempt();
-  } catch (error) {
-    const message = error instanceof Error
-      ? `${error.name} ${error.message}`
-      : JSON.stringify(error) ?? String(error);
-    if (!/InvalidNonce|Transaction nonce .* must be larger than nonce of the used access key/i.test(message)) {
-      throw error;
-    }
-    return attempt();
-  }
-}
-
-function daoPolicy(funder: string): object {
+export function daoPolicy(funder: string): object {
   const tokenPolicy = { weight_kind: "TokenWeight", quorum: "0", threshold: [1, 2] };
+  const councilPolicy = {
+    weight_kind: "RoleWeight",
+    quorum: "0",
+    threshold: [1, 2],
+  };
+  const councilLabels = [
+    "config",
+    "policy",
+    "add_member_to_role",
+    "remove_member_from_role",
+    "call",
+    "upgrade_self",
+    "upgrade_remote",
+    "set_vote_token",
+    "add_bounty",
+    "bounty_done",
+    "vote",
+    "factory_info_update",
+    "policy_add_or_update_role",
+    "policy_remove_role",
+    "policy_update_default_vote_policy",
+    "policy_update_parameters",
+  ];
   return {
     roles: [
-      { name: "council", kind: { Group: [funder] }, permissions: ["*:*"], vote_policy: {} },
+      {
+        name: "council",
+        kind: { Group: [funder] },
+        permissions: ["*:*"],
+        vote_policy: Object.fromEntries(councilLabels.map((label) => [label, councilPolicy])),
+      },
       {
         name: "members",
         kind: { Member: "1" },

@@ -2,7 +2,7 @@ import { readFileSync, renameSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadCredential, NearAgentRpc } from "./rpc.js";
-import { runTick, type ActionLog, type RunnerState } from "./runner.js";
+import { initialRunnerState, runTick, type ActionLog, type RunnerState } from "./runner.js";
 
 interface VoterConfig {
   voter_id: string;
@@ -16,6 +16,7 @@ interface Config {
   keeperAccountId: string;
   keeperKeyFile: string;
   pollMs: number;
+  startProposalId?: number;
   votersFile: string;
   stateFile: string;
 }
@@ -43,6 +44,11 @@ function loadConfig(): Config {
   if (!Number.isSafeInteger(pollMs) || pollMs < 1) {
     throw new Error("POLL_MS must be a positive integer");
   }
+  const startProposalIdValue = process.env.START_PROPOSAL_ID?.trim();
+  const startProposalId = startProposalIdValue ? Number(startProposalIdValue) : undefined;
+  if (startProposalId !== undefined && (!Number.isSafeInteger(startProposalId) || startProposalId < 0)) {
+    throw new Error("START_PROPOSAL_ID must be a non-negative integer");
+  }
   return {
     rpcUrl: required("NEAR_RPC_URL"),
     daoId: required("DAO_ID"),
@@ -50,12 +56,13 @@ function loadConfig(): Config {
     keeperAccountId: required("KEEPER_ACCOUNT_ID"),
     keeperKeyFile: required("KEEPER_KEY_FILE"),
     pollMs,
+    startProposalId,
     votersFile,
     stateFile: resolve(process.cwd(), "state.json"),
   };
 }
 
-function readState(stateFile: string): RunnerState {
+function readState(stateFile: string): RunnerState | null {
   try {
     const state = JSON.parse(readFileSync(stateFile, "utf8")) as RunnerState;
     if (!Number.isSafeInteger(state.cursor) || !state.pendingByVoter) {
@@ -64,7 +71,7 @@ function readState(stateFile: string): RunnerState {
     return state;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return { cursor: -1, pendingByVoter: {} };
+      return null;
     }
     throw error;
   }
@@ -102,7 +109,12 @@ async function main(): Promise<void> {
     { ...keeper, accountId: config.keeperAccountId },
     voters.map((voter) => voter.credential),
   );
-  const state = readState(config.stateFile);
+  let state = readState(config.stateFile);
+  if (state === null) {
+    const currentNextProposalId = config.startProposalId ?? await rpc.getLastProposalId(config.daoId);
+    state = initialRunnerState(config.startProposalId, currentNextProposalId);
+    writeState(config.stateFile, state);
+  }
 
   process.stdout.write(`${JSON.stringify({
     action: "runner_started",

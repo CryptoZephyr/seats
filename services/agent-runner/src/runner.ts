@@ -28,6 +28,17 @@ export interface RunnerState {
   pendingByVoter: Record<string, number[]>;
 }
 
+export function initialRunnerState(
+  startProposalId: number | undefined,
+  currentNextProposalId: number,
+): RunnerState {
+  const firstProposalId = startProposalId ?? currentNextProposalId;
+  if (!Number.isSafeInteger(firstProposalId) || firstProposalId < 0) {
+    throw new Error("Initial proposal ID must be a non-negative integer");
+  }
+  return { cursor: firstProposalId - 1, pendingByVoter: {} };
+}
+
 export interface ActionLog {
   action: string;
   status: "ok" | "skipped" | "error";

@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { runTick, type AgentRunnerRpc, type RunnerState } from "../src/runner.js";
+import {
+  initialRunnerState,
+  runTick,
+  type AgentRunnerRpc,
+  type RunnerState,
+} from "../src/runner.js";
 
 function createRpc(overrides: Partial<AgentRunnerRpc> = {}): AgentRunnerRpc {
   return {
@@ -16,6 +21,16 @@ function createRpc(overrides: Partial<AgentRunnerRpc> = {}): AgentRunnerRpc {
 function state(): RunnerState {
   return { cursor: -1, pendingByVoter: {} };
 }
+
+describe("initial runner state", () => {
+  it("starts at the first proposal created after the runner starts", () => {
+    expect(initialRunnerState(undefined, 8)).toEqual({ cursor: 7, pendingByVoter: {} });
+  });
+
+  it("uses START_PROPOSAL_ID as the first proposal to handle", () => {
+    expect(initialRunnerState(12, 8)).toEqual({ cursor: 11, pendingByVoter: {} });
+  });
+});
 
 describe("runTick with mocked RPC", () => {
   it("requests each in-progress proposal once and persists the cursor", async () => {
@@ -34,6 +49,31 @@ describe("runTick with mocked RPC", () => {
     expect(result.cursor).toBe(1);
     expect(result.pendingByVoter["voter.testnet"]).toEqual([0, 1]);
     expect(logs).toHaveLength(2);
+  });
+
+  it("sends a voter's requests sequentially", async () => {
+    let activeCalls = 0;
+    let maximumActiveCalls = 0;
+    const requestVote = vi.fn(async (_voterId: string, id: number) => {
+      activeCalls += 1;
+      maximumActiveCalls = Math.max(maximumActiveCalls, activeCalls);
+      await Promise.resolve();
+      activeCalls -= 1;
+      return `request-${id}`;
+    });
+    const rpc = createRpc({ requestVote });
+
+    await runTick({
+      rpc,
+      daoId: "club.testnet",
+      voters: [{ voterId: "voter.testnet" }],
+      state: state(),
+      nowNanoseconds: 0n,
+      log: () => undefined,
+    });
+
+    expect(requestVote.mock.calls.map(([, id]) => id)).toEqual([0, 1]);
+    expect(maximumActiveCalls).toBe(1);
   });
 
   it("does not retry a failed request in the same tick and leaves its cursor for a later tick", async () => {

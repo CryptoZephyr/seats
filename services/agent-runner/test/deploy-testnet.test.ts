@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  daoPolicy,
   findPendingProposalId,
   parseProposalId,
-  selectNextNonce,
-  sendWithNonceRetry,
 } from "../src/deploy-testnet.js";
+import { selectNextNonce, sendWithNonceRetry } from "../src/nonce.js";
 
 const accountId = "funder.testnet";
 const publicKey = { toString: () => "ed25519:test-public-key" } as unknown as Parameters<
@@ -23,6 +23,20 @@ describe("proposal IDs", () => {
       expect(() => parseProposalId(value))
         .toThrow("Sputnik add_proposal did not return a non-negative integer proposal ID");
     }
+  });
+});
+
+describe("DAO voting policy", () => {
+  it("uses role weight for council calls without giving the council transfer weight", () => {
+    const policy = daoPolicy("funder.testnet") as {
+      roles: Array<{ name: string; vote_policy: Record<string, { weight_kind: string }> }>;
+    };
+    const council = policy.roles.find((role) => role.name === "council");
+    const members = policy.roles.find((role) => role.name === "members");
+
+    expect(council?.vote_policy.call?.weight_kind).toBe("RoleWeight");
+    expect(council?.vote_policy.transfer).toBeUndefined();
+    expect(members?.vote_policy.transfer?.weight_kind).toBe("TokenWeight");
   });
 });
 

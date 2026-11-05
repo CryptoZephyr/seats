@@ -10,6 +10,8 @@ Example: Ada's brief says "back community events, reject any spend over 50 NEAR"
 
 Seats runs on NEAR testnet only. Don't deploy these contracts to mainnet.
 
+Seat voting weight sits with the voter account, not the member's wallet. Members submit proposals through the council or the voter account, rather than directly from their wallet.
+
 ## Components
 
 - `contracts/seat-voter` holds voting weight, enforces the controller window, and checks signed receipts and the member brief before recording a pending vote.

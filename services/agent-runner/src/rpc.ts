@@ -7,6 +7,7 @@ import {
   createTransaction,
 } from "@near-js/transactions";
 import { baseDecode, baseEncode } from "@near-js/utils";
+import { sendWithNonceRetry } from "./nonce.js";
 import type { AgentRunnerRpc } from "./runner.js";
 import type { PendingVote, Proposal, ResultsView } from "./logic.js";
 
@@ -61,6 +62,7 @@ export class NearAgentRpc implements AgentRunnerRpc {
   private readonly provider: JsonRpcProvider;
   private readonly credentials: Map<string, Credential>;
   private readonly keeper: Credential;
+  private readonly nonceCache = new Map<string, bigint>();
 
   constructor(rpcUrl: string, keeper: KeyFileCredential, voters: KeyFileCredential[]) {
     this.provider = new JsonRpcProvider({ url: rpcUrl }, { retries: 0 });
@@ -123,32 +125,35 @@ export class NearAgentRpc implements AgentRunnerRpc {
     gasTgas: bigint,
   ): Promise<string> {
     const publicKey = await credential.signer.getPublicKey();
-    const accessKey = await this.provider.viewAccessKey(
+    return sendWithNonceRetry(
+      this.provider,
       credential.accountId,
       publicKey,
-      { finality: "final" },
+      this.nonceCache,
+      async (nonce) => {
+        const block = await this.provider.viewBlock({ finality: "optimistic" });
+        const transaction = createTransaction(
+          credential.accountId,
+          publicKey,
+          receiverId,
+          nonce,
+          [actionCreators.functionCall(
+            methodName,
+            args,
+            gasTgas * 1_000_000_000_000n,
+            0n,
+          )],
+          baseDecode(block.header.hash),
+        );
+        const [hashBytes, signedTransaction] = await credential.signer.signTransaction(transaction);
+        const outcome = await this.provider.sendTransaction(signedTransaction);
+        const failure = transactionFailure(outcome);
+        if (failure !== null) {
+          throw new Error(failure);
+        }
+        return baseEncode(hashBytes);
+      },
     );
-    const block = await this.provider.viewBlock({ finality: "optimistic" });
-    const transaction = createTransaction(
-      credential.accountId,
-      publicKey,
-      receiverId,
-      BigInt(accessKey.nonce) + 1n,
-      [actionCreators.functionCall(
-        methodName,
-        args,
-        gasTgas * 1_000_000_000_000n,
-        0n,
-      )],
-      baseDecode(block.header.hash),
-    );
-    const [hashBytes, signedTransaction] = await credential.signer.signTransaction(transaction);
-    const outcome = await this.provider.sendTransaction(signedTransaction);
-    const failure = transactionFailure(outcome);
-    if (failure !== null) {
-      throw new Error(failure);
-    }
-    return baseEncode(hashBytes);
   }
 }
 
