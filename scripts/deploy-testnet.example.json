@@ -20,6 +20,7 @@
   "agent_wasm_url": "https://example.invalid/agent-job.wasm",
   "agent_wasm_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
   "window_seconds": 120,
+  "proposal_period_seconds": 600,
   "voter_funding_near": 5,
   "dao_funding_near": 11
 }

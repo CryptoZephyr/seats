@@ -77,6 +77,8 @@ Copy `voters.example.json` to the ignored `voters.json`, then set `NEAR_RPC_URL`
 
 Build the contracts first. Copy `scripts/deploy-testnet.example.json` to the ignored `scripts/deploy-testnet.json`, fill in account IDs and paths to keys under the external spike secrets directory, and provide a fresh quote-arguments file. The script is restricted to testnet, stores only account IDs, transaction hashes, and code hashes in `deployments/testnet.json`, and never copies key contents into the repository.
 
+New DAOs use a 600-second proposal period by default. `proposal_period_seconds` must be at least `window_seconds + 300`, and an existing DAO with a shorter period is updated during deployment.
+
 The 80 NEAR venue proposal used for the rejection test is never funded.
 
 ```sh

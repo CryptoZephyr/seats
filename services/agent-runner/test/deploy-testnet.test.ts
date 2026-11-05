@@ -154,7 +154,14 @@ describe("deployment transaction nonces", () => {
 
 type ProposalState = { id: number; kind: any; status: string };
 
-function deploymentFixture(mode: "fresh" | "midway" | "complete") {
+function deploymentFixture(
+  mode: "fresh" | "midway" | "complete",
+  options: {
+    proposalPeriodSeconds?: number;
+    currentProposalPeriodSeconds?: number;
+    pendingPolicyProposal?: boolean;
+  } = {},
+) {
   const root = mkdtempSync(join(tmpdir(), "seats-deploy-flow-"));
   const secrets = join(root, "secrets");
   const artifacts = join(root, "target/wasm32-unknown-unknown/release");
@@ -186,12 +193,37 @@ function deploymentFixture(mode: "fresh" | "midway" | "complete") {
     secrets_profile: "brief",
   };
   const stakingKind = { SetStakingContract: { staking_id: seatId } };
+  const policyPeriodKind = {
+    ChangePolicyUpdateParameters: {
+      parameters: {
+        proposal_period: "600000000000",
+        proposal_bond: null,
+        bounty_bond: null,
+        bounty_forgiveness_period: null,
+      },
+    },
+  };
+  const initialProposals: ProposalState[] = mode === "midway"
+    ? [
+      ...(options.pendingPolicyProposal
+        ? [{ id: 0, kind: policyPeriodKind, status: "InProgress" }]
+        : []),
+      {
+        id: options.pendingPolicyProposal ? 1 : 0,
+        kind: stakingKind,
+        status: "InProgress",
+      },
+    ]
+    : [];
   const state = {
     verifierCodeHash: mode === "fresh" ? "" : codeHashes.tee_verifier,
     verifierInitialized: mode !== "fresh",
     verifierSigner: mode === "fresh" ? null : expectedSigner,
     daoExists: mode !== "fresh",
     daoBalance: mode === "fresh" ? 0n : mode === "midway" ? 8n * 10n ** 24n : 12n * 10n ** 24n,
+    policyPeriodNs: mode === "fresh"
+      ? 0n
+      : BigInt(options.currentProposalPeriodSeconds ?? 600) * 1_000_000_000n,
     seatCodeHash: mode === "fresh" ? "" : codeHashes.seat_nft,
     seatInitialized: mode !== "fresh",
     seat: mode === "complete" ? { voter_id: voterId } : null as { voter_id: string } | null,
@@ -201,9 +233,7 @@ function deploymentFixture(mode: "fresh" | "midway" | "complete") {
       secrets_account_id: null,
       secrets_profile: null,
     },
-    proposals: (mode === "midway"
-      ? [{ id: 0, kind: stakingKind, status: "InProgress" }]
-      : []) as ProposalState[],
+    proposals: initialProposals,
   };
   const record: Record<string, unknown> = {
     status: "not_deployed",
@@ -250,6 +280,7 @@ function deploymentFixture(mode: "fresh" | "midway" | "complete") {
     agent_wasm_url: "https://example.test/agent.wasm",
     agent_wasm_sha256: "c".repeat(64),
     window_seconds: 120,
+    proposal_period_seconds: options.proposalPeriodSeconds,
     voter_funding_near: 5,
     dao_funding_near: mode === "midway" ? 8 : undefined,
   }));
@@ -283,6 +314,8 @@ function deploymentFixture(mode: "fresh" | "midway" | "complete") {
         result = state.verifierSigner;
       } else if (request.method_name === "get_last_proposal_id") {
         result = state.proposals.length;
+      } else if (request.method_name === "get_policy") {
+        result = { proposal_period: String(state.policyPeriodNs) };
       } else if (request.method_name === "get_proposals") {
         result = state.proposals.slice(args.from_index, args.from_index + args.limit);
       } else if (request.method_name === "get_staking_contract") {
@@ -316,6 +349,8 @@ function deploymentFixture(mode: "fresh" | "midway" | "complete") {
     } else if (method === "create") {
       state.daoExists = true;
       state.daoBalance = 6n * 10n ** 24n;
+      const daoArgs = JSON.parse(Buffer.from(args.args, "base64").toString("utf8"));
+      state.policyPeriodNs = BigInt(daoArgs.policy.proposal_period);
     } else if (method === "new" && receiver === seatId) {
       state.seatInitialized = true;
     } else if (method === "add_proposal") {
@@ -328,6 +363,11 @@ function deploymentFixture(mode: "fresh" | "midway" | "complete") {
       proposal.status = "Approved";
       if ("SetStakingContract" in proposal.kind) {
         state.stakingContract = proposal.kind.SetStakingContract.staking_id;
+      }
+      if ("ChangePolicyUpdateParameters" in proposal.kind) {
+        state.policyPeriodNs = BigInt(
+          proposal.kind.ChangePolicyUpdateParameters.parameters.proposal_period,
+        );
       }
       const action = proposal.kind.FunctionCall?.actions?.[0];
       if (action?.method_name === "mint_seat") {
@@ -387,6 +427,12 @@ describe("deployment reruns with an in-memory provider", () => {
     const fresh = deploymentFixture("fresh");
     const midway = deploymentFixture("midway");
     const complete = deploymentFixture("complete");
+    const policyUpgrade = deploymentFixture("midway", { currentProposalPeriodSeconds: 300 });
+    const pendingPolicyUpgrade = deploymentFixture("midway", {
+      currentProposalPeriodSeconds: 300,
+      pendingPolicyProposal: true,
+    });
+    const invalidPeriod = deploymentFixture("fresh", { proposalPeriodSeconds: 419 });
     try {
       await main(["--config", fresh.configPath], fresh.dependencies);
       expect(fresh.methodCalls).toEqual([
@@ -406,6 +452,7 @@ describe("deployment reruns with an in-memory provider", () => {
       ]);
       expect(fresh.transactions).toHaveLength(4);
       expect(fresh.state.daoBalance).toBe(11n * 10n ** 24n);
+      expect(fresh.state.policyPeriodNs).toBe(600n * 1_000_000_000n);
       expect(fresh.transferAmounts).toEqual([5n * 10n ** 24n]);
 
       await main(["--config", midway.configPath], midway.dependencies);
@@ -431,10 +478,47 @@ describe("deployment reruns with an in-memory provider", () => {
       await main(["--config", complete.configPath], complete.dependencies);
       expect(complete.methodCalls).toEqual([]);
       expect(complete.transactions).toEqual([]);
+
+      await main(["--config", policyUpgrade.configPath], policyUpgrade.dependencies);
+      const updateProposal = policyUpgrade.state.proposals.find(({ kind }) =>
+        "ChangePolicyUpdateParameters" in kind,
+      );
+      expect(updateProposal?.kind).toEqual({
+        ChangePolicyUpdateParameters: {
+          parameters: {
+            proposal_period: "600000000000",
+            proposal_bond: null,
+            bounty_bond: null,
+            bounty_forgiveness_period: null,
+          },
+        },
+      });
+      expect(updateProposal?.status).toBe("Approved");
+      expect(policyUpgrade.state.policyPeriodNs).toBe(600n * 1_000_000_000n);
+      expect(
+        (JSON.parse(readFileSync(policyUpgrade.recordPath, "utf8")) as {
+          transactions: Array<{ label: string }>;
+        }).transactions.filter(({ label }) => label === "update_proposal_period"),
+      ).toHaveLength(1);
+
+      await main(["--config", pendingPolicyUpgrade.configPath], pendingPolicyUpgrade.dependencies);
+      const pendingUpdateProposals = pendingPolicyUpgrade.state.proposals.filter(({ kind }) =>
+        "ChangePolicyUpdateParameters" in kind,
+      );
+      expect(pendingUpdateProposals).toHaveLength(1);
+      expect(pendingUpdateProposals[0]?.status).toBe("Approved");
+
+      await expect(main(["--config", invalidPeriod.configPath], invalidPeriod.dependencies))
+        .rejects.toThrow("proposal_period_seconds must be at least window_seconds + 300 (420)");
+      expect(invalidPeriod.methodCalls).toEqual([]);
+      expect(invalidPeriod.transactions).toEqual([]);
     } finally {
       fresh.cleanup();
       midway.cleanup();
       complete.cleanup();
+      policyUpgrade.cleanup();
+      pendingPolicyUpgrade.cleanup();
+      invalidPeriod.cleanup();
     }
   });
 });
