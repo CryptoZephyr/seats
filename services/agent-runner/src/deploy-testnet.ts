@@ -165,7 +165,13 @@ async function main(args: string[]): Promise<void> {
   }
   let verifierSigner: string | null = null;
   try {
-    verifierSigner = await callView<string>(provider, config.verifier_account_id, "get_model_signer", {});
+    verifierSigner = await callView<string>(
+      provider,
+      config.verifier_account_id,
+      "get_model_signer",
+      {},
+      "optimistic",
+    );
   } catch {
     verifierSigner = null;
   }
@@ -202,7 +208,7 @@ async function main(args: string[]): Promise<void> {
   };
   if (!globalAlreadyDeployed) {
     const sizeEstimate = BigInt(voterWasm.length) * GLOBAL_STORAGE_COST_PER_BYTE + NEAR;
-    const funder = await provider.viewAccount(config.funder_account_id);
+    const funder = await provider.viewAccount(config.funder_account_id, { finality: "optimistic" });
     if (BigInt(funder.amount) < sizeEstimate) {
       throw new Error(`Global voter deploy needs about ${formatNear(sizeEstimate)} NEAR; funder balance is ${formatNear(BigInt(funder.amount))} NEAR`);
     }
@@ -223,7 +229,7 @@ async function main(args: string[]): Promise<void> {
     policy: daoPolicy(config.funder_account_id),
   };
   try {
-    await callView(provider, daoId, "get_last_proposal_id", {});
+    await callView(provider, daoId, "get_last_proposal_id", {}, "optimistic");
   } catch {
     const created = await call(credentials.funder, "sputnikv2.testnet", "create", {
       name: config.dao_name,
@@ -232,7 +238,7 @@ async function main(args: string[]): Promise<void> {
     record.accounts = { ...((record.accounts as object | undefined) ?? {}), dao: daoId };
     recordTx(record, "create_dao", credentials.funder.accountId, "sputnikv2.testnet", created.hash);
   }
-  const daoBalance = BigInt((await provider.viewAccount(daoId)).amount);
+  const daoBalance = BigInt((await provider.viewAccount(daoId, { finality: "optimistic" })).amount);
   const daoTarget = BigInt(daoFundingNear) * NEAR;
   if (daoBalance < daoTarget) {
     const funded = await tx(credentials.funder, daoId, [actionCreators.transfer(daoTarget - daoBalance)]);
@@ -245,7 +251,7 @@ async function main(args: string[]): Promise<void> {
     recordTx(record, "deploy_seat_nft", credentials.seat.accountId, config.seat_account_id, sent.hash);
   }
   try {
-    await callView(provider, config.seat_account_id, "get_dao", {});
+    await callView(provider, config.seat_account_id, "get_dao", {}, "optimistic");
   } catch {
     const sent = await call(credentials.seat, config.seat_account_id, "new", {
       dao: daoId,
@@ -257,13 +263,19 @@ async function main(args: string[]): Promise<void> {
   }
   let stakingContract: string | null = null;
   try {
-    stakingContract = await callView<string | null>(provider, daoId, "get_staking_contract", {});
+    stakingContract = await callView<string | null>(
+      provider,
+      daoId,
+      "get_staking_contract",
+      {},
+      "optimistic",
+    );
   } catch {
     stakingContract = null;
   }
   if (stakingContract !== config.seat_account_id) {
     const stakingKind = { SetStakingContract: { staking_id: config.seat_account_id } };
-    await proposeAndApprove(provider, credentials.funder, daoId, stakingKind, "Set seat staking contract", record, call);
+    await proposeAndApprove(credentials.funder, daoId, stakingKind, "Set seat staking contract", record, call);
   }
 
   const voterFunding = BigInt(voterFundingNear) * NEAR;
@@ -288,17 +300,19 @@ async function main(args: string[]): Promise<void> {
       config.seat_account_id,
       "get_seat",
       { token_id: "1" },
+      "optimistic",
     );
   } catch {
     seatView = null;
   }
   if (!seatView) {
-    await proposeAndApprove(provider, credentials.funder, daoId, mintKind, "Mint first seat", record, call);
+    await proposeAndApprove(credentials.funder, daoId, mintKind, "Mint first seat", record, call);
     seatView = await callView<{ voter_id: string }>(
       provider,
       config.seat_account_id,
       "get_seat",
       { token_id: "1" },
+      "optimistic",
     );
   }
   const voterId = seatView?.voter_id;
@@ -306,12 +320,12 @@ async function main(args: string[]): Promise<void> {
   record.accounts = { ...((record.accounts as object | undefined) ?? {}), dao: daoId, seat: config.seat_account_id, voter: voterId, verifier: config.verifier_account_id };
   writeRecord(record);
 
-  await proposeAndApprove(provider, credentials.funder, daoId, functionCallKind(config.seat_account_id, "set_voter_model_signer", {
+  await proposeAndApprove(credentials.funder, daoId, functionCallKind(config.seat_account_id, "set_voter_model_signer", {
     token_id: "1",
     address_hex: quote.expected_signer,
     model: config.model,
   }), "Set model signer", record, call);
-  await proposeAndApprove(provider, credentials.funder, daoId, functionCallKind(config.seat_account_id, "pin_voter_agent", {
+  await proposeAndApprove(credentials.funder, daoId, functionCallKind(config.seat_account_id, "pin_voter_agent", {
     token_id: "1",
     url: config.agent_wasm_url,
     sha256: config.agent_wasm_sha256,
@@ -320,7 +334,7 @@ async function main(args: string[]): Promise<void> {
     brief_hash: string;
     secrets_account_id: string | null;
     secrets_profile: string | null;
-  }>(provider, voterId, "get_brief", {});
+  }>(provider, voterId, "get_brief", {}, "optimistic");
   if (
     currentBrief.brief_hash !== config.brief_hash ||
     currentBrief.secrets_account_id !== config.brief_secrets_account_id ||
@@ -356,7 +370,6 @@ function functionCallKind(receiver: string, method: string, args: object) {
 }
 
 async function proposeAndApprove(
-  provider: JsonRpcProvider,
   funder: Credential,
   daoId: string,
   kind: object,
@@ -366,8 +379,7 @@ async function proposeAndApprove(
 ): Promise<void> {
   const added = await call(funder, daoId, "add_proposal", { proposal: { description, kind } });
   recordTx(record, `add_${description.toLowerCase().replaceAll(" ", "_")}`, funder.accountId, daoId, added.hash);
-  const last = Number(await callView(provider, daoId, "get_last_proposal_id", {}));
-  const proposalId = last - 1;
+  const proposalId = parseProposalId(added.value);
   const approved = await call(funder, daoId, "act_proposal", {
     id: proposalId,
     action: "VoteApprove",
@@ -377,15 +389,28 @@ async function proposeAndApprove(
   recordTx(record, `approve_${description.toLowerCase().replaceAll(" ", "_")}`, funder.accountId, daoId, approved.hash);
 }
 
+export function parseProposalId(value: unknown): number {
+  const proposalId = typeof value === "number"
+    ? value
+    : typeof value === "string" && /^\d+$/.test(value)
+      ? Number(value)
+      : Number.NaN;
+  if (!Number.isSafeInteger(proposalId) || proposalId < 0) {
+    throw new Error("Sputnik add_proposal did not return a non-negative integer proposal ID");
+  }
+  return proposalId;
+}
+
 async function callView<T = unknown>(
   provider: JsonRpcProvider,
   account: string,
   method: string,
   args: object,
+  finality: "final" | "optimistic" = "final",
 ): Promise<T> {
   const response = await provider.sendJsonRpc<{ result: number[] }>("query", {
     request_type: "call_function",
-    finality: "final",
+    finality,
     account_id: account,
     method_name: method,
     args_base64: Buffer.from(JSON.stringify(args)).toString("base64"),

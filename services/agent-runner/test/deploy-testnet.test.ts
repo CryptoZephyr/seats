@@ -1,11 +1,25 @@
 import { describe, expect, it, vi } from "vitest";
-import { selectNextNonce, sendWithNonceRetry } from "../src/deploy-testnet.js";
+import { parseProposalId, selectNextNonce, sendWithNonceRetry } from "../src/deploy-testnet.js";
 
 const accountId = "funder.testnet";
 const publicKey = { toString: () => "ed25519:test-public-key" } as unknown as Parameters<
   typeof sendWithNonceRetry
 >[2];
 const cacheKey = `${accountId}:${publicKey.toString()}`;
+
+describe("proposal IDs", () => {
+  it("accepts non-negative integer IDs returned by Sputnik", () => {
+    expect(parseProposalId(0)).toBe(0);
+    expect(parseProposalId("12")).toBe(12);
+  });
+
+  it("rejects invalid proposal IDs with a clear error", () => {
+    for (const value of [-1, 1.5, "1.5", undefined, {}]) {
+      expect(() => parseProposalId(value))
+        .toThrow("Sputnik add_proposal did not return a non-negative integer proposal ID");
+    }
+  });
+});
 
 describe("deployment transaction nonces", () => {
   it("selects the next nonce above both the local cache and chain state", () => {
