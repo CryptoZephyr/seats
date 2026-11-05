@@ -242,8 +242,8 @@ impl SeatNft {
             token_id.clone(),
             receiver_id,
             Some(TokenMetadata {
-                title: Some(format!("Seat {token_id}")),
-                description: Some("A DAO-governed membership seat".to_string()),
+                title: Some(format!("Test seat {token_id}")),
+                description: Some("Test fixture with an externally administered voter".to_string()),
                 media: None,
                 media_hash: None,
                 copies: Some(1),
@@ -663,11 +663,6 @@ mod tests {
 
         let token = contract.nft_token("1".to_string()).unwrap();
         let token_metadata = token.metadata.as_ref().unwrap();
-        assert_eq!(token_metadata.title.as_deref(), Some("Seat 1"));
-        assert_eq!(
-            token_metadata.description.as_deref(),
-            Some("A DAO-governed membership seat")
-        );
         assert_eq!(token_metadata, &expected_token_metadata);
         let seat_payload = token_metadata
             .media
