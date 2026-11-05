@@ -62,12 +62,33 @@ type Credential = {
   signer: KeyPairSigner;
 };
 
+type DeployCall = (
+  credential: Credential,
+  receiver: string,
+  method: string,
+  value: object,
+  deposit?: bigint,
+  gas?: bigint,
+) => Promise<{ hash: string; value: unknown }>;
+
+export interface DeployTestDependencies {
+  provider?: JsonRpcProvider;
+  artifactRoot?: string;
+  recordPath?: string;
+  loadCredential?: typeof loadCredential;
+  publicKeyFromFile?: typeof publicKeyFromFile;
+  sendActions?: typeof sendActions;
+  call?: DeployCall;
+}
+
 function readJson(file: string): Record<string, unknown> {
   return JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
 }
 
-function writeRecord(record: Record<string, unknown>): void {
-  const file = resolve(ROOT, "deployments/testnet.json");
+function writeRecord(
+  record: Record<string, unknown>,
+  file = resolve(ROOT, "deployments/testnet.json"),
+): void {
   writeFileSync(file, `${JSON.stringify(record, null, 2)}\n`, { mode: 0o644 });
 }
 
@@ -102,8 +123,22 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? `${error.name}: ${error.message}` : String(error);
 }
 
-function isUninitializedContractError(error: unknown): boolean {
-  return /Contract must be initialized before usage|ERR_NOT_INITIALIZED/i.test(errorMessage(error));
+export function isUninitializedContractError(error: unknown): boolean {
+  const seen = new Set<object>();
+  let current: unknown = error;
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    const details = current as { message?: unknown; cause?: unknown };
+    if (
+      typeof details.message === "string" &&
+      /Contract must be initialized before usage|ERR_NOT_INITIALIZED|contract[^\n]*(?:not initialized|uninitialized)|(?:cannot|failed to|unable to) deserialize[^\n]*contract/i.test(details.message)
+    ) {
+      return true;
+    }
+    current = details.cause;
+  }
+  return typeof error === "string" &&
+    /Contract must be initialized before usage|ERR_NOT_INITIALIZED|contract[^\n]*(?:not initialized|uninitialized)|(?:cannot|failed to|unable to) deserialize[^\n]*contract/i.test(error);
 }
 
 export function isMissingAccountError(error: unknown): boolean {
@@ -146,14 +181,18 @@ function recordTx(
   signer: string,
   receiver: string,
   hash: string,
+  persistRecord: (record: Record<string, unknown>) => void = writeRecord,
 ): void {
   const transactions = (record.transactions as Record<string, string>[] | undefined) ?? [];
   transactions.push({ label, signer, receiver, hash });
   record.transactions = transactions;
-  writeRecord(record);
+  persistRecord(record);
 }
 
-async function main(args: string[]): Promise<void> {
+export async function main(
+  args: string[],
+  dependencies: DeployTestDependencies = {},
+): Promise<void> {
   const configFlag = args.indexOf("--config");
   if (configFlag < 0 || !args[configFlag + 1]) {
     throw new Error("Usage: deploy-testnet.js --config /path/to/deploy-testnet.json");
@@ -162,7 +201,10 @@ async function main(args: string[]): Promise<void> {
   const voterFundingNear = config.voter_funding_near ?? 5;
   const daoFundingNear = config.dao_funding_near ?? voterFundingNear + 3;
   assertTestnet(config);
-  const provider = new JsonRpcProvider({ url: config.rpc_url }, { retries: 0 });
+  const artifactRoot = resolve(dependencies.artifactRoot ?? ROOT);
+  const recordPath = dependencies.recordPath ?? resolve(artifactRoot, "deployments/testnet.json");
+  const provider = dependencies.provider ?? new JsonRpcProvider({ url: config.rpc_url }, { retries: 0 });
+  const credentialLoader = dependencies.loadCredential ?? loadCredential;
   const credentials: Record<string, Credential> = {};
   for (const [name, accountId, file] of [
     ["funder", config.funder_account_id, config.funder_key_file],
@@ -170,30 +212,32 @@ async function main(args: string[]): Promise<void> {
     ["member", config.member_account_id, config.member_key_file],
     ["seat", config.seat_account_id, config.seat_key_file],
   ]) {
-    const loaded = loadCredential(keyPath(config, file), accountId);
+    const loaded = credentialLoader(keyPath(config, file), accountId);
     credentials[name] = { accountId, signer: loaded.signer };
   }
   const agentFile = keyPath(config, config.agent_key_file);
-  const agentPublicKey = publicKeyFromFile(agentFile);
-  const record = readJson(resolve(ROOT, "deployments/testnet.json"));
+  const agentPublicKey = (dependencies.publicKeyFromFile ?? publicKeyFromFile)(agentFile);
+  const record = readJson(recordPath);
+  const persistRecord = (nextRecord: Record<string, unknown>) => writeRecord(nextRecord, recordPath);
   const nonceCache = new Map<string, bigint>();
+  const send = dependencies.sendActions ?? sendActions;
   const tx = async (
     credential: Credential,
     receiver: string,
     actions: Action[],
-  ) => sendActions(provider, credential, receiver, actions, nonceCache);
-  const call = async (
+  ) => send(provider, credential, receiver, actions, nonceCache);
+  const call: DeployCall = dependencies.call ?? (async (
     credential: Credential,
     receiver: string,
     method: string,
     value: object,
     deposit = 0n,
     gas = 300n * TGAS,
-  ) => tx(credential, receiver, [actionCreators.functionCall(method, value, gas, deposit)]);
+  ) => tx(credential, receiver, [actionCreators.functionCall(method, value, gas, deposit)]));
 
-  const verifierWasm = readFileSync(resolve(ROOT, "target/wasm32-unknown-unknown/release/tee_verifier.wasm"));
-  const voterWasm = readFileSync(resolve(ROOT, "target/wasm32-unknown-unknown/release/seat_voter.wasm"));
-  const seatWasm = readFileSync(resolve(ROOT, "target/wasm32-unknown-unknown/release/seat_nft.wasm"));
+  const verifierWasm = readFileSync(resolve(artifactRoot, "target/wasm32-unknown-unknown/release/tee_verifier.wasm"));
+  const voterWasm = readFileSync(resolve(artifactRoot, "target/wasm32-unknown-unknown/release/seat_voter.wasm"));
+  const seatWasm = readFileSync(resolve(artifactRoot, "target/wasm32-unknown-unknown/release/seat_nft.wasm"));
   const hashes = {
     tee_verifier: baseEncode(createHash("sha256").update(verifierWasm).digest()),
     seat_voter: baseEncode(createHash("sha256").update(voterWasm).digest()),
@@ -204,7 +248,7 @@ async function main(args: string[]): Promise<void> {
   const verifierAccount = await provider.viewAccount(config.verifier_account_id, { finality: "optimistic" });
   if (verifierAccount.code_hash !== hashes.tee_verifier) {
     const sent = await tx(credentials.verifier, config.verifier_account_id, [actionCreators.deployContract(verifierWasm)]);
-    recordTx(record, "deploy_tee_verifier", credentials.verifier.accountId, config.verifier_account_id, sent.hash);
+    recordTx(record, "deploy_tee_verifier", credentials.verifier.accountId, config.verifier_account_id, sent.hash, persistRecord);
   }
   let verifierSigner: string | null = null;
   let verifierInitialized = false;
@@ -224,7 +268,7 @@ async function main(args: string[]): Promise<void> {
   }
   if (!verifierInitialized) {
     const sent = await call(credentials.verifier, config.verifier_account_id, "new", {});
-    recordTx(record, "init_tee_verifier", credentials.verifier.accountId, config.verifier_account_id, sent.hash);
+    recordTx(record, "init_tee_verifier", credentials.verifier.accountId, config.verifier_account_id, sent.hash, persistRecord);
   }
   const quote = readJson(keyPath(config, config.quote_args_file)) as {
     quote_hex: string;
@@ -240,7 +284,7 @@ async function main(args: string[]): Promise<void> {
       nonce: quote.nonce,
     });
     if (registered.value !== quote.expected_signer) throw new Error("Verifier signer did not match the fresh quote");
-    recordTx(record, "register_model_signer", credentials.verifier.accountId, config.verifier_account_id, registered.hash);
+    recordTx(record, "register_model_signer", credentials.verifier.accountId, config.verifier_account_id, registered.hash, persistRecord);
   }
 
   const recordedGlobal = record.seat_voter_global as { code_hash?: string; [key: string]: unknown } | undefined;
@@ -264,10 +308,10 @@ async function main(args: string[]): Promise<void> {
       actionCreators.deployGlobalContract(voterWasm, deployMode),
     ]);
     record.seat_voter_global = globalRecord;
-    recordTx(record, "deploy_seat_voter_global", credentials.funder.accountId, config.funder_account_id, sent.hash);
+    recordTx(record, "deploy_seat_voter_global", credentials.funder.accountId, config.funder_account_id, sent.hash, persistRecord);
   } else {
     record.seat_voter_global = globalRecord;
-    writeRecord(record);
+    persistRecord(record);
   }
 
   const daoId = `${config.dao_name}.sputnikv2.testnet`;
@@ -292,19 +336,19 @@ async function main(args: string[]): Promise<void> {
       args: Buffer.from(JSON.stringify(daoArgs)).toString("base64"),
     }, 6n * NEAR);
     record.accounts = { ...((record.accounts as object | undefined) ?? {}), dao: daoId };
-    recordTx(record, "create_dao", credentials.funder.accountId, "sputnikv2.testnet", created.hash);
+    recordTx(record, "create_dao", credentials.funder.accountId, "sputnikv2.testnet", created.hash, persistRecord);
   }
   const daoBalance = BigInt((await provider.viewAccount(daoId, { finality: "optimistic" })).amount);
   const daoTarget = BigInt(daoFundingNear) * NEAR;
   if (daoBalance < daoTarget) {
     const funded = await tx(credentials.funder, daoId, [actionCreators.transfer(daoTarget - daoBalance)]);
-    recordTx(record, "fund_dao_treasury", credentials.funder.accountId, daoId, funded.hash);
+    recordTx(record, "fund_dao_treasury", credentials.funder.accountId, daoId, funded.hash, persistRecord);
   }
 
   const seatAccount = await provider.viewAccount(config.seat_account_id, { finality: "optimistic" });
   if (seatAccount.code_hash !== hashes.seat_nft) {
     const sent = await tx(credentials.seat, config.seat_account_id, [actionCreators.deployContract(seatWasm)]);
-    recordTx(record, "deploy_seat_nft", credentials.seat.accountId, config.seat_account_id, sent.hash);
+    recordTx(record, "deploy_seat_nft", credentials.seat.accountId, config.seat_account_id, sent.hash, persistRecord);
   }
   let seatView: { voter_id: string } | null = null;
   try {
@@ -324,13 +368,13 @@ async function main(args: string[]): Promise<void> {
       levy_bps: 500,
       window_ns: config.window_seconds * 1_000_000_000,
     });
-    recordTx(record, "init_seat_nft", credentials.seat.accountId, config.seat_account_id, sent.hash);
+    recordTx(record, "init_seat_nft", credentials.seat.accountId, config.seat_account_id, sent.hash, persistRecord);
   }
   let stakingContract: string | null = null;
   stakingContract = await callView<string | null>(provider, daoId, "get_staking_contract", {});
   if (stakingContract !== config.seat_account_id) {
     const stakingKind = { SetStakingContract: { staking_id: config.seat_account_id } };
-    await proposeAndApprove(provider, credentials.funder, daoId, stakingKind, "Set seat staking contract", record, call);
+    await proposeAndApprove(provider, credentials.funder, daoId, stakingKind, "Set seat staking contract", record, call, undefined, persistRecord);
   }
 
   const voterFunding = BigInt(voterFundingNear) * NEAR;
@@ -353,7 +397,7 @@ async function main(args: string[]): Promise<void> {
     if (approvedMint !== null) {
       throw new Error(`Mint proposal ${approvedMint} is approved but seat 1 is not visible, refusing to submit another mint`);
     }
-    await proposeAndApprove(provider, credentials.funder, daoId, mintKind, "Mint first seat", record, call);
+    await proposeAndApprove(provider, credentials.funder, daoId, mintKind, "Mint first seat", record, call, undefined, persistRecord);
     seatView = await callView<{ voter_id: string }>(
       provider,
       config.seat_account_id,
@@ -365,7 +409,7 @@ async function main(args: string[]): Promise<void> {
   const voterId = seatView?.voter_id;
   if (!voterId) throw new Error("Minted seat did not expose its voter account");
   record.accounts = { ...((record.accounts as object | undefined) ?? {}), dao: daoId, seat: config.seat_account_id, voter: voterId, verifier: config.verifier_account_id };
-  writeRecord(record);
+  persistRecord(record);
 
   let priorAgentConfig = record.agent_configuration as {
     voter_id?: string;
@@ -400,6 +444,7 @@ async function main(args: string[]): Promise<void> {
         priorAgentConfig = nextAgentConfig;
         record.agent_configuration = nextAgentConfig;
       },
+      persistRecord,
     );
   }
   if (
@@ -430,6 +475,7 @@ async function main(args: string[]): Promise<void> {
         priorAgentConfig = nextAgentConfig;
         record.agent_configuration = nextAgentConfig;
       },
+      persistRecord,
     );
   }
   const currentBrief = await callView<{
@@ -447,7 +493,7 @@ async function main(args: string[]): Promise<void> {
       secrets_account_id: config.brief_secrets_account_id,
       secrets_profile: config.brief_secrets_profile,
     });
-    recordTx(record, "set_brief", credentials.member.accountId, voterId, brief.hash);
+    recordTx(record, "set_brief", credentials.member.accountId, voterId, brief.hash, persistRecord);
   }
   const votersFile = resolve(config.secrets_dir, "voters.json");
   const existingVoters = existsSync(votersFile)
@@ -462,7 +508,7 @@ async function main(args: string[]): Promise<void> {
   record.runner_voters_file = votersFile;
   record.seat_voter_global = { ...record.seat_voter_global as object, account_id: voterId };
   record.status = "deployed";
-  writeRecord(record);
+  persistRecord(record);
 }
 
 function functionCallKind(receiver: string, method: string, args: object) {
@@ -488,11 +534,12 @@ async function proposeAndApprove(
   record: Record<string, unknown>,
   call: (credential: Credential, receiver: string, method: string, args: object, deposit?: bigint, gas?: bigint) => Promise<{ hash: string; value: unknown }>,
   afterApproval?: () => void,
+  persistRecord: (record: Record<string, unknown>) => void = writeRecord,
 ): Promise<void> {
   let proposalId = await findPendingProposalId(provider, daoId, kind);
   if (proposalId === null) {
     const added = await call(funder, daoId, "add_proposal", { proposal: { description, kind } });
-    recordTx(record, `add_${description.toLowerCase().replaceAll(" ", "_")}`, funder.accountId, daoId, added.hash);
+    recordTx(record, `add_${description.toLowerCase().replaceAll(" ", "_")}`, funder.accountId, daoId, added.hash, persistRecord);
     proposalId = parseProposalId(added.value);
   }
   const approved = await call(funder, daoId, "act_proposal", {
@@ -502,7 +549,7 @@ async function proposeAndApprove(
     memo: null,
   });
   afterApproval?.();
-  recordTx(record, `approve_${description.toLowerCase().replaceAll(" ", "_")}`, funder.accountId, daoId, approved.hash);
+  recordTx(record, `approve_${description.toLowerCase().replaceAll(" ", "_")}`, funder.accountId, daoId, approved.hash, persistRecord);
 }
 
 export function parseProposalId(value: unknown): number {
@@ -588,20 +635,31 @@ async function assertNoUnrecordedApproval(
   }
 }
 
-async function callView<T = unknown>(
+export async function callView<T = unknown>(
   provider: JsonRpcProvider,
   account: string,
   method: string,
   args: object,
   finality: "final" | "optimistic" = "optimistic",
 ): Promise<T> {
-  const response = await provider.sendJsonRpc<{ result: number[] }>("query", {
+  const response = await provider.sendJsonRpc<{
+    result?: number[];
+    error?: unknown;
+    error_message?: unknown;
+    error_type?: unknown;
+  }>("query", {
     request_type: "call_function",
     finality,
     account_id: account,
     method_name: method,
     args_base64: Buffer.from(JSON.stringify(args)).toString("base64"),
   });
+  if (!Array.isArray(response?.result) || response.result.length === 0) {
+    if (response?.error !== undefined) throw response.error;
+    if (typeof response?.error_message === "string") throw new Error(response.error_message);
+    if (typeof response?.error_type === "string") throw new Error(response.error_type);
+    throw new Error(`View ${method} returned no result bytes`);
+  }
   return JSON.parse(Buffer.from(response.result).toString("utf8")) as T;
 }
 
@@ -701,5 +759,3 @@ export function daoPolicy(funder: string): object {
 function formatNear(yocto: bigint): string {
   return (Number(yocto) / Number(NEAR)).toString();
 }
-
-export { main };
