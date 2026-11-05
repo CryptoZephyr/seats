@@ -299,7 +299,7 @@ async fn dao_mint_resale_refund_and_member_vote() -> Result<()> {
             "vote": "Approve",
             "proposal_kind": vote_kind
         }))
-        .gas(Gas::from_tgas(100))
+        .gas(Gas::from_tgas(300))
         .transact()
         .await?;
     ensure!(member_vote.is_success(), "member_vote failed: {member_vote:?}");
