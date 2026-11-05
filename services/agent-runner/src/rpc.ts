@@ -79,6 +79,15 @@ export class NearAgentRpc implements AgentRunnerRpc {
     return nextId;
   }
 
+  async getProposalPeriodNs(daoId: string): Promise<bigint> {
+    const policy = await this.view<{ proposal_period: string | number }>(daoId, "get_policy", {});
+    const value = String(policy.proposal_period);
+    if (!/^\d+$/.test(value)) {
+      throw new Error("DAO returned an invalid get_policy proposal_period value");
+    }
+    return BigInt(value);
+  }
+
   async getProposals(daoId: string, fromIndex: number, limit: number): Promise<Proposal[]> {
     return this.view<Proposal[]>(daoId, "get_proposals", {
       from_index: fromIndex,

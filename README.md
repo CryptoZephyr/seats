@@ -71,7 +71,7 @@ npm test
 npx tsc --noEmit
 ```
 
-Copy `voters.example.json` to the ignored `voters.json`, then set `NEAR_RPC_URL`, `DAO_ID`, `VOTERS` to that file path, `KEEPER_ACCOUNT_ID`, and `KEEPER_KEY_FILE`. The voter file contains `voter_id` and `agent_key_file` paths. Run `npm run build && npm start` from `services/agent-runner`. The runner writes its non-secret proposal cursor and known pending IDs to the ignored `state.json`.
+Copy `voters.example.json` to the ignored `voters.json`, then set `NEAR_RPC_URL`, `DAO_ID`, `VOTERS` to that file path, `KEEPER_ACCOUNT_ID`, and `KEEPER_KEY_FILE`. The voter file contains `voter_id` and `agent_key_file` paths. `WINDOW_SECONDS` defaults to 120, and `REQUEST_TTL_MS` defaults to 180000. At startup, the runner warns if the DAO proposal period is shorter than the voter window plus 300 seconds. Run `npm run build && npm start` from `services/agent-runner`. The runner writes its non-secret proposal cursor, known pending IDs, and durable in-flight vote requests to the ignored `state.json`. A timed-out request isn't retried until its `REQUEST_TTL_MS` expires.
 
 ## Testnet deployment
 
