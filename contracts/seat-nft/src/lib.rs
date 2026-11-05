@@ -243,7 +243,7 @@ impl SeatNft {
         let mut record = self.seats.get(&token_id).cloned().expect("ERR_NO_TOKEN");
         assert!(price.0 > 0, "ERR_BAD_PRICE");
         assert!(
-            price.0.checked_mul(self.levy_bps as u128).is_some(),
+            Self::sale_split(price.0, self.levy_bps).is_some(),
             "ERR_PRICE_OVERFLOW"
         );
         assert!(expires_in_ns > 0, "ERR_BAD_EXPIRY");
@@ -314,8 +314,8 @@ impl SeatNft {
         self.seats.insert(token_id.clone(), record);
         Self::set_buy_in_progress(&token_id, false);
 
-        let levy = price.0 * self.levy_bps as u128 / 10_000;
-        let seller_amount = price.0 - levy;
+        let (seller_amount, levy) =
+            Self::sale_split(price.0, self.levy_bps).expect("ERR_PRICE_OVERFLOW");
         Promise::new(seller_id)
             .transfer(NearToken::from_yoctonear(seller_amount))
             .detach();
@@ -341,6 +341,11 @@ impl SeatNft {
         let mut key = b"seat_nft_buy_lock:".to_vec();
         key.extend_from_slice(token_id.as_bytes());
         key
+    }
+
+    fn sale_split(price: u128, levy_bps: u16) -> Option<(u128, u128)> {
+        let levy = price.checked_mul(levy_bps as u128)? / 10_000;
+        Some((price.checked_sub(levy)?, levy))
     }
 
     pub fn get_seat(&self, token_id: TokenId) -> Option<SeatView> {
@@ -502,5 +507,167 @@ impl NonFungibleTokenApproval for SeatNft {
         _approval_id: Option<u64>,
     ) -> bool {
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use near_sdk::test_utils::VMContextBuilder;
+    use near_sdk::testing_env;
+
+    const SEAT: &str = "seat.testnet";
+    const DAO: &str = "dao.testnet";
+    const SELLER: &str = "seller.testnet";
+    const BUYER: &str = "buyer.testnet";
+    const OTHER: &str = "other.testnet";
+    const VOTER: &str = "voter.testnet";
+
+    fn account_id(value: &str) -> AccountId {
+        value.parse().unwrap()
+    }
+
+    fn set_context(predecessor: &str, timestamp: u64, deposit: u128) {
+        let context = VMContextBuilder::new()
+            .current_account_id(account_id(SEAT))
+            .predecessor_account_id(account_id(predecessor))
+            .block_timestamp(timestamp)
+            .attached_deposit(NearToken::from_yoctonear(deposit))
+            .build();
+        testing_env!(context);
+    }
+
+    fn contract_with_seat() -> SeatNft {
+        set_context(DAO, 1_000, 0);
+        let mut contract = SeatNft::new(
+            account_id(DAO),
+            Base58CryptoHash::from([1; 32]),
+            500,
+            60,
+        );
+        set_context(DAO, 1_000, 1_000_000_000_000_000_000_000_000);
+        contract.mint_test_seat(
+            "1".to_string(),
+            account_id(SELLER),
+            account_id(VOTER),
+        );
+        contract
+    }
+
+    fn approve_sale(contract: &mut SeatNft, buyer: &str, price: u128, expires_in_ns: u64) {
+        set_context(DAO, 1_000, 0);
+        contract.approve_sale(
+            "1".to_string(),
+            account_id(buyer),
+            U128(price),
+            expires_in_ns,
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_APPROVAL_REQUIRED")]
+    fn nft_transfer_requires_sale_approval() {
+        let mut contract = contract_with_seat();
+        contract.nft_transfer(account_id(BUYER), "1".to_string(), None, None);
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_APPROVAL_REQUIRED")]
+    fn nft_transfer_call_requires_sale_approval() {
+        let mut contract = contract_with_seat();
+        contract.nft_transfer_call(
+            account_id(BUYER),
+            "1".to_string(),
+            None,
+            None,
+            "transfer".to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_APPROVAL_REQUIRED")]
+    fn nft_approve_requires_sale_approval() {
+        let mut contract = contract_with_seat();
+        contract.nft_approve("1".to_string(), account_id(BUYER), None);
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_NOT_DAO")]
+    fn approve_sale_is_dao_only() {
+        let mut contract = contract_with_seat();
+        set_context(OTHER, 1_000, 0);
+        contract.approve_sale("1".to_string(), account_id(BUYER), U128(100), 10);
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_NO_APPROVAL")]
+    fn buy_requires_approval() {
+        let mut contract = contract_with_seat();
+        set_context(BUYER, 1_001, 100);
+        contract.buy("1".to_string());
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_WRONG_BUYER")]
+    fn buy_rejects_wrong_buyer() {
+        let mut contract = contract_with_seat();
+        approve_sale(&mut contract, BUYER, 100, 10);
+        set_context(OTHER, 1_001, 100);
+        contract.buy("1".to_string());
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_WRONG_DEPOSIT")]
+    fn buy_rejects_wrong_deposit() {
+        let mut contract = contract_with_seat();
+        approve_sale(&mut contract, BUYER, 100, 10);
+        set_context(BUYER, 1_001, 99);
+        contract.buy("1".to_string());
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_APPROVAL_EXPIRED")]
+    fn buy_rejects_expired_approval() {
+        let mut contract = contract_with_seat();
+        approve_sale(&mut contract, BUYER, 100, 10);
+        set_context(BUYER, 1_010, 100);
+        contract.buy("1".to_string());
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_BUY_IN_PROGRESS")]
+    fn buy_rejects_concurrent_sale_while_locked() {
+        let mut contract = contract_with_seat();
+        approve_sale(&mut contract, BUYER, 100, 10);
+        set_context(BUYER, 1_001, 100);
+        SeatNft::set_buy_in_progress("1", true);
+        contract.buy("1".to_string());
+    }
+
+    #[test]
+    fn levy_split_is_ninety_five_five_and_rounds_down() {
+        let contract = contract_with_seat();
+        assert_eq!(SeatNft::sale_split(10_000, 500), Some((9_500, 500)));
+        assert_eq!(SeatNft::sale_split(101, 500), Some((96, 5)));
+        assert_eq!(SeatNft::sale_split(1, 500), Some((1, 0)));
+        drop(contract);
+    }
+
+    #[test]
+    fn levy_split_detects_overflow() {
+        assert_eq!(SeatNft::sale_split(u128::MAX, 500), None);
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_PRICE_OVERFLOW")]
+    fn approve_sale_rejects_price_times_levy_overflow() {
+        let mut contract = contract_with_seat();
+        set_context(DAO, 1_000, 0);
+        contract.approve_sale(
+            "1".to_string(),
+            account_id(BUYER),
+            U128(u128::MAX),
+            10,
+        );
     }
 }

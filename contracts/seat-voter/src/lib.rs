@@ -894,4 +894,65 @@ mod tests {
         set_context("caller.testnet", 159);
         contract.cast(fixture().proposal_id);
     }
+
+    #[test]
+    fn controller_can_set_brief_hash() {
+        set_context(VOTER, 100);
+        let mut contract = SeatVoter::new(
+            account_id(DAO),
+            account_id(ADMIN),
+            account_id(CONTROLLER),
+            60,
+        );
+        set_context(CONTROLLER, 100);
+        let brief_hash = "a".repeat(64);
+        contract.set_brief_hash(brief_hash.clone());
+        assert_eq!(contract.get_brief_hash(), brief_hash);
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_NOT_CONTROLLER")]
+    fn non_controller_cannot_change_brief_hash() {
+        set_context(VOTER, 100);
+        let mut contract = SeatVoter::new(
+            account_id(DAO),
+            account_id(ADMIN),
+            account_id(CONTROLLER),
+            60,
+        );
+        set_context(ADMIN, 100);
+        contract.set_brief_hash("a".repeat(64));
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_BRIEF_NOT_SET")]
+    fn request_vote_requires_brief_hash() {
+        set_context(VOTER, 100);
+        let mut contract = SeatVoter::new(
+            account_id(DAO),
+            account_id(ADMIN),
+            account_id(CONTROLLER),
+            60,
+        );
+        contract.request_vote(7);
+    }
+
+    #[test]
+    fn admin_controller_change_clears_pending_vote() {
+        let mut contract = contract_with_pending();
+        let proposal_id = fixture().proposal_id;
+        let next_controller = account_id("buyer.testnet");
+        set_context(ADMIN, 101);
+
+        contract.set_controller(next_controller.clone());
+
+        assert_eq!(contract.get_controller(), next_controller);
+        assert!(contract.get_pending(proposal_id).is_none());
+        assert!(contract
+            .get_results()
+            .results
+            .iter()
+            .any(|result| result.proposal_id == proposal_id
+                && result.status == "ClearedControllerChange"));
+    }
 }
