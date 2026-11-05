@@ -53,6 +53,7 @@ interface DeployConfig {
   agent_wasm_url: string;
   agent_wasm_sha256: string;
   window_seconds: number;
+  proposal_period_seconds?: number;
   voter_funding_near?: number;
   dao_funding_near?: number;
 }
@@ -200,6 +201,19 @@ export async function main(
   const config = readJson(resolve(args[configFlag + 1])) as unknown as DeployConfig;
   const voterFundingNear = config.voter_funding_near ?? 5;
   const daoFundingNear = config.dao_funding_near ?? voterFundingNear + 6;
+  if (!Number.isSafeInteger(config.window_seconds) || config.window_seconds < 1) {
+    throw new Error("window_seconds must be a positive integer");
+  }
+  const proposalPeriodSeconds = config.proposal_period_seconds ?? 600;
+  if (
+    !Number.isSafeInteger(proposalPeriodSeconds) ||
+    proposalPeriodSeconds < config.window_seconds + 300
+  ) {
+    throw new Error(
+      `proposal_period_seconds must be at least window_seconds + 300 (${config.window_seconds + 300})`,
+    );
+  }
+  const proposalPeriodNs = BigInt(proposalPeriodSeconds) * 1_000_000_000n;
   assertTestnet(config);
   const artifactRoot = resolve(dependencies.artifactRoot ?? ROOT);
   const recordPath = dependencies.recordPath ?? resolve(artifactRoot, "deployments/testnet.json");
@@ -317,7 +331,7 @@ export async function main(
   const daoId = `${config.dao_name}.sputnikv2.testnet`;
   const daoArgs = {
     config: { name: "Seats Testnet", purpose: "Transferable club memberships", metadata: "" },
-    policy: daoPolicy(config.funder_account_id),
+    policy: daoPolicy(config.funder_account_id, proposalPeriodSeconds),
   };
   let daoExists = true;
   try {
@@ -337,6 +351,54 @@ export async function main(
     }, 6n * NEAR);
     record.accounts = { ...((record.accounts as object | undefined) ?? {}), dao: daoId };
     recordTx(record, "create_dao", credentials.funder.accountId, "sputnikv2.testnet", created.hash, persistRecord);
+  }
+  if (daoExists) {
+    const currentPolicy = await callView<{ proposal_period: string | number }>(
+      provider,
+      daoId,
+      "get_policy",
+      {},
+    );
+    if (policyProposalPeriodNs(currentPolicy) < proposalPeriodNs) {
+      const kind = {
+        ChangePolicyUpdateParameters: {
+          parameters: {
+            proposal_period: String(proposalPeriodNs),
+            proposal_bond: null,
+            bounty_bond: null,
+            bounty_forgiveness_period: null,
+          },
+        },
+      };
+      const updateHash = await proposeAndApprove(
+        provider,
+        credentials.funder,
+        daoId,
+        kind,
+        "Update proposal period",
+        record,
+        call,
+        undefined,
+        persistRecord,
+      );
+      recordTx(
+        record,
+        "update_proposal_period",
+        credentials.funder.accountId,
+        daoId,
+        updateHash,
+        persistRecord,
+      );
+      const updatedPolicy = await callView<{ proposal_period: string | number }>(
+        provider,
+        daoId,
+        "get_policy",
+        {},
+      );
+      if (policyProposalPeriodNs(updatedPolicy) < proposalPeriodNs) {
+        throw new Error(`DAO proposal period did not reach ${proposalPeriodSeconds} seconds`);
+      }
+    }
   }
   const daoBalance = BigInt((await provider.viewAccount(daoId, { finality: "optimistic" })).amount);
   const daoTarget = BigInt(daoFundingNear) * NEAR;
@@ -544,7 +606,7 @@ async function proposeAndApprove(
   call: (credential: Credential, receiver: string, method: string, args: object, deposit?: bigint, gas?: bigint) => Promise<{ hash: string; value: unknown }>,
   afterApproval?: () => void,
   persistRecord: (record: Record<string, unknown>) => void = writeRecord,
-): Promise<void> {
+): Promise<string> {
   let proposalId = await findPendingProposalId(provider, daoId, kind);
   if (proposalId === null) {
     const added = await call(funder, daoId, "add_proposal", { proposal: { description, kind } });
@@ -559,6 +621,15 @@ async function proposeAndApprove(
   });
   afterApproval?.();
   recordTx(record, `approve_${description.toLowerCase().replaceAll(" ", "_")}`, funder.accountId, daoId, approved.hash, persistRecord);
+  return approved.hash;
+}
+
+function policyProposalPeriodNs(policy: { proposal_period: string | number }): bigint {
+  const value = String(policy.proposal_period);
+  if (!/^\d+$/.test(value)) {
+    throw new Error("DAO returned an invalid get_policy proposal_period value");
+  }
+  return BigInt(value);
 }
 
 export function parseProposalId(value: unknown): number {
@@ -717,7 +788,7 @@ async function sendActions(
   });
 }
 
-export function daoPolicy(funder: string): object {
+export function daoPolicy(funder: string, proposalPeriodSeconds = 600): object {
   const tokenPolicy = { weight_kind: "TokenWeight", quorum: "0", threshold: [1, 2] };
   const councilPolicy = {
     weight_kind: "RoleWeight",
@@ -759,7 +830,7 @@ export function daoPolicy(funder: string): object {
     ],
     default_vote_policy: tokenPolicy,
     proposal_bond: "0",
-    proposal_period: "300000000000",
+    proposal_period: String(BigInt(proposalPeriodSeconds) * 1_000_000_000n),
     bounty_bond: "0",
     bounty_forgiveness_period: "0",
   };

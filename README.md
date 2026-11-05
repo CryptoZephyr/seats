@@ -16,7 +16,7 @@ Seat voting weight sits with the voter account, not the member's wallet. Members
 
 - `contracts/seat-voter` holds voting weight, enforces the controller window, and checks signed receipts and the member brief before recording a pending vote.
 - `contracts/seat-nft` issues membership seats, gates resale on DAO approval, rotates the voter's restricted agent key with its controller, and pays the seller and DAO in a 95/5 split.
-- `contracts/tee-verifier` verifies the captured TDX quote and stores the model signer.
+- `contracts/tee-verifier` verifies the captured TDX quote and stores the model signer. The model's Intel TDX quote and NVIDIA GPU evidence verify, and its MRTD, RTMR0-2 and OS image hash reproduce exactly from the public dstack-nvidia-0.5.12 image (see docs/nearai-measurements.md). The model-serving containers are pulled at runtime by NEAR AI's compose-manager, so the hardware measurement doesn't cover which serving code ran.
 - `outlayer/vault-job` checks the requester's seat ownership and encrypts the vault response to the requester's public key.
 - `outlayer/agent-job` checks the voter brief hash, reads a DAO proposal, requests a signed model response, and returns the result for the voter to validate.
 - `services/agent-runner` watches DAO proposals, requests agent votes with voter FunctionCall keys, and casts expired pending votes with a keeper key.
@@ -51,6 +51,8 @@ The sandbox test uses a vendored Sputnik DAO WASM. near-workspaces 0.24 does not
 
 Build the OutLayer WASI jobs:
 
+The deployed vault-check job is v0.2.0, built from `outlayer/vault-job`.
+
 ```sh
 cargo build --release --target wasm32-wasip2 \
   --manifest-path outlayer/vault-job/Cargo.toml
@@ -71,11 +73,13 @@ npm test
 npx tsc --noEmit
 ```
 
-Copy `voters.example.json` to the ignored `voters.json`, then set `NEAR_RPC_URL`, `DAO_ID`, `VOTERS` to that file path, `KEEPER_ACCOUNT_ID`, and `KEEPER_KEY_FILE`. The voter file contains `voter_id` and `agent_key_file` paths. Run `npm run build && npm start` from `services/agent-runner`. The runner writes its non-secret proposal cursor and known pending IDs to the ignored `state.json`.
+Copy `voters.example.json` to the ignored `voters.json`, then set `NEAR_RPC_URL`, `DAO_ID`, `VOTERS` to that file path, `KEEPER_ACCOUNT_ID`, and `KEEPER_KEY_FILE`. The voter file contains `voter_id` and `agent_key_file` paths. `WINDOW_SECONDS` defaults to 120, and `REQUEST_TTL_MS` defaults to 180000. At startup, the runner warns if the DAO proposal period is shorter than the voter window plus 300 seconds. Run `npm run build && npm start` from `services/agent-runner`. The runner writes its non-secret proposal cursor, known pending IDs, and durable in-flight vote requests to the ignored `state.json`. A timed-out request isn't retried until its `REQUEST_TTL_MS` expires.
 
 ## Testnet deployment
 
 Build the contracts first. Copy `scripts/deploy-testnet.example.json` to the ignored `scripts/deploy-testnet.json`, fill in account IDs and paths to keys under the external spike secrets directory, and provide a fresh quote-arguments file. The script is restricted to testnet, stores only account IDs, transaction hashes, and code hashes in `deployments/testnet.json`, and never copies key contents into the repository.
+
+New DAOs use a 600-second proposal period by default. `proposal_period_seconds` must be at least `window_seconds + 300`, and an existing DAO with a shorter period is updated during deployment.
 
 The 80 NEAR venue proposal used for the rejection test is never funded.
 

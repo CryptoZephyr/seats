@@ -125,6 +125,24 @@
       "receiver": "seats2-1793847972.sputnikv2.testnet",
       "hash": "5oYLgZM37VdgxhKZV13THVTCusvmXsetnxeRL2EqoHsF",
       "note": "Default 8 NEAR treasury could not cover the mint plus DAO storage (LackBalanceForState 2.42 NEAR)."
+    },
+    {
+      "label": "add_update_proposal_period",
+      "signer": "seatsfund1-1793846395.testnet",
+      "receiver": "seats2-1793847972.sputnikv2.testnet",
+      "hash": "EyWr4eQeBAU9x5ACpgwPiU9LnhK3odRf5CiKNo6y9w5A"
+    },
+    {
+      "label": "approve_update_proposal_period",
+      "signer": "seatsfund1-1793846395.testnet",
+      "receiver": "seats2-1793847972.sputnikv2.testnet",
+      "hash": "81NzMzystKu5PuLzCAFHQq1CbUiFZqyMU3qTWkok2hN3"
+    },
+    {
+      "label": "update_proposal_period",
+      "signer": "seatsfund1-1793846395.testnet",
+      "receiver": "seats2-1793847972.sputnikv2.testnet",
+      "hash": "81NzMzystKu5PuLzCAFHQq1CbUiFZqyMU3qTWkok2hN3"
     }
   ],
   "superseded_attempts": [
@@ -216,6 +234,129 @@
       "dao_status": "Expired",
       "dao_status_note": "The cast landed after the 300 s proposal period because request_vote sends hit RPC timeouts and the manual cast needed a retry. The overridden Reject was recorded.",
       "funds_moved": false
+    }
+  },
+  "vault_seller_isolation": {
+    "status": "pass",
+    "nft_contract": "seatsnft3-1793848334.testnet",
+    "profile": {
+      "owner": "seatfunder-1793834028.testnet",
+      "project_id": "seatfunder-1793834028.testnet/vault-check-job",
+      "name": "vault-seats3",
+      "write_tx_hash": "8Tb2qJQuXvaxhS8dRwsPui7tKEh13Psy8JEniw5oGXkW",
+      "write_rpc": "rpc.testnet.near.org",
+      "access": "AllowAll",
+      "secret_fields": [
+        "VAULT_TEXT",
+        "SEAT_CONTRACT_ID"
+      ],
+      "seat_contract_id": "seatsnft3-1793848334.testnet"
+    },
+    "job": {
+      "release_tag": "vault-check-v0.2.0",
+      "release_url": "https://github.com/CryptoZephyr/outlayer-spike/releases/tag/vault-check-v0.2.0",
+      "wasm_url": "https://github.com/CryptoZephyr/outlayer-spike/releases/download/vault-check-v0.2.0/vault_check.wasm",
+      "sha256": "f99636098a09c7bd3c3bb0132dd1f25db621b56157c196e33c86cc5a15591afa",
+      "build_target": "wasm32-wasip2",
+      "project_id": "seatfunder-1793834028.testnet/vault-check-job",
+      "project_version_hash": "f99636098a09c7bd3c3bb0132dd1f25db621b56157c196e33c86cc5a15591afa",
+      "project_version_tx_hash": "ZHGQJESRrx5Lys6LLjevrkCsikY9cu7hcsP1hsZ8EHj"
+    },
+    "request_parameters": {
+      "deposit_near": "0.0020001",
+      "gas_tgas": 300,
+      "resource_limits": {
+        "max_execution_seconds": 10,
+        "max_instructions": 1000000000,
+        "max_memory_mb": 128
+      },
+      "response_format": "Json"
+    },
+    "holder_run": {
+      "signer": "rb.seatsfund1-1793846395.testnet",
+      "tx_hash": "FU8ffdZWiJBW6VXBrhYVcgGXhpst2LCtGSbdwaJCM7a7",
+      "request_id": 9479,
+      "request_receipt_id": "89riUBxxjXWco5QFMDqzkjKvCcYSWmMpMAkJBKkwJXLf",
+      "output_receipt_id": "BxBCX7X71Ci9itiuaoD9UXXM7Lx8uakq6KscMkiEmPNH",
+      "receipt_ids": [
+        "89riUBxxjXWco5QFMDqzkjKvCcYSWmMpMAkJBKkwJXLf",
+        "BxBCX7X71Ci9itiuaoD9UXXM7Lx8uakq6KscMkiEmPNH",
+        "HVAVucSEvvpgLVJxcWfu4MdxrjfUhFmWzrA6HtkixTyJ",
+        "AeNVTMb9NGX9XRQHjX9WF7mBthGa4dmy5GVDw1VBukQe",
+        "7W2RdVGiRw33xkYzZ1Z3ZhBfTJZLX3Aju1CisKdULLjU",
+        "Y7eW3oTiCpq5F95mQ6D1YJi28r1rPwozuwz25Bv9UkN"
+      ],
+      "ownership_snapshot": {
+        "block_height_before_tx": 276322943,
+        "block_hash": "7mefLTCdYSiAd3uyvFbbdyjXmRctybFP1DkKdCEUgeLu",
+        "buyer_account": "buyer-1793829831.testnet",
+        "buyer_token_ids": [],
+        "buyer_total_tokens": 0,
+        "holder_account": "rb.seatsfund1-1793846395.testnet",
+        "holder_token_ids": [
+          "1"
+        ]
+      },
+      "output": {
+        "ok": true,
+        "ephemeral_pubkey": "5b8d01c7c407af178c5178fee9ab130231b4576a0fe8db3c1692f5aac2e0231a",
+        "nonce": "1f7fe5083eefe7767f45a64be8270d494bbddc1e1124db1c",
+        "ciphertext": "7d8518dfa226e5b80947bf87bf276ec903adf67e3e2637320b5074d58d301280f1b79d6a2f2ef4663e9ff55c332aaec8dd3f4fb296a3b631c56ba8a0fd4243cccfc97a7f3980a0c6f3a0a9e2cc04d1f0aace"
+      },
+      "decrypt_matches_vault_text": true,
+      "charges": {
+        "charged_yocto": "1514700400000000000000",
+        "charged_near": "0.0015147004",
+        "refunded_yocto": "485399600000000000000",
+        "refunded_near": "0.0004853996"
+      },
+      "signer_balance_before_near": "0.9945641723314758",
+      "signer_balance_after_near": "0.9922853105814881",
+      "submission_note": "The official RPC call timed out. The access-key nonce advanced and tx status confirmed final execution, so no resend was made."
+    },
+    "seller_run": {
+      "signer": "buyer-1793829831.testnet",
+      "tx_hash": "2Wfuo1nmvaywTREt3DLg2dyhCDYPqdAmBJcuaMHLcSq2",
+      "request_id": 9484,
+      "request_receipt_id": "6cJJ8BXY5yMYkpFuc8DeeY2GUrD5hafYNs86yj79zVM7",
+      "output_receipt_id": "9sHfGTbnK3HtRms7zuYiaArgyW54KCwgQLMLVRrPjp7p",
+      "receipt_ids": [
+        "6cJJ8BXY5yMYkpFuc8DeeY2GUrD5hafYNs86yj79zVM7",
+        "9sHfGTbnK3HtRms7zuYiaArgyW54KCwgQLMLVRrPjp7p",
+        "CRCuuivM9swm79y6t3ND3RcF7ZyQeCqz4L8Qx3YqGHeJ",
+        "6iXypdshZmvZsuf6v5fg3jqxiyGP7Nxu7PRyqyYLjg4j",
+        "5H7kfYfYcogd14knRjKmdp9sAnyPxeyVuuoHroKB3H1g",
+        "4nz4V9kARMbv48PiFdoR4m4jyii6CtbWFNFL3p8kWo2p"
+      ],
+      "ownership_snapshot": {
+        "captured_at_unix_ms": 1793871041843,
+        "buyer_account": "buyer-1793829831.testnet",
+        "buyer_token_ids": [],
+        "buyer_total_tokens": 0,
+        "holder_account": "rb.seatsfund1-1793846395.testnet",
+        "holder_token_ids": [
+          "1"
+        ]
+      },
+      "output": {
+        "error": "ERR_NO_SEAT"
+      },
+      "decrypt_matches_vault_text": false,
+      "charges": {
+        "charged_yocto": "1406500000000000000000",
+        "charged_near": "0.0014065",
+        "refunded_yocto": "593600000000000000000",
+        "refunded_near": "0.0005936"
+      },
+      "signer_balance_before_near": "10.152173532245617",
+      "signer_balance_after_near": "10.1500056672994246"
+    },
+    "superseded_attempt": {
+      "project_version": "vault-check-v0.1.0",
+      "hardcoded_seat_contract": "seats-1793834090.seatfunder-1793834028.testnet",
+      "holder_tx_hash": "ELsR2uSj4mdm1RiLhhitGepBevPDDpeQeFVb7J74x3A4",
+      "seller_tx_hash": "HvJkMAJdhY4q3bqUUoJSQiaRsSFY3v75wBhrMdcPYFdm",
+      "note": "The v0.1.0 WASM hardcoded the old spike NFT, reversing the expected outputs. These results are superseded by the v0.2.0 runs above."
     }
   }
 }

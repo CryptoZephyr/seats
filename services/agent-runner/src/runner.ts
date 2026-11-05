@@ -16,6 +16,7 @@ export interface Voter {
 
 export interface AgentRunnerRpc {
   getLastProposalId(daoId: string): Promise<number>;
+  getProposalPeriodNs(daoId: string): Promise<bigint>;
   getProposals(daoId: string, fromIndex: number, limit: number): Promise<Proposal[]>;
   getPending(voterId: string, id: number): Promise<PendingVote | null>;
   getResults(voterId: string): Promise<ResultsView>;
@@ -26,6 +27,7 @@ export interface AgentRunnerRpc {
 export interface RunnerState {
   cursor: number;
   pendingByVoter: Record<string, number[]>;
+  inFlight: Record<string, Record<string, number>>;
 }
 
 export function initialRunnerState(
@@ -36,12 +38,12 @@ export function initialRunnerState(
   if (!Number.isSafeInteger(firstProposalId) || firstProposalId < 0) {
     throw new Error("Initial proposal ID must be a non-negative integer");
   }
-  return { cursor: firstProposalId - 1, pendingByVoter: {} };
+  return { cursor: firstProposalId - 1, pendingByVoter: {}, inFlight: {} };
 }
 
 export interface ActionLog {
   action: string;
-  status: "ok" | "skipped" | "error";
+  status: "ok" | "skipped" | "error" | "warning";
   voter_id?: string;
   proposal_id?: number;
   tx_hash?: string;
@@ -55,21 +57,67 @@ interface TickOptions {
   voters: Voter[];
   state: RunnerState;
   nowNanoseconds: bigint;
+  nowMilliseconds: number;
+  requestTtlMs: number;
+  persistState: (state: RunnerState) => void;
   log: (entry: ActionLog) => void;
 }
 
 const PROPOSAL_PAGE_SIZE = 100;
+const PROPOSAL_PERIOD_MARGIN_SECONDS = 300;
 
-function addPending(state: RunnerState, voterId: string, id: number): void {
-  const pending = new Set(state.pendingByVoter[voterId] ?? []);
-  pending.add(id);
-  state.pendingByVoter[voterId] = [...pending].sort((left, right) => left - right);
+export function isProposalPeriodTooShort(proposalPeriodNs: bigint, windowSeconds: number): boolean {
+  return proposalPeriodNs < BigInt(windowSeconds + PROPOSAL_PERIOD_MARGIN_SECONDS) * 1_000_000_000n;
 }
 
-function removePending(state: RunnerState, voterId: string, id: number): void {
+function addPending(state: RunnerState, voterId: string, id: number): boolean {
+  const pending = new Set(state.pendingByVoter[voterId] ?? []);
+  const previousSize = pending.size;
+  pending.add(id);
+  state.pendingByVoter[voterId] = [...pending].sort((left, right) => left - right);
+  return pending.size !== previousSize;
+}
+
+function removePending(state: RunnerState, voterId: string, id: number): boolean {
+  const previous = state.pendingByVoter[voterId] ?? [];
   state.pendingByVoter[voterId] = (state.pendingByVoter[voterId] ?? []).filter(
     (pendingId) => pendingId !== id,
   );
+  return state.pendingByVoter[voterId].length !== previous.length;
+}
+
+function getInFlight(state: RunnerState, voterId: string, id: number): number | undefined {
+  return state.inFlight[voterId]?.[String(id)];
+}
+
+function setInFlight(state: RunnerState, voterId: string, id: number, requestedAtMs: number): void {
+  state.inFlight[voterId] ??= {};
+  state.inFlight[voterId][String(id)] = requestedAtMs;
+}
+
+function clearInFlight(state: RunnerState, voterId: string, id: number): boolean {
+  const requests = state.inFlight[voterId];
+  if (!requests || !Object.prototype.hasOwnProperty.call(requests, String(id))) {
+    return false;
+  }
+  delete requests[String(id)];
+  if (Object.keys(requests).length === 0) {
+    delete state.inFlight[voterId];
+  }
+  return true;
+}
+
+function hasPending(state: RunnerState, voterId: string, id: number): boolean {
+  return (state.pendingByVoter[voterId] ?? []).includes(id);
+}
+
+function isDefiniteRequestPanic(error: unknown): boolean {
+  const message = String(error);
+  return [
+    "ERR_BRIEF_NOT_SET",
+    "ERR_AGENT_WASM_NOT_PINNED",
+    "ERR_ONLY_SELF",
+  ].some((code) => message.includes(code));
 }
 
 async function readNewProposals(
@@ -130,7 +178,6 @@ export async function runTick(options: TickOptions): Promise<RunnerState> {
     }
   }
 
-  const attempted = new Set<string>();
   let firstIncompleteId: number | null = null;
   const inProgressIds = new Set(
     inProgressProposals(proposals).map((proposal) => proposalId(proposal.id)),
@@ -165,7 +212,11 @@ export async function runTick(options: TickOptions): Promise<RunnerState> {
       }
 
       if (pending) {
-        addPending(state, voter.voterId, id);
+        const changed = addPending(state, voter.voterId, id);
+        const cleared = clearInFlight(state, voter.voterId, id);
+        if (changed || cleared) {
+          options.persistState(state);
+        }
         log({
           action: "request_vote",
           status: "skipped",
@@ -177,7 +228,11 @@ export async function runTick(options: TickOptions): Promise<RunnerState> {
       }
 
       if (hasResult(results, id)) {
-        removePending(state, voter.voterId, id);
+        const changed = removePending(state, voter.voterId, id);
+        const cleared = clearInFlight(state, voter.voterId, id);
+        if (changed || cleared) {
+          options.persistState(state);
+        }
         log({
           action: "request_vote",
           status: "skipped",
@@ -192,29 +247,74 @@ export async function runTick(options: TickOptions): Promise<RunnerState> {
         continue;
       }
 
-      const attemptKey = `${voter.voterId}:${id}`;
-      if (attempted.has(attemptKey) || !shouldRequestVote(pending, results, id)) {
+      const requestedAtMs = getInFlight(state, voter.voterId, id);
+      if (requestedAtMs !== undefined && options.nowMilliseconds - requestedAtMs < options.requestTtlMs) {
+        firstIncompleteId = firstIncompleteId === null ? id : Math.min(firstIncompleteId, id);
+        log({
+          action: "request_vote",
+          status: "skipped",
+          voter_id: voter.voterId,
+          proposal_id: id,
+          reason: "request_in_flight",
+        });
         continue;
       }
-      attempted.add(attemptKey);
+      if (requestedAtMs === undefined && hasPending(state, voter.voterId, id)) {
+        log({
+          action: "request_vote",
+          status: "skipped",
+          voter_id: voter.voterId,
+          proposal_id: id,
+          reason: "pending_exists",
+        });
+        continue;
+      }
+      if (!shouldRequestVote(pending, results, id)) {
+        continue;
+      }
+      const retryAfterTtl = requestedAtMs !== undefined;
+      setInFlight(state, voter.voterId, id, options.nowMilliseconds);
+      options.persistState(state);
       try {
         const txHash = await rpc.requestVote(voter.voterId, id);
         addPending(state, voter.voterId, id);
+        options.persistState(state);
         log({
           action: "request_vote",
           status: "ok",
           voter_id: voter.voterId,
           proposal_id: id,
           tx_hash: txHash,
+          ...(retryAfterTtl ? { reason: "request_retry_after_ttl" } : {}),
         });
       } catch (error) {
+        const message = String(error);
+        if (message.includes("ERR_PENDING_EXISTS")) {
+          addPending(state, voter.voterId, id);
+          clearInFlight(state, voter.voterId, id);
+          options.persistState(state);
+          log({
+            action: "request_vote",
+            status: "skipped",
+            voter_id: voter.voterId,
+            proposal_id: id,
+            reason: "pending_exists",
+          });
+          continue;
+        }
         firstIncompleteId = firstIncompleteId === null ? id : Math.min(firstIncompleteId, id);
+        if (isDefiniteRequestPanic(error)) {
+          clearInFlight(state, voter.voterId, id);
+          removePending(state, voter.voterId, id);
+          options.persistState(state);
+        }
         log({
           action: "request_vote",
           status: "error",
           voter_id: voter.voterId,
           proposal_id: id,
-          error: String(error),
+          ...(retryAfterTtl ? { reason: "request_retry_after_ttl" } : {}),
+          error: message,
         });
       }
     }
@@ -240,7 +340,11 @@ export async function runTick(options: TickOptions): Promise<RunnerState> {
       if (!pending) {
         const results = resultsByVoter.get(voter.voterId);
         if (results && hasResult(results, id)) {
-          removePending(state, voter.voterId, id);
+          const removed = removePending(state, voter.voterId, id);
+          const cleared = clearInFlight(state, voter.voterId, id);
+          if (removed || cleared) {
+            options.persistState(state);
+          }
         }
         continue;
       }
@@ -248,6 +352,8 @@ export async function runTick(options: TickOptions): Promise<RunnerState> {
       const results = resultsByVoter.get(voter.voterId);
       if (results && hasResult(results, id)) {
         removePending(state, voter.voterId, id);
+        clearInFlight(state, voter.voterId, id);
+        options.persistState(state);
         log({
           action: "cast",
           status: "skipped",
@@ -256,6 +362,10 @@ export async function runTick(options: TickOptions): Promise<RunnerState> {
           reason: "result_exists",
         });
         continue;
+      }
+
+      if (clearInFlight(state, voter.voterId, id)) {
+        options.persistState(state);
       }
 
       if (pending.casting) {
