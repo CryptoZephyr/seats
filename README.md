@@ -73,7 +73,21 @@ npm test
 npx tsc --noEmit
 ```
 
-Copy `voters.example.json` to the ignored `voters.json`, then set `NEAR_RPC_URL`, `DAO_ID`, `VOTERS` to that file path, `KEEPER_ACCOUNT_ID`, and `KEEPER_KEY_FILE`. The voter file contains `voter_id` and `agent_key_file` paths. `WINDOW_SECONDS` defaults to 120, and `REQUEST_TTL_MS` defaults to 180000. At startup, the runner warns if the DAO proposal period is shorter than the voter window plus 300 seconds. Run `npm run build && npm start` from `services/agent-runner`. The runner writes its non-secret proposal cursor, known pending IDs, and durable in-flight vote requests to the ignored `state.json`. A timed-out request isn't retried until its `REQUEST_TTL_MS` expires.
+Copy `voters.example.json` to the ignored `voters.json`, then set `NEAR_RPC_URL`, `DAO_ID`, `VOTERS` to that file path, `KEEPER_ACCOUNT_ID`, and `KEEPER_KEY_FILE`. The voter file contains `voter_id` and `agent_key_file` paths. `WINDOW_SECONDS` defaults to 120, `REQUEST_TTL_MS` defaults to 180000, and `LOOKBACK_PROPOSALS` defaults to 20. On fresh state, the runner checks the most recent proposals in that lookback window. `START_PROPOSAL_ID` overrides the initial proposal.
+
+When `PORT` is set, the runner binds an HTTP health server on `0.0.0.0` and serves `/health`. It reports `starting` before the first successful tick, `ok` while ticks are fresh, and `stale` otherwise. `KEEPALIVE_URL` enables periodic requests. If it is unset and `RENDER_EXTERNAL_URL` is available, the runner uses `${RENDER_EXTERNAL_URL}/health`. `KEEPALIVE_MS` defaults to 600000 and must be between 60000 and 840000.
+
+Run `npm run build && npm start` from `services/agent-runner`. The runner writes its non-secret proposal cursor, known pending IDs, and durable in-flight vote requests to the ignored `state.json`. A timed-out request isn't retried until its `REQUEST_TTL_MS` expires.
+
+### Render free service
+
+The root `render.yaml` defines a free web service with the runner health check. Render supplies `PORT` and `RENDER_EXTERNAL_URL`. Add these secret files in the service settings:
+
+- `/etc/secrets/keeper.json`
+- `/etc/secrets/voters.json`
+- Each agent key file referenced by `voters.json`, stored under `/etc/secrets/`
+
+Set `KEEPER_ACCOUNT_ID` to the keeper account. Keep each `agent_key_file` path in `voters.json` pointed at its secret file under `/etc/secrets/`. The free service has an ephemeral disk, so `state.json` is lost on restart or spin-down. The in-flight retry guard resets with it, and a restart during a request could cause one extra paid request.
 
 ## Testnet deployment
 
