@@ -53,6 +53,7 @@ interface DeployConfig {
   agent_wasm_sha256: string;
   window_seconds: number;
   voter_funding_near?: number;
+  dao_funding_near?: number;
 }
 
 type Credential = {
@@ -115,6 +116,8 @@ async function main(args: string[]): Promise<void> {
     throw new Error("Usage: deploy-testnet.js --config /path/to/deploy-testnet.json");
   }
   const config = readJson(resolve(args[configFlag + 1])) as unknown as DeployConfig;
+  const voterFundingNear = config.voter_funding_near ?? 5;
+  const daoFundingNear = config.dao_funding_near ?? voterFundingNear + 3;
   assertTestnet(config);
   const provider = new JsonRpcProvider({ url: config.rpc_url }, { retries: 0 });
   const credentials: Record<string, Credential> = {};
@@ -230,7 +233,7 @@ async function main(args: string[]): Promise<void> {
     recordTx(record, "create_dao", credentials.funder.accountId, "sputnikv2.testnet", created.hash);
   }
   const daoBalance = BigInt((await provider.viewAccount(daoId)).amount);
-  const daoTarget = 55n * NEAR;
+  const daoTarget = BigInt(daoFundingNear) * NEAR;
   if (daoBalance < daoTarget) {
     const funded = await tx(credentials.funder, daoId, [actionCreators.transfer(daoTarget - daoBalance)]);
     recordTx(record, "fund_dao_treasury", credentials.funder.accountId, daoId, funded.hash);
@@ -263,7 +266,7 @@ async function main(args: string[]): Promise<void> {
     await proposeAndApprove(provider, credentials.funder, daoId, stakingKind, "Set seat staking contract", record, call);
   }
 
-  const voterFunding = BigInt(config.voter_funding_near ?? 5) * NEAR;
+  const voterFunding = BigInt(voterFundingNear) * NEAR;
   const mintKind = {
     FunctionCall: {
       receiver_id: config.seat_account_id,
