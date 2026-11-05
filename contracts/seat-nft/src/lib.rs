@@ -359,6 +359,7 @@ impl SeatNft {
         env::storage_usage()
     }
 
+    #[cfg(feature = "sandbox-test")]
     #[payable]
     pub fn mint_test_seat(
         &mut self,
@@ -367,6 +368,16 @@ impl SeatNft {
         voter_id: AccountId,
     ) {
         self.assert_dao();
+        self.mint_test_seat_inner(token_id, receiver_id, voter_id);
+    }
+
+    #[cfg(any(test, feature = "sandbox-test"))]
+    fn mint_test_seat_inner(
+        &mut self,
+        token_id: TokenId,
+        receiver_id: AccountId,
+        voter_id: AccountId,
+    ) {
         assert!(self.tokens.owner_by_id.get(&token_id).is_none(), "ERR_TOKEN_EXISTS");
         let token = self.tokens.internal_mint_with_refund(
             token_id.clone(),
@@ -546,7 +557,7 @@ mod tests {
             60,
         );
         set_context(DAO, 1_000, 1_000_000_000_000_000_000_000_000);
-        contract.mint_test_seat(
+        contract.mint_test_seat_inner(
             "1".to_string(),
             account_id(SELLER),
             account_id(VOTER),

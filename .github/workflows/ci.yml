@@ -20,6 +20,14 @@ jobs:
         run: cargo test --workspace
       - name: Build contract WASM
         run: cargo build --release --target wasm32-unknown-unknown -p seat-voter -p seat-nft -p tee-verifier
+      - name: Check test mint is absent from default seat NFT WASM
+        run: |
+          if strings target/wasm32-unknown-unknown/release/seat_nft.wasm | grep -q 'mint_test_seat'; then
+            echo "default seat NFT WASM contains mint_test_seat"
+            exit 1
+          fi
+      - name: Build sandbox-test seat NFT WASM
+        run: cargo build --release --target wasm32-unknown-unknown -p seat-nft --features sandbox-test
       - name: Run Sputnik DAO sandbox integration
         run: cargo test -p seats-integration-tests --test seat_flow -- --ignored
       - name: Build OutLayer WASI jobs
