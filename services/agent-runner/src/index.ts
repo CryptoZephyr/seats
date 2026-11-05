@@ -32,6 +32,7 @@ interface Config {
   windowSeconds: number;
   requestTtlMs: number;
   startProposalId?: number;
+  lookbackProposals: number;
   port?: number;
   keepaliveUrl?: string;
   keepaliveMs: number;
@@ -78,6 +79,11 @@ function loadConfig(): Config {
   if (startProposalId !== undefined && (!Number.isSafeInteger(startProposalId) || startProposalId < 0)) {
     throw new Error("START_PROPOSAL_ID must be a non-negative integer");
   }
+  const lookbackValue = process.env.LOOKBACK_PROPOSALS;
+  const lookbackProposals = lookbackValue === undefined ? 20 : Number(lookbackValue);
+  if (!Number.isSafeInteger(lookbackProposals) || lookbackProposals < 0) {
+    throw new Error("LOOKBACK_PROPOSALS must be a non-negative integer");
+  }
   const portValue = process.env.PORT;
   const port = portValue === undefined ? undefined : Number(portValue);
   if (port !== undefined && (!Number.isSafeInteger(port) || port < 0 || port > 65_535)) {
@@ -94,6 +100,7 @@ function loadConfig(): Config {
     windowSeconds,
     requestTtlMs,
     startProposalId,
+    lookbackProposals,
     port,
     keepaliveUrl: keepalive.url,
     keepaliveMs: keepalive.intervalMs,
@@ -184,7 +191,11 @@ async function main(): Promise<void> {
     const currentNextProposalId = config.startProposalId === undefined
       ? await rpc.getLastProposalId(config.daoId)
       : config.startProposalId;
-    state = initialRunnerState(config.startProposalId, currentNextProposalId);
+    state = initialRunnerState(
+      config.startProposalId,
+      currentNextProposalId,
+      config.lookbackProposals,
+    );
     writeState(config.stateFile, state);
   }
 
@@ -194,8 +205,9 @@ async function main(): Promise<void> {
     voters: voters.map((voter) => voter.voterId),
     poll_ms: config.pollMs,
   })}\n`);
+  let proposalPeriodNs: bigint | undefined;
   try {
-    const proposalPeriodNs = await rpc.getProposalPeriodNs(config.daoId);
+    proposalPeriodNs = await rpc.getProposalPeriodNs(config.daoId);
     if (isProposalPeriodTooShort(proposalPeriodNs, config.windowSeconds)) {
       log({
         action: "proposal_period",
@@ -219,6 +231,8 @@ async function main(): Promise<void> {
         nowNanoseconds: BigInt(started) * 1_000_000n,
         nowMilliseconds: started,
         requestTtlMs: config.requestTtlMs,
+        proposalPeriodNs,
+        windowSeconds: config.windowSeconds,
         persistState: writeState.bind(null, config.stateFile),
         log,
       });

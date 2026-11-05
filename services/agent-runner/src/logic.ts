@@ -1,6 +1,8 @@
 export interface Proposal {
   id: number | string;
   status: string;
+  submission_time?: string | number;
+  votes?: Record<string, unknown>;
 }
 
 export interface PendingVote {

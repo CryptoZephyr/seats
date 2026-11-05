@@ -33,8 +33,16 @@ export interface RunnerState {
 export function initialRunnerState(
   startProposalId: number | undefined,
   currentNextProposalId: number,
+  lookbackProposals = 0,
 ): RunnerState {
-  const firstProposalId = startProposalId ?? currentNextProposalId;
+  if (!Number.isSafeInteger(currentNextProposalId) || currentNextProposalId < 0) {
+    throw new Error("Current next proposal ID must be a non-negative integer");
+  }
+  if (!Number.isSafeInteger(lookbackProposals) || lookbackProposals < 0) {
+    throw new Error("Proposal lookback must be a non-negative integer");
+  }
+  const firstProposalId = startProposalId
+    ?? Math.max(0, currentNextProposalId - lookbackProposals);
   if (!Number.isSafeInteger(firstProposalId) || firstProposalId < 0) {
     throw new Error("Initial proposal ID must be a non-negative integer");
   }
@@ -59,6 +67,8 @@ interface TickOptions {
   nowNanoseconds: bigint;
   nowMilliseconds: number;
   requestTtlMs: number;
+  proposalPeriodNs?: bigint;
+  windowSeconds?: number;
   persistState: (state: RunnerState) => void;
   log: (entry: ActionLog) => void;
 }
@@ -118,6 +128,30 @@ function isDefiniteRequestPanic(error: unknown): boolean {
     "ERR_AGENT_WASM_NOT_PINNED",
     "ERR_ONLY_SELF",
   ].some((code) => message.includes(code));
+}
+
+function requestSkipReason(
+  proposal: Proposal,
+  voterId: string,
+  options: Pick<TickOptions, "proposalPeriodNs" | "windowSeconds" | "nowNanoseconds">,
+): "already_voted" | "too_late" | undefined {
+  if (proposal.votes && Object.prototype.hasOwnProperty.call(proposal.votes, voterId)) {
+    return "already_voted";
+  }
+  if (
+    options.proposalPeriodNs === undefined
+    || options.windowSeconds === undefined
+    || proposal.submission_time === undefined
+  ) {
+    return undefined;
+  }
+  try {
+    const deadline = BigInt(proposal.submission_time) + options.proposalPeriodNs;
+    const requiredWindow = BigInt(options.windowSeconds + 60) * 1_000_000_000n;
+    return deadline < options.nowNanoseconds + requiredWindow ? "too_late" : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 async function readNewProposals(
@@ -244,6 +278,18 @@ export async function runTick(options: TickOptions): Promise<RunnerState> {
       }
 
       if (!inProgressIds.has(id)) {
+        continue;
+      }
+
+      const skipReason = requestSkipReason(proposal, voter.voterId, options);
+      if (skipReason) {
+        log({
+          action: "request",
+          status: "skipped",
+          voter_id: voter.voterId,
+          proposal_id: id,
+          reason: skipReason,
+        });
         continue;
       }
 
