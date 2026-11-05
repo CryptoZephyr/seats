@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown,wasm32-wasip2
+      - name: Test workspace
+        run: cargo test --workspace
+      - name: Build contract WASM
+        run: cargo build --release --target wasm32-unknown-unknown -p seat-voter -p seat-nft -p tee-verifier
+      - name: Run Sputnik DAO sandbox integration
+        run: cargo test -p seats-integration-tests --test seat_flow -- --ignored
+      - name: Build OutLayer WASI jobs
+        run: |
+          cargo build --release --target wasm32-wasip2 --manifest-path outlayer/vault-job/Cargo.toml
+          cargo build --release --target wasm32-wasip2 --manifest-path outlayer/agent-job/Cargo.toml
