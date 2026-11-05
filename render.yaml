@@ -11,7 +11,7 @@ services:
       - key: NODE_VERSION
         value: "22"
       - key: NEAR_RPC_URL
-        value: https://rpc.testnet.near.org
+        value: https://rpc.testnet.fastnear.com
       - key: DAO_ID
         value: seats2-1793847972.sputnikv2.testnet
       - key: VOTERS
