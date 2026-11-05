@@ -29,10 +29,11 @@ export interface KeepaliveConfig {
 
 export function healthStatus(input: HealthInput): HealthResponse {
   const uptimeSeconds = Math.max(0, Math.floor((input.nowMs - input.startedAtMs) / 1000));
+  const staleThresholdMs = Math.max(3 * input.pollMs + 60_000, 600_000);
   const lastTickIsFresh = input.lastTickOkAtMs !== null
     && input.nowMs >= input.lastTickOkAtMs
-    && input.nowMs - input.lastTickOkAtMs <= 3 * input.pollMs + 60_000;
-  const status = uptimeSeconds < 120 && input.lastTickOkAtMs === null
+    && input.nowMs - input.lastTickOkAtMs <= staleThresholdMs;
+  const status = uptimeSeconds < 600 && input.lastTickOkAtMs === null
     ? "starting"
     : lastTickIsFresh
       ? "ok"

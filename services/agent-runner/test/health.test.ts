@@ -22,25 +22,41 @@ function healthInput(overrides: Partial<HealthInput> = {}): HealthInput {
 }
 
 describe("health status", () => {
-  it("reports starting before the first successful tick during startup", () => {
-    expect(healthStatus(healthInput({ startedAtMs: 0, nowMs: 119_999 })).status).toBe("starting");
+  it("reports starting for the 600-second grace period without a successful tick", () => {
+    expect(healthStatus(healthInput({ startedAtMs: 0, nowMs: 599_999 })).status).toBe("starting");
+    expect(healthStatus(healthInput({ startedAtMs: 0, nowMs: 600_000 })).status).toBe("stale");
   });
 
-  it("reports ok while a successful tick is fresh", () => {
+  it("reports ok through the minimum 600-second freshness window", () => {
     expect(healthStatus(healthInput({
       startedAtMs: 0,
-      nowMs: 200_000,
-      lastTickAtMs: 190_000,
-      lastTickOkAtMs: 190_000,
+      nowMs: 700_000,
+      lastTickAtMs: 100_000,
+      lastTickOkAtMs: 100_000,
     })).status).toBe("ok");
   });
 
-  it("reports stale after the successful tick freshness window", () => {
+  it("reports stale after the minimum freshness window", () => {
     expect(healthStatus(healthInput({
       startedAtMs: 0,
-      nowMs: 200_000,
+      nowMs: 700_001,
       lastTickAtMs: 1_000,
       lastTickOkAtMs: 1_000,
+    })).status).toBe("stale");
+  });
+
+  it("uses the poll-derived freshness window when it exceeds ten minutes", () => {
+    expect(healthStatus(healthInput({
+      nowMs: 1_160_000,
+      lastTickAtMs: 200_000,
+      lastTickOkAtMs: 200_000,
+      pollMs: 300_000,
+    })).status).toBe("ok");
+    expect(healthStatus(healthInput({
+      nowMs: 1_160_001,
+      lastTickAtMs: 200_000,
+      lastTickOkAtMs: 200_000,
+      pollMs: 300_000,
     })).status).toBe("stale");
   });
 

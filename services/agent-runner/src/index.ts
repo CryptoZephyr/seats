@@ -246,12 +246,12 @@ async function main(): Promise<void> {
 
 const currentFile = fileURLToPath(import.meta.url);
 if (resolve(process.argv[1] ?? "") === currentFile) {
-void main().catch((error: unknown) => {
-  if (keepaliveTimer) {
-    clearInterval(keepaliveTimer);
-  }
-  healthServer?.close();
-  process.stderr.write(`${redact(String(error))}\n`);
+  void main().catch((error: unknown) => {
+    if (keepaliveTimer) {
+      clearInterval(keepaliveTimer);
+    }
+    healthServer?.close();
+    process.stderr.write(`${redact(String(error))}\n`);
     process.exitCode = 1;
   });
 }

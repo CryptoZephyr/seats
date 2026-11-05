@@ -75,7 +75,7 @@ npx tsc --noEmit
 
 Copy `voters.example.json` to the ignored `voters.json`, then set `NEAR_RPC_URL`, `DAO_ID`, `VOTERS` to that file path, `KEEPER_ACCOUNT_ID`, and `KEEPER_KEY_FILE`. The voter file contains `voter_id` and `agent_key_file` paths. `WINDOW_SECONDS` defaults to 120, `REQUEST_TTL_MS` defaults to 180000, and `LOOKBACK_PROPOSALS` defaults to 20. On fresh state, the runner checks the most recent proposals in that lookback window. `START_PROPOSAL_ID` overrides the initial proposal.
 
-When `PORT` is set, the runner binds an HTTP health server on `0.0.0.0` and serves `/health`. It reports `starting` before the first successful tick, `ok` while ticks are fresh, and `stale` otherwise. `KEEPALIVE_URL` enables periodic requests. If it is unset and `RENDER_EXTERNAL_URL` is available, the runner uses `${RENDER_EXTERNAL_URL}/health`. `KEEPALIVE_MS` defaults to 600000 and must be between 60000 and 840000.
+When `PORT` is set, the runner binds an HTTP health server on `0.0.0.0` and serves `/health`. It reports `starting` with no successful tick for up to 600 seconds, `ok` while the last successful tick is within `Math.max(3 * pollMs + 60000, 600000)` ms, and `stale` otherwise. `KEEPALIVE_URL` enables periodic requests. If it is unset and `RENDER_EXTERNAL_URL` is available, the runner uses `${RENDER_EXTERNAL_URL}/health`. `KEEPALIVE_MS` defaults to 600000 and must be between 60000 and 840000.
 
 Run `npm run build && npm start` from `services/agent-runner`. The runner writes its non-secret proposal cursor, known pending IDs, and durable in-flight vote requests to the ignored `state.json`. A timed-out request isn't retried until its `REQUEST_TTL_MS` expires.
 
