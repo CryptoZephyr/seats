@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { parseProposalId, selectNextNonce, sendWithNonceRetry } from "../src/deploy-testnet.js";
+import {
+  findPendingProposalId,
+  parseProposalId,
+  selectNextNonce,
+  sendWithNonceRetry,
+} from "../src/deploy-testnet.js";
 
 const accountId = "funder.testnet";
 const publicKey = { toString: () => "ed25519:test-public-key" } as unknown as Parameters<
@@ -18,6 +23,33 @@ describe("proposal IDs", () => {
       expect(() => parseProposalId(value))
         .toThrow("Sputnik add_proposal did not return a non-negative integer proposal ID");
     }
+  });
+});
+
+describe("pending DAO proposal lookup", () => {
+  it("finds an in-progress proposal with a matching kind using mocked RPC views", async () => {
+    const kind = { SetStakingContract: { staking_id: "seatsnft.testnet" } };
+    const proposals = [
+      { id: 0, kind, status: "InProgress" },
+      { id: 1, kind, status: "Approved" },
+      { id: 2, kind: { SetStakingContract: { staking_id: "other.testnet" } }, status: "InProgress" },
+    ];
+    const sendJsonRpc = vi.fn(async (_method: string, request: { method_name: string }) => ({
+      result: Array.from(Buffer.from(JSON.stringify(
+        request.method_name === "get_last_proposal_id" ? 3 : proposals,
+      ))),
+    }));
+    const provider = { sendJsonRpc } as unknown as Parameters<typeof findPendingProposalId>[0];
+
+    await expect(findPendingProposalId(provider, "seats.sputnikv2.testnet", kind)).resolves.toBe(0);
+
+    expect(sendJsonRpc).toHaveBeenCalledTimes(2);
+    expect(sendJsonRpc.mock.calls[1]?.[1]).toMatchObject({
+      request_type: "call_function",
+      finality: "optimistic",
+      account_id: "seats.sputnikv2.testnet",
+      method_name: "get_proposals",
+    });
   });
 });
 

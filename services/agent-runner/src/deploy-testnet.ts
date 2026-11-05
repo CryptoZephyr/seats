@@ -97,6 +97,27 @@ function assertTestnet(config: DeployConfig): void {
   }
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+}
+
+function isUninitializedContractError(error: unknown): boolean {
+  return /Contract must be initialized before usage|ERR_NOT_INITIALIZED/i.test(errorMessage(error));
+}
+
+function isMissingAccountError(error: unknown): boolean {
+  return /UNKNOWN_ACCOUNT|account[^\n]*(?:does not exist|not found)/i.test(errorMessage(error));
+}
+
+function isVoterConfig(value: unknown): value is { voter_id: string; agent_key_file: string } {
+  return typeof value === "object" &&
+    value !== null &&
+    "voter_id" in value &&
+    typeof value.voter_id === "string" &&
+    "agent_key_file" in value &&
+    typeof value.agent_key_file === "string";
+}
+
 function recordTx(
   record: Record<string, unknown>,
   label: string,
@@ -158,12 +179,13 @@ async function main(args: string[]): Promise<void> {
   };
   record.code_hashes = hashes;
 
-  const verifierAccount = await provider.viewAccount(config.verifier_account_id);
+  const verifierAccount = await provider.viewAccount(config.verifier_account_id, { finality: "optimistic" });
   if (verifierAccount.code_hash !== hashes.tee_verifier) {
     const sent = await tx(credentials.verifier, config.verifier_account_id, [actionCreators.deployContract(verifierWasm)]);
     recordTx(record, "deploy_tee_verifier", credentials.verifier.accountId, config.verifier_account_id, sent.hash);
   }
   let verifierSigner: string | null = null;
+  let verifierInitialized = false;
   try {
     verifierSigner = await callView<string>(
       provider,
@@ -172,10 +194,13 @@ async function main(args: string[]): Promise<void> {
       {},
       "optimistic",
     );
-  } catch {
-    verifierSigner = null;
+    verifierInitialized = true;
+  } catch (error) {
+    if (!isUninitializedContractError(error)) {
+      throw new Error(`Could not confirm verifier initialization: ${errorMessage(error)}`, { cause: error });
+    }
   }
-  if (!verifierSigner) {
+  if (!verifierInitialized) {
     const sent = await call(credentials.verifier, config.verifier_account_id, "new", {});
     recordTx(record, "init_tee_verifier", credentials.verifier.accountId, config.verifier_account_id, sent.hash);
   }
@@ -228,9 +253,18 @@ async function main(args: string[]): Promise<void> {
     config: { name: "Seats Testnet", purpose: "Transferable club memberships", metadata: "" },
     policy: daoPolicy(config.funder_account_id),
   };
+  let daoExists = true;
   try {
-    await callView(provider, daoId, "get_last_proposal_id", {}, "optimistic");
-  } catch {
+    await provider.viewAccount(daoId, { finality: "optimistic" });
+  } catch (error) {
+    if (!isMissingAccountError(error)) {
+      throw new Error(`Could not confirm DAO account ${daoId}: ${errorMessage(error)}`, { cause: error });
+    }
+    daoExists = false;
+  }
+  if (daoExists) {
+    await callView(provider, daoId, "get_last_proposal_id", {});
+  } else {
     const created = await call(credentials.funder, "sputnikv2.testnet", "create", {
       name: config.dao_name,
       args: Buffer.from(JSON.stringify(daoArgs)).toString("base64"),
@@ -245,14 +279,23 @@ async function main(args: string[]): Promise<void> {
     recordTx(record, "fund_dao_treasury", credentials.funder.accountId, daoId, funded.hash);
   }
 
-  const seatAccount = await provider.viewAccount(config.seat_account_id);
+  const seatAccount = await provider.viewAccount(config.seat_account_id, { finality: "optimistic" });
   if (seatAccount.code_hash !== hashes.seat_nft) {
     const sent = await tx(credentials.seat, config.seat_account_id, [actionCreators.deployContract(seatWasm)]);
     recordTx(record, "deploy_seat_nft", credentials.seat.accountId, config.seat_account_id, sent.hash);
   }
+  let seatView: { voter_id: string } | null = null;
   try {
-    await callView(provider, config.seat_account_id, "get_dao", {}, "optimistic");
-  } catch {
+    seatView = await callView<{ voter_id: string } | null>(
+      provider,
+      config.seat_account_id,
+      "get_seat",
+      { token_id: "1" },
+    );
+  } catch (error) {
+    if (!isUninitializedContractError(error)) {
+      throw new Error(`Could not confirm seat contract initialization: ${errorMessage(error)}`, { cause: error });
+    }
     const sent = await call(credentials.seat, config.seat_account_id, "new", {
       dao: daoId,
       voter_code_hash: hashes.seat_voter,
@@ -262,20 +305,10 @@ async function main(args: string[]): Promise<void> {
     recordTx(record, "init_seat_nft", credentials.seat.accountId, config.seat_account_id, sent.hash);
   }
   let stakingContract: string | null = null;
-  try {
-    stakingContract = await callView<string | null>(
-      provider,
-      daoId,
-      "get_staking_contract",
-      {},
-      "optimistic",
-    );
-  } catch {
-    stakingContract = null;
-  }
+  stakingContract = await callView<string | null>(provider, daoId, "get_staking_contract", {});
   if (stakingContract !== config.seat_account_id) {
     const stakingKind = { SetStakingContract: { staking_id: config.seat_account_id } };
-    await proposeAndApprove(credentials.funder, daoId, stakingKind, "Set seat staking contract", record, call);
+    await proposeAndApprove(provider, credentials.funder, daoId, stakingKind, "Set seat staking contract", record, call);
   }
 
   const voterFunding = BigInt(voterFundingNear) * NEAR;
@@ -293,20 +326,12 @@ async function main(args: string[]): Promise<void> {
       }],
     },
   };
-  let seatView: { voter_id: string } | null = null;
-  try {
-    seatView = await callView<{ voter_id: string } | null>(
-      provider,
-      config.seat_account_id,
-      "get_seat",
-      { token_id: "1" },
-      "optimistic",
-    );
-  } catch {
-    seatView = null;
-  }
   if (!seatView) {
-    await proposeAndApprove(credentials.funder, daoId, mintKind, "Mint first seat", record, call);
+    const approvedMint = await findProposalIdByStatus(provider, daoId, mintKind, "Approved");
+    if (approvedMint !== null) {
+      throw new Error(`Mint proposal ${approvedMint} is approved but seat 1 is not visible, refusing to submit another mint`);
+    }
+    await proposeAndApprove(provider, credentials.funder, daoId, mintKind, "Mint first seat", record, call);
     seatView = await callView<{ voter_id: string }>(
       provider,
       config.seat_account_id,
@@ -320,16 +345,71 @@ async function main(args: string[]): Promise<void> {
   record.accounts = { ...((record.accounts as object | undefined) ?? {}), dao: daoId, seat: config.seat_account_id, voter: voterId, verifier: config.verifier_account_id };
   writeRecord(record);
 
-  await proposeAndApprove(credentials.funder, daoId, functionCallKind(config.seat_account_id, "set_voter_model_signer", {
-    token_id: "1",
-    address_hex: quote.expected_signer,
-    model: config.model,
-  }), "Set model signer", record, call);
-  await proposeAndApprove(credentials.funder, daoId, functionCallKind(config.seat_account_id, "pin_voter_agent", {
-    token_id: "1",
-    url: config.agent_wasm_url,
-    sha256: config.agent_wasm_sha256,
-  }), "Pin agent job", record, call);
+  let priorAgentConfig = record.agent_configuration as {
+    voter_id?: string;
+    model_signer?: { address_hex?: string; model?: string };
+    pinned_agent?: { url?: string; sha256?: string };
+  } | undefined;
+  if (
+    priorAgentConfig?.voter_id !== voterId ||
+    priorAgentConfig?.model_signer?.address_hex !== quote.expected_signer ||
+    priorAgentConfig?.model_signer?.model !== config.model
+  ) {
+    const nextAgentConfig = {
+      ...priorAgentConfig,
+      voter_id: voterId,
+      model_signer: { address_hex: quote.expected_signer, model: config.model },
+    };
+    const kind = functionCallKind(config.seat_account_id, "set_voter_model_signer", {
+      token_id: "1",
+      address_hex: quote.expected_signer,
+      model: config.model,
+    });
+    await assertNoUnrecordedApproval(provider, daoId, kind, "model signer");
+    await proposeAndApprove(
+      provider,
+      credentials.funder,
+      daoId,
+      kind,
+      "Set model signer",
+      record,
+      call,
+      () => {
+        priorAgentConfig = nextAgentConfig;
+        record.agent_configuration = nextAgentConfig;
+      },
+    );
+  }
+  if (
+    priorAgentConfig?.voter_id !== voterId ||
+    priorAgentConfig?.pinned_agent?.url !== config.agent_wasm_url ||
+    priorAgentConfig?.pinned_agent?.sha256 !== config.agent_wasm_sha256
+  ) {
+    const nextAgentConfig = {
+      ...priorAgentConfig,
+      voter_id: voterId,
+      pinned_agent: { url: config.agent_wasm_url, sha256: config.agent_wasm_sha256 },
+    };
+    const kind = functionCallKind(config.seat_account_id, "pin_voter_agent", {
+      token_id: "1",
+      url: config.agent_wasm_url,
+      sha256: config.agent_wasm_sha256,
+    });
+    await assertNoUnrecordedApproval(provider, daoId, kind, "agent WASM pin");
+    await proposeAndApprove(
+      provider,
+      credentials.funder,
+      daoId,
+      kind,
+      "Pin agent job",
+      record,
+      call,
+      () => {
+        priorAgentConfig = nextAgentConfig;
+        record.agent_configuration = nextAgentConfig;
+      },
+    );
+  }
   const currentBrief = await callView<{
     brief_hash: string;
     secrets_account_id: string | null;
@@ -348,7 +428,15 @@ async function main(args: string[]): Promise<void> {
     recordTx(record, "set_brief", credentials.member.accountId, voterId, brief.hash);
   }
   const votersFile = resolve(config.secrets_dir, "voters.json");
-  writeFileSync(votersFile, `${JSON.stringify([{ voter_id: voterId, agent_key_file: agentFile }], null, 2)}\n`, { mode: 0o600 });
+  const existingVoters = existsSync(votersFile)
+    ? JSON.parse(readFileSync(votersFile, "utf8")) as unknown
+    : [];
+  if (!Array.isArray(existingVoters) || !existingVoters.every(isVoterConfig)) {
+    throw new Error(`Invalid voters file at ${votersFile}`);
+  }
+  const voters = existingVoters.filter((voter) => voter.voter_id !== voterId);
+  voters.push({ voter_id: voterId, agent_key_file: agentFile });
+  writeFileSync(votersFile, `${JSON.stringify(voters, null, 2)}\n`, { mode: 0o600 });
   record.runner_voters_file = votersFile;
   record.seat_voter_global = { ...record.seat_voter_global as object, account_id: voterId };
   record.status = "deployed";
@@ -370,22 +458,28 @@ function functionCallKind(receiver: string, method: string, args: object) {
 }
 
 async function proposeAndApprove(
+  provider: JsonRpcProvider,
   funder: Credential,
   daoId: string,
   kind: object,
   description: string,
   record: Record<string, unknown>,
   call: (credential: Credential, receiver: string, method: string, args: object, deposit?: bigint, gas?: bigint) => Promise<{ hash: string; value: unknown }>,
+  afterApproval?: () => void,
 ): Promise<void> {
-  const added = await call(funder, daoId, "add_proposal", { proposal: { description, kind } });
-  recordTx(record, `add_${description.toLowerCase().replaceAll(" ", "_")}`, funder.accountId, daoId, added.hash);
-  const proposalId = parseProposalId(added.value);
+  let proposalId = await findPendingProposalId(provider, daoId, kind);
+  if (proposalId === null) {
+    const added = await call(funder, daoId, "add_proposal", { proposal: { description, kind } });
+    recordTx(record, `add_${description.toLowerCase().replaceAll(" ", "_")}`, funder.accountId, daoId, added.hash);
+    proposalId = parseProposalId(added.value);
+  }
   const approved = await call(funder, daoId, "act_proposal", {
     id: proposalId,
     action: "VoteApprove",
     proposal: kind,
     memo: null,
   });
+  afterApproval?.();
   recordTx(record, `approve_${description.toLowerCase().replaceAll(" ", "_")}`, funder.accountId, daoId, approved.hash);
 }
 
@@ -401,12 +495,83 @@ export function parseProposalId(value: unknown): number {
   return proposalId;
 }
 
+type ProposalView = {
+  id: number | string;
+  kind: unknown;
+  status: string;
+};
+
+function canonicalJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalJson);
+  if (typeof value === "object" && value !== null) {
+    return Object.fromEntries(
+      Object.entries(value).sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, child]) => [key, canonicalJson(child)]),
+    );
+  }
+  return value;
+}
+
+function sameJsonValue(left: unknown, right: unknown): boolean {
+  return JSON.stringify(canonicalJson(left)) === JSON.stringify(canonicalJson(right));
+}
+
+async function findProposalIdByStatus(
+  provider: JsonRpcProvider,
+  daoId: string,
+  kind: object,
+  status: string,
+): Promise<number | null> {
+  const nextProposalId = Number(await callView<number | string>(provider, daoId, "get_last_proposal_id", {}));
+  if (!Number.isSafeInteger(nextProposalId) || nextProposalId < 0) {
+    throw new Error("DAO returned an invalid get_last_proposal_id value");
+  }
+
+  let match: number | null = null;
+  const pageSize = 50;
+  for (let fromIndex = 0; fromIndex < nextProposalId; fromIndex += pageSize) {
+    const limit = Math.min(pageSize, nextProposalId - fromIndex);
+    const proposals = await callView<ProposalView[]>(provider, daoId, "get_proposals", {
+      from_index: fromIndex,
+      limit,
+    });
+    for (const proposal of proposals) {
+      if (proposal.status === status && sameJsonValue(proposal.kind, kind)) {
+        match = parseProposalId(proposal.id);
+      }
+    }
+  }
+  return match;
+}
+
+export async function findPendingProposalId(
+  provider: JsonRpcProvider,
+  daoId: string,
+  kind: object,
+): Promise<number | null> {
+  return findProposalIdByStatus(provider, daoId, kind, "InProgress");
+}
+
+async function assertNoUnrecordedApproval(
+  provider: JsonRpcProvider,
+  daoId: string,
+  kind: object,
+  description: string,
+): Promise<void> {
+  const proposalId = await findProposalIdByStatus(provider, daoId, kind, "Approved");
+  if (proposalId !== null) {
+    throw new Error(
+      `Proposal ${proposalId} for ${description} is approved, but the deployment record cannot confirm its applied state`,
+    );
+  }
+}
+
 async function callView<T = unknown>(
   provider: JsonRpcProvider,
   account: string,
   method: string,
   args: object,
-  finality: "final" | "optimistic" = "final",
+  finality: "final" | "optimistic" = "optimistic",
 ): Promise<T> {
   const response = await provider.sendJsonRpc<{ result: number[] }>("query", {
     request_type: "call_function",
