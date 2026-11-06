@@ -604,6 +604,7 @@ export function ProposalVote({
 }) {
   const state = useClubData();
   const viewer = useViewer();
+  const nowNs = useCurrentTimeNs();
   const pageState = ReadPageState({ state, retry: state.retry });
   if (pageState) return pageState;
   if (state.status !== "ready") return null;
@@ -622,9 +623,25 @@ export function ProposalVote({
     );
   }
 
+  const proposals = state.data.proposals;
   const openProposals = newestFirst(
-    state.data.proposals.filter((item) => item.status === "InProgress"),
+    proposals.filter((item) => item.status === "InProgress"),
   );
+  const requestedProposal = proposalId === undefined
+    ? undefined
+    : proposals.find((item) => item.id === proposalId);
+  if (proposalId !== undefined && !requestedProposal) {
+    return (
+      <main className={s.page}>
+        <header className={s.pageHead}>
+          <p className={s.eyebrow}>Proposal {proposalId}</p>
+          <h1>Proposal not found</h1>
+        </header>
+        <p className={s.muted}>This proposal isn't in the club's DAO.</p>
+        <TextButton href="#/club">View DAO proposals</TextButton>
+      </main>
+    );
+  }
   const ownedSeats = state.data.seats.filter((item) =>
     viewer.seatIds.includes(item.token.token_id),
   );
@@ -644,20 +661,37 @@ export function ProposalVote({
       (left, right) =>
         (right.result?.proposal_id ?? -1) - (left.result?.proposal_id ?? -1),
     )[0]?.seat;
+  const seatWithRequestedCast = proposalId === undefined
+    ? undefined
+    : ownedSeats.find((item) =>
+        item.results.results.some(
+          (result) => result.cast && result.proposal_id === proposalId,
+        ),
+      );
   const seat = closed
     ? seatWithLatestCast ?? ownedSeats[0]
-    : requestedSeat ?? seatWithPending ?? ownedSeats[0];
+    : requestedSeat ?? seatWithRequestedCast ?? seatWithPending ?? ownedSeats[0];
   const voteResult = closed
     ? seat?.results.results.findLast((result) => result.cast)
-    : undefined;
+    : proposalId !== undefined
+      ? seat?.results.results.findLast(
+          (result) => result.cast && result.proposal_id === proposalId,
+        )
+      : undefined;
   const pendingProposal = seat
     ? openProposals.find((item) => Boolean(seat.pending[item.id]))
     : undefined;
-  const requestedProposal = openProposals.find((item) => item.id === proposalId);
   const proposal = closed
-    ? state.data.proposals.find((item) => item.id === voteResult?.proposal_id)
-    : requestedProposal ?? pendingProposal ?? openProposals[0];
+    ? proposals.find((item) => item.id === voteResult?.proposal_id)
+    : proposalId !== undefined
+      ? requestedProposal
+      : pendingProposal ?? openProposals[0];
   const pending = proposal && seat ? seat.pending[proposal.id] : null;
+  const requestedProposalIsClosed =
+    proposalId !== undefined &&
+    proposal !== undefined &&
+    (proposal.status !== "InProgress" ||
+      isProposalVotingClosed(proposal, state.data.proposalPeriodNs, nowNs));
 
   if (!proposal) {
     return (
@@ -691,11 +725,11 @@ export function ProposalVote({
       <RuledSection title="Your delegate's vote">
         {!seat ? (
           <p className={s.muted}>Sign in with the account that holds a seat to view its delegate record.</p>
-        ) : closed && voteResult ? (
+        ) : voteResult ? (
           <dl className={s.facts}>
             <Fact label="Vote">{voteResult.vote}</Fact>
             <Fact label="Voter status">
-              {voteResult.cast ? <CastStatus /> : <RefusedStamp>{voteResult.status}</RefusedStamp>}
+              <CastStatus />
             </Fact>
             {voteResult.receipt_hash && (
               <Fact label="Receipt hash">
@@ -703,6 +737,8 @@ export function ProposalVote({
               </Fact>
             )}
           </dl>
+        ) : requestedProposalIsClosed ? (
+          <p className={s.muted}>Your delegate hasn't cast a vote on this proposal.</p>
         ) : pending ? (
           <div className={s.voteCard}>
             <div className={s.voteChoice}>
