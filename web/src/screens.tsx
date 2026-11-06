@@ -124,29 +124,6 @@ function ProposalStatus({
   return <ResultStamp result={proposal.status} />;
 }
 
-function ProposalList({ proposals, periodNs }: { proposals: ProposalView[]; periodNs: string }) {
-  if (proposals.length === 0) return <p className={s.muted}>No proposals have been submitted.</p>;
-  return (
-    <ul className={s.proposals}>
-      {newestFirst(proposals).map((proposal) => (
-        <li key={proposal.id} className={s.proposal}>
-          <div>
-            <span className={s.proposalTitle}>
-              Proposal {proposal.id}: {proposal.description}
-            </span>
-            <span className={s.muted}>
-              {" "}· {proposalKindName(proposal)} · proposed by{" "}
-              <span className="mono">{proposal.proposer}</span> · submitted{" "}
-              <ProposalDate timestampNs={proposal.submission_time} />
-            </span>
-          </div>
-          <ProposalStatus proposal={proposal} periodNs={periodNs} />
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 function latestVote(seat: SeatSnapshot): { kind: VoteKind; vote: string; proposalId: number } | undefined {
   const latest = seat.results.results.findLast((result) => result.cast);
   if (latest?.vote === "Approve") return { kind: "tick", vote: latest.vote, proposalId: latest.proposal_id };
@@ -425,108 +402,135 @@ export function MySeat() {
 
   const { data } = state;
   const owned = data.seats.filter((seat) => viewer.seatIds.includes(seat.token.token_id));
-  const publicSeats = owned.length > 0 ? owned : data.seats;
-  const openProposals = newestFirst(
-    data.proposals.filter((proposal) => proposal.status === "InProgress"),
+  const nowNs = useCurrentTimeNs();
+
+  if (viewer.accountId && viewer.isLoading) {
+    return (
+      <main className={s.page}>
+        <header className={s.pageHead}>
+          <p className={s.eyebrow}>Your seat</p>
+          <h1>Your seat</h1>
+        </header>
+        <LoadingStatus>Checking this account's seats…</LoadingStatus>
+      </main>
+    );
+  }
+
+  if (viewer.accountId && viewer.error) {
+    return (
+      <main className={s.page}>
+        <header className={s.pageHead}>
+          <p className={s.eyebrow}>Your seat</p>
+          <h1>Your seat</h1>
+        </header>
+        <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>
+      </main>
+    );
+  }
+
+  if (!viewer.accountId) {
+    return (
+      <main className={s.page}>
+        <header className={s.pageHead}>
+          <p className={s.eyebrow}>Your seat</p>
+          <h1>Your seat</h1>
+          <p className={s.lede}>Sign in to see your seat, your delegate, and proposals for your vote.</p>
+        </header>
+        <RuledSection title="Sign in">
+          <GraphicButton
+            glyph="seat"
+            onClick={viewer.signIn}
+            disabled={!viewer.walletReady}
+          >
+            Sign in
+          </GraphicButton>
+          {viewer.error && <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>}
+          <p className={s.note}>A seat gives you one vote in the club and access to its vault.</p>
+        </RuledSection>
+      </main>
+    );
+  }
+
+  if (owned.length === 0) {
+    return (
+      <main className={s.page}>
+        <header className={s.pageHead}>
+          <p className={s.eyebrow}>Your seat</p>
+          <h1>Your seat</h1>
+        </header>
+        <RuledSection title="Your seat">
+          <p className={s.muted}>You don't hold a seat with this account.</p>
+          <TextButton href="#/club">View the club</TextButton>
+        </RuledSection>
+      </main>
+    );
+  }
+
+  const openVotes = owned.flatMap((seat) =>
+    newestFirst(
+      data.proposals.filter(
+        (proposal) =>
+          proposal.status === "InProgress" &&
+          !isProposalVotingClosed(proposal, data.proposalPeriodNs, nowNs) &&
+          Boolean(seat.pending[proposal.id]),
+      ),
+    ).map((proposal) => ({
+      seat,
+      proposal,
+      pending: seat.pending[proposal.id]!,
+    })),
   );
-  const seatToReview = owned[0];
-  const voteProposal =
-    (seatToReview &&
-      openProposals.find((proposal) => Boolean(seatToReview.pending[proposal.id]))) ??
-    openProposals[0];
 
   return (
     <main className={s.page}>
       <header className={s.pageHead}>
         <p className={s.eyebrow}>Your seat</p>
-        <h1>
-          {owned.length === 1 ? (
-            <>Seat <span className={s.seatBig}>{owned[0].token.token_id}</span></>
-          ) : (
-            "Your seats"
-          )}
-        </h1>
-        <p className={s.lede}>Public seat and DAO proposal data from NEAR testnet.</p>
+        <h1>{owned.length === 1 ? `Seat ${owned[0].token.token_id}` : "Your seats"}</h1>
       </header>
 
-      {!viewer.accountId && (
-        <RuledSection title="Wallet">
-          <p className={s.muted}>Sign in to see which seats belong to this account. Public seat data remains visible below.</p>
-        </RuledSection>
-      )}
-      {viewer.accountId && viewer.isLoading && (
-        <RuledSection title="Wallet">
-          <LoadingStatus>Checking this account's seats…</LoadingStatus>
-        </RuledSection>
-      )}
-      {viewer.error && (
-        <RuledSection title="Wallet">
-          <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>
-        </RuledSection>
-      )}
-      {viewer.accountId && !viewer.isLoading && owned.length === 0 && (
-        <RuledSection title="Wallet">
-          <p className={s.muted}>
-            No seats are held by <span className="mono">{viewer.accountId}</span>.
-          </p>
-        </RuledSection>
-      )}
-
       <RuledSection title="Your delegate">
-        {publicSeats.length === 0 ? (
-          <p className={s.muted}>No seats have been minted.</p>
+        <dl className={s.facts}>
+          {owned.map((seat) => (
+            <div key={seat.token.token_id}>
+              <Fact label={`Seat ${seat.token.token_id} delegate`}>
+                <span className="mono">{seat.record.voter_id}</span>
+              </Fact>
+              <Fact label="Controller">
+                <span className="mono">{seat.controller}</span>
+              </Fact>
+              <Fact label="Brief fingerprint">
+                {seat.briefHash || "No fingerprint stored"}
+              </Fact>
+            </div>
+          ))}
+        </dl>
+      </RuledSection>
+
+      <RuledSection title="Open proposals">
+        {openVotes.length === 0 ? (
+          <p className={s.muted}>No open proposals right now</p>
         ) : (
-          <dl className={s.facts}>
-            {publicSeats.map((seat) => {
-              const needsVote = data.proposals.filter(
-                (proposal) =>
-                  proposal.status === "InProgress" &&
-                  !seat.pending[proposal.id] &&
-                  !seat.results.results.some((result) => result.proposal_id === proposal.id),
-              ).length;
-              return (
-                <div key={seat.token.token_id}>
-                  <Fact label={`Seat ${seat.token.token_id}`}>
-                    Held by <span className="mono">{seat.token.owner_id}</span>
-                  </Fact>
-                  <Fact label="Voter controller">
-                    <span className="mono">{seat.controller}</span>
-                  </Fact>
-                  <Fact label="Brief fingerprint">
-                    {seat.briefHash ? <span className="mono">{seat.briefHash}</span> : "No fingerprint stored"}
-                  </Fact>
-                  <Fact label="Open proposals needing a vote">{needsVote}</Fact>
+          <ul className={s.proposals}>
+            {openVotes.map(({ seat, proposal, pending }) => (
+              <li key={`${seat.token.token_id}-${proposal.id}`} className={s.proposal}>
+                <div>
+                  <span className={s.proposalTitle}>
+                    Proposal {proposal.id}: {proposal.description}
+                  </span>
+                  <span className={s.decisionTime}>
+                    Seat {seat.token.token_id} · submitted{" "}
+                    <ProposalDate timestampNs={proposal.submission_time} />
+                  </span>
+                  <dl className={s.facts}>
+                    <Fact label="Your delegate's vote">{pending.vote}</Fact>
+                  </dl>
+                  <ProposalDeadline deadlineNs={BigInt(pending.deadline)} />
                 </div>
-              );
-            })}
-          </dl>
+                <TextButton href={`#/vote/${proposal.id}`}>Review vote</TextButton>
+              </li>
+            ))}
+          </ul>
         )}
-        <div className={s.actions}>
-          {owned.length > 0 ? (
-            <>
-              {voteProposal && (
-                <GraphicButton
-                  glyph="seat"
-                  onClick={() => { location.hash = `#/vote/${voteProposal.id}`; }}
-                >
-                  Review your delegate's vote
-                </GraphicButton>
-              )}
-              <TextButton href="#/brief">View your brief fingerprint</TextButton>
-            </>
-          ) : null}
-        </div>
-      </RuledSection>
-
-      <RuledSection title="DAO proposals">
-        <ProposalList proposals={data.proposals} periodNs={data.proposalPeriodNs} />
-      </RuledSection>
-
-      <RuledSection
-        title="Club vault"
-        aside={<TextButton href="#/vault">View vault access</TextButton>}
-      >
-        <p className={s.muted}>Sign in with the wallet that holds your seat to check vault access.</p>
       </RuledSection>
     </main>
   );
