@@ -29,7 +29,7 @@ function seatPositions(count: number) {
     }
   };
 
-  for (const row of ROWS) {
+  for (const row of [...ROWS].reverse()) {
     const rowCount = Math.min(remaining, row.count);
     if (rowCount === 0) break;
     addRow(row, rowCount);
@@ -90,7 +90,9 @@ export function SeatPlan({
       <svg
         viewBox="0 0 500 250"
         role="img"
-        aria-label={`Hemicycle seat plan, ${seats.length} seats held`}
+        aria-label={`Hemicycle seat plan, ${seats.length} ${
+          seats.length === 1 ? "seat" : "seats"
+        } held`}
         className={styles.plan}
       >
         {positions.map((p, i) => {

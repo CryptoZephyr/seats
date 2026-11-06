@@ -186,7 +186,11 @@ export function ClubPage() {
 
       <RuledSection
         title="The seat plan"
-        aside={<span className={s.muted}>{data.tokens.length} seats held</span>}
+        aside={
+          <span className={s.muted}>
+            {data.tokens.length} {data.tokens.length === 1 ? "seat" : "seats"} held
+          </span>
+        }
         inset
       >
         {seats.length === 0 ? (
@@ -208,7 +212,10 @@ export function ClubPage() {
       </RuledSection>
 
       <RuledSection title="Join this club">
-        <p className={s.muted}>Applications are not available in this read-only testnet view.</p>
+        <p className={s.muted}>
+          Applying to join from this site isn't available yet. Seats change hands through a
+          club-approved sale.
+        </p>
       </RuledSection>
 
       <RuledSection title="What a seat gives">
@@ -376,7 +383,7 @@ export function MySeat() {
         title="Club vault"
         aside={<TextButton href="#/vault">View vault access</TextButton>}
       >
-        <p className={s.muted}>Vault access is not included in these public reads.</p>
+        <p className={s.muted}>Sign in with the wallet that holds your seat to check vault access.</p>
       </RuledSection>
     </main>
   );
@@ -473,7 +480,7 @@ export function ProposalVote({ closed = false }: { closed?: boolean }) {
         </header>
         <p className={s.muted}>
           {closed
-            ? "No cast vote is available for this seat in the public voter views."
+            ? "This seat has no cast vote on record yet."
             : "There are no open proposals to review. You can see all DAO proposals on the club page."}
         </p>
         {!closed && <TextButton href="#/club">View DAO proposals</TextButton>}
@@ -605,8 +612,14 @@ export function VaultPage() {
             <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>
           ) : viewer.isLoading ? (
             <LoadingStatus>Checking the connected account's seats on testnet…</LoadingStatus>
+          ) : !viewer.accountId ? (
+            <p className={s.muted}>
+              Sign in with the wallet that holds your seat to check your vault access.
+            </p>
           ) : viewer.isSeatHolder ? (
-            <p className={s.muted}>Vault contents are not included in the public testnet views.</p>
+            <p className={s.muted}>
+              Your seat opens the vault. Opening it from this site isn't available yet.
+            </p>
           ) : (
             <p>
               <RefusedStamp>Not allowed</RefusedStamp>{" "}
@@ -751,7 +764,9 @@ export function ReceiptPage({ kind }: { kind: "vote" | "sale" | "buy" | "vault" 
         <h1>{kind === "vote" ? "Vote records" : `${kind[0].toUpperCase()}${kind.slice(1)} records`}</h1>
       </header>
       {results.length === 0 ? (
-        <p className={s.muted}>No matching receipt data is exposed by the current public testnet views.</p>
+        <p className={s.muted}>
+          Vote receipts are on the public record. Sale, purchase, and vault receipts aren't recorded.
+        </p>
       ) : results.map(({ seatId, result }) => (
         <RuledSection key={`${seatId}-${result.proposal_id}`} title={`Proposal ${result.proposal_id}`}>
           <dl className={s.facts}>
