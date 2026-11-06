@@ -1,0 +1,336 @@
+.page {
+  max-width: var(--content-member);
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-4) var(--space-12);
+  border-top: 8px solid var(--surface-masthead);
+}
+.pageWide {
+  max-width: var(--content-club);
+}
+.pageHead {
+  margin-bottom: var(--space-8);
+}
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-brass);
+  margin: 0 0 var(--space-2);
+}
+.lede {
+  font-size: var(--text-h4);
+  color: var(--color-ink-soft);
+  max-width: 56ch;
+}
+.muted {
+  color: var(--color-ink-soft);
+  font-size: var(--text-md);
+}
+.seatBig {
+  font-family: var(--font-display);
+  font-size: 1.6em;
+  color: var(--color-brass);
+}
+
+.facts {
+  margin: 0 0 var(--space-4);
+}
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+  margin-top: var(--space-4);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+  font-size: var(--text-sm);
+  color: var(--color-ink-soft);
+  margin: var(--space-3) 0 0;
+}
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.swatch {
+  width: 12px;
+  height: 12px;
+  display: inline-block;
+}
+.swatchHeld {
+  background: var(--color-chamber);
+}
+.swatchEmpty {
+  background: var(--color-stone);
+  border: 1px solid var(--color-line);
+}
+.swatchMine {
+  background: var(--color-brass);
+}
+
+.gives {
+  margin: 0;
+  padding-left: var(--space-5);
+}
+.gives li {
+  margin-bottom: var(--space-2);
+}
+
+.decisions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.decision {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-line);
+}
+.decisionMain {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.decisionTitle {
+  font-weight: 700;
+}
+.decisionDetail {
+  font-size: var(--text-md);
+  color: var(--color-ink-soft);
+}
+.decisionTime {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-ink-soft);
+}
+.decisionSide {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
+  flex: none;
+}
+.txLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--color-chamber);
+  text-decoration: none;
+}
+.txLink:hover {
+  text-decoration: underline;
+}
+
+.listings {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.listing {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-line);
+}
+.listingRight {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.price {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: 700;
+}
+
+.proposals {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.proposal {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-line);
+  flex-wrap: wrap;
+}
+.proposalTitle {
+  font-weight: 700;
+  color: var(--color-ink);
+}
+.proposalTitle:hover {
+  color: var(--color-chamber);
+}
+
+.briefInput {
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  line-height: 1.6;
+  padding: var(--space-3);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-control);
+  background: var(--color-paper);
+  color: var(--color-ink);
+  resize: vertical;
+}
+.srLabel {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+.sample {
+  font-size: var(--text-md);
+  color: var(--color-ink-soft);
+  margin-top: var(--space-2);
+}
+.note {
+  font-size: var(--text-md);
+  color: var(--color-ink-soft);
+  border-left: 3px solid var(--color-brass);
+  padding-left: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.voteCard {
+  border-left: 3px solid var(--color-chamber);
+  padding-left: var(--space-4);
+}
+.voteChoice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+.voteWord {
+  font-family: var(--font-display);
+  font-size: var(--text-4xl);
+  font-weight: 700;
+}
+.voteApprove {
+  color: var(--color-ink);
+}
+.voteClosed {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--color-line);
+  margin-top: var(--space-4);
+}
+.reason {
+  font-size: var(--text-body);
+  color: var(--color-ink-soft);
+  max-width: 52ch;
+}
+
+.evidence {
+  list-style: none;
+  margin: var(--space-2) 0 var(--space-3);
+  padding: 0;
+}
+.evidence a {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--color-chamber);
+  text-decoration: none;
+}
+.evidence a:hover {
+  text-decoration: underline;
+}
+
+.vaultBox {
+  text-align: center;
+  padding: var(--space-10) var(--space-4);
+}
+.vaultIcon {
+  color: var(--color-chamber);
+  margin-bottom: var(--space-4);
+}
+.vaultDocTitle {
+  font-size: var(--text-h4);
+}
+
+.fieldLabel {
+  display: block;
+  font-size: var(--text-md);
+  font-weight: 700;
+  margin-bottom: var(--space-2);
+  color: var(--color-ink-soft);
+}
+.priceInput {
+  font-family: var(--font-display);
+  font-size: var(--text-3xl);
+  font-weight: 700;
+  width: 10ch;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-control);
+  background: var(--color-paper);
+  color: var(--color-ink);
+  margin-bottom: var(--space-3);
+}
+
+.history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.history li {
+  display: flex;
+  justify-content: space-between;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-line);
+  font-size: var(--text-base);
+}
+
+.stateList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.stateRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-line);
+}
+.stateName {
+  font-weight: 700;
+  min-width: 200px;
+}
+.edgeDemo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 260px;
+}
+
+.licenseText {
+  margin: 0;
+  white-space: pre-wrap;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--color-ink);
+}

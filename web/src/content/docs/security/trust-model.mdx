@@ -1,0 +1,30 @@
+---
+title: Trust model
+summary: Who controls each part of a seat, a vote, and a sale.
+lastVerified: 2026-11-06
+commit: 886500f
+---
+
+## The club
+
+The club's DAO controls admission, sale approval, the model signer, and the levy. Members vote on each of these in the DAO.
+
+## The member
+
+The member controls the brief, can override or cancel a vote in the window, and can sell the seat through an approved sale.
+
+## The delegate
+
+The delegate prepares a vote and signs nothing on the member's behalf beyond its receipt. Its key can request votes and nothing else.
+
+## NEAR AI
+
+NEAR AI's inference service signs each answer. A club registers the signer, so the contract can check receipts against it.
+
+## The keeper
+
+The keeper requests votes and casts expired ones. It can't cast early, override, or move funds.
+
+## The contract
+
+The seat contract and the voter contract enforce the rules: the approved-sale gate, the window, the receipt check, and the payout. A change to any rule needs a new deployment.

@@ -1,0 +1,26 @@
+---
+title: Open the vault
+summary: Open the club vault as a seat holder, and see the content encrypted to your own key.
+lastVerified: 2026-11-06
+commit: 886500f
+---
+
+## What you see
+
+The vault screen shows the seat number and an open button. The page says the club vault opens only for current seat holders.
+
+## What you do
+
+Choose open the vault. The check runs inside secure hardware.
+
+## What Seats does
+
+The vault job checks that your account holds a seat. If it does, it returns the vault content encrypted to a key only your browser holds. If it doesn't, it refuses.
+
+## How you know it worked
+
+The content appears after the check. The receipt shows the seat check and the encrypted return.
+
+## If you are not a holder
+
+You see the refusal: only current seat holders can open the vault. Former members are refused by design. In the testnet run, the former seller's attempt returned `ERR_NO_SEAT`.

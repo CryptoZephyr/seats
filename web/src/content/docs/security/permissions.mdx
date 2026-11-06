@@ -1,0 +1,26 @@
+---
+title: Permissions
+summary: What each key and account can do, and what it can't.
+lastVerified: 2026-11-06
+commit: 886500f
+---
+
+## The delegate key
+
+Limited to requesting votes, with a 1 NEAR allowance. It can't cast early, override, cancel, or move funds. The testnet run confirmed that other methods and direct DAO calls were refused.
+
+## The member account
+
+Can override, cancel, and set the brief. A member can sell the seat, but only through the approved sale.
+
+## The voter account
+
+After setup, the voter account has no full-access key. The old delegate key is removed on resale and a new one is issued with the same limits.
+
+## The seat contract
+
+Can set the voter's controller on a sale and nothing else. It refuses plain transfers.
+
+## The club DAO
+
+Sets the model signer and approves sales through a proposal members can see.

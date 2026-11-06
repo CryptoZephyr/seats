@@ -1,0 +1,34 @@
+---
+title: FAQ
+summary: Short answers about how Seats behaves today.
+lastVerified: 2026-11-06
+commit: 886500f
+---
+
+## Is this on mainnet?
+
+No. Seats runs on NEAR testnet only, with test money.
+
+## Can a seat be transferred directly?
+
+No. The seat contract refuses plain transfers and marketplace listings. A seat moves only through a club-approved sale.
+
+## Can my delegate move my money?
+
+No. Its key can only request votes. It can't move funds.
+
+## Can I change a vote after the deadline?
+
+No. After the window closes, the vote is cast and can't be changed.
+
+## Who can open the vault?
+
+Current seat holders. Former members are refused.
+
+## Is the brief private?
+
+The brief text stays off-chain, held as an OutLayer secret, and the contract stores only its hash. Entering a brief from the browser isn't built yet.
+
+## Why does the site look finished if the wiring isn't built?
+
+The web app is a visual design. The contracts are the part that ran on testnet. See [limitations](/docs/reference/limitations).

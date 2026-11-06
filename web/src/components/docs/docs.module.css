@@ -1,0 +1,110 @@
+.page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-4) var(--space-12);
+}
+.pageHead {
+  border-top: 1px solid var(--color-line);
+  padding-top: var(--space-4);
+  margin-bottom: var(--space-8);
+}
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-soft);
+  margin: 0 0 var(--space-2);
+}
+.lede {
+  color: var(--color-ink-soft);
+  margin: var(--space-3) 0 0;
+  max-width: 60ch;
+}
+.group {
+  margin-bottom: var(--space-8);
+}
+.groupTitle {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: 600;
+  margin: 0 0 var(--space-3);
+}
+.index {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.indexItem {
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-line);
+}
+.indexItem a {
+  font-weight: 700;
+  color: var(--color-ink);
+  text-decoration: none;
+}
+.indexItem a:hover {
+  color: var(--color-chamber);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.indexItem p {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-md);
+  color: var(--color-ink-soft);
+}
+.article {
+  font-size: var(--text-body);
+  line-height: 1.6;
+}
+.h2 {
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: 600;
+  margin: var(--space-8) 0 var(--space-3);
+}
+.h3 {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  margin: var(--space-6) 0 var(--space-2);
+}
+.p {
+  margin: 0 0 var(--space-3);
+  max-width: 65ch;
+}
+.list {
+  margin: 0 0 var(--space-3);
+  padding-left: var(--space-5);
+  max-width: 65ch;
+}
+.item {
+  margin-bottom: var(--space-1);
+}
+.code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
+}
+.pre {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  background: var(--surface-inset);
+  padding: var(--space-3);
+  overflow-x: auto;
+  margin: 0 0 var(--space-4);
+}
+.meta {
+  margin-top: var(--space-10);
+  font-size: var(--text-sm);
+  color: var(--color-ink-soft);
+}
+.pager {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-top: var(--space-6);
+  border-top: 1px solid var(--color-line);
+  padding-top: var(--space-4);
+  flex-wrap: wrap;
+}

@@ -1,0 +1,26 @@
+---
+title: Write your brief
+summary: Tell your delegate what to back, what to reject, and any limits, in plain words.
+lastVerified: 2026-11-06
+commit: 886500f
+---
+
+## What you see
+
+The brief screen has a text box and an example line. It also shows the brief's fingerprint, which is the hash stored on-chain.
+
+## What you do
+
+Write what to back and what to reject. Keep it short, and include any hard limit, for example "reject any spend over 50 NEAR". Save it.
+
+## What the delegate uses it for
+
+The delegate reads each proposal against the brief and writes a vote and a reason. It can't change the brief.
+
+## How you know it worked
+
+The fingerprint changes when you save a new brief. The old fingerprint still proves which brief an earlier vote used.
+
+## If nothing changes
+
+Check that the brief saved, then open the pending vote. If the vote still shows the old reason, it was prepared before your change. Override it inside the window if you want a different result.

@@ -1,0 +1,36 @@
+---
+title: Limitations
+summary: Current boundaries, and what Seats doesn't do yet.
+lastVerified: 2026-11-06
+commit: 886500f
+---
+
+## Testnet only
+
+Seats has only run on NEAR testnet with test money. It hasn't been deployed to mainnet, and it hasn't been audited.
+
+## The web app is a design
+
+The app in `web/` is a visual design with sample data. It doesn't connect to a wallet, a backend, or the contracts. The sale and listing numbers shown there are illustrative and aren't from the testnet runs.
+
+## Sign-in
+
+The design has members join with an email. That sign-in flow isn't built.
+
+## Brief entry
+
+In the testnet runs, the brief was held as an OutLayer secret, and the contract stored only its hash. Writing and saving a brief from the browser isn't built yet.
+
+## Hardware attestation
+
+The TDX quote and the GPU evidence are checked off-chain before a club registers the model signer. The contract checks the receipt against that signer, but it can't check the hardware quotes itself.
+
+The hardware measurement covers the public OS. It doesn't show which inference containers served a given answer.
+
+## The keeper
+
+The keeper service runs on a free hosting tier, and anyone can cast a vote after its deadline. A slow keeper can delay a cast, but it can't cast early or change a vote.
+
+## Demand
+
+Real club demand hasn't been tested. The target is one real club and three operator quotes.

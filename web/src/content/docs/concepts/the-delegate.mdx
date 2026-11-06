@@ -1,0 +1,28 @@
+---
+title: The delegate
+summary: Your delegate votes from your brief, gives a reason, and signs a receipt the contract checks before the vote counts.
+lastVerified: 2026-11-06
+commit: 886500f
+---
+
+## The brief
+
+The brief is short plain text: what to back, what to reject, and any limits. The contract stores only a SHA-256 hash of the brief. The brief text itself isn't published on-chain, so you can later show which brief was used.
+
+## What the delegate does
+
+For each open proposal, the delegate reads the proposal and prepares a vote from your brief. It also writes a one-line reason. It can't cast early, can't override you, and can't move funds.
+
+## Hard limits
+
+Limits like a spend cap are checked by code on the structured proposal, not by the model. A spend over the cap can't be approved by the model's judgment alone.
+
+## The receipt
+
+The model's answer is signed by NEAR AI's inference service. The voter contract rebuilds the signed text, recovers the signer, and checks it against the club's registered model signer. It also rejects a receipt it has already seen.
+
+Hardware attestation uses one approved line: Verified public OS on genuine Intel and NVIDIA hardware.
+
+## What the receipt doesn't prove
+
+The signer is shared by every instance of the model, so a matching signer doesn't prove which machine answered. The hardware check covers the public OS, not the model's serving containers. See [limitations](/docs/reference/limitations).

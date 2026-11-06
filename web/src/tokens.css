@@ -1,0 +1,56 @@
+:root {
+  --color-chamber: #1f4d3a;
+  --color-chamber-hover: #183d2e;
+  --color-stone: #f2f3f0;
+  --color-white: #ffffff;
+  --color-paper: #fbfbf8;
+  --color-ink: #1a1f1c;
+  --color-ink-soft: #4a524d;
+  --color-brass: #8a6216;
+  --color-line: #d4d8d2;
+  --color-approved: #1e5b2e;
+  --color-approved-tint: #e3f1e6;
+  --color-wine: #7a1f2b;
+  --color-wine-tint: #f9e9eb;
+  --color-rust: #9a3412;
+  --color-rust-tint: #fdf0e8;
+
+  --text-2xs: 11px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-md: 14px;
+  --text-base: 15px;
+  --text-body: 16px;
+  --text-lg: 17px;
+  --text-h4: 18px;
+  --text-xl: 20px;
+  --text-2xl: 22px;
+  --text-3xl: 24px;
+  --text-4xl: 28px;
+
+  --font-display: "Besley", Georgia, "Times New Roman", serif;
+  --font-body: "Atkinson Hyperlegible Next", "Segoe UI", sans-serif;
+  --font-mono: "Atkinson Hyperlegible Mono", "Courier New", monospace;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  --radius-control: 4px;
+  --content-member: 720px;
+  --content-club: 1080px;
+  --motion: 200ms;
+  --ease-out: ease-out;
+
+  --surface-masthead: var(--color-chamber);
+  --surface-inset: #e6ebe7;
+  --strip-bg: var(--color-chamber);
+  --strip-text: var(--color-stone);
+}
