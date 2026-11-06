@@ -97,7 +97,6 @@ async function allProposals(proposalBound: number): Promise<ProposalView[]> {
       limit,
     });
     proposals.push(...page);
-    if (page.length < limit) break;
   }
   return proposals;
 }
