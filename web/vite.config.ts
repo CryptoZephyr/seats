@@ -5,6 +5,11 @@ import remarkMdxFrontmatter from "remark-mdx-frontmatter";
 import { defineConfig } from "vite";
 
 export default defineConfig({
+  define: {
+    global: "globalThis",
+    "process.env": "{}",
+    "process.browser": "true",
+  },
   plugins: [
     mdx({ remarkPlugins: [remarkFrontmatter, remarkMdxFrontmatter] }),
     react(),

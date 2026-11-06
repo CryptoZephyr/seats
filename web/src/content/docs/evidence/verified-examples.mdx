@@ -1,8 +1,8 @@
 ---
 title: Verified examples
 summary: The recorded testnet runs, what each one proves, and the limits on each.
-lastVerified: 2026-11-06
-commit: 886500f
+lastVerified: 2026-11-07
+commit: b8daa5d
 ---
 
 ## Delegate vote on an 80 NEAR venue
@@ -15,7 +15,7 @@ The cast transaction isn't captured in the record.
 
 The delegate prepared Approve on a 0.01 NEAR snacks proposal. The member overrode to Reject inside the window. A later override returned `ERR_WINDOW_CLOSED`.
 
-The cast landed after the DAO's 300 second period because of RPC timeouts. The DAO status is recorded as Expired, and the overridden Reject is the vote on record.
+The cast landed after the DAO's period because of RPC timeouts. That run was under the earlier 300 second period, and the live DAO now uses 600 seconds. The DAO status is recorded as Expired, and the overridden Reject is the vote on record.
 
 ## Approved resale
 

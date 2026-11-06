@@ -64,6 +64,23 @@
 .nav a:hover {
   border-bottom-color: var(--color-brass);
 }
+@media (max-width: 520px) {
+  .header {
+    flex-direction: column;
+    align-items: center;
+  }
+  .nav {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-2) var(--space-4);
+  }
+  .nav > a,
+  .nav > button {
+    flex: none;
+    white-space: nowrap;
+  }
+}
 
 .footer {
   margin-top: var(--space-16);
@@ -397,6 +414,28 @@
   color: var(--color-ink);
 }
 
+.statusCasting,
+.statusCastRetry {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 700;
+  font-size: var(--text-md);
+}
+.statusCasting {
+  color: var(--color-chamber);
+}
+.statusCastRetry {
+  color: var(--color-wine);
+}
+.castRetryShape {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border: 1px solid currentColor;
+  background: transparent;
+}
+
 .resultStamp {
   display: inline-block;
   font-family: var(--font-body);
@@ -422,6 +461,21 @@
   background: transparent;
   border-left: 3px dashed var(--color-ink-soft);
   border-bottom-style: dashed;
+}
+.votingClosed {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-ink-soft);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.votingClosedShape {
+  width: 9px;
+  height: 9px;
+  border: 1.5px dashed currentColor;
 }
 
 .refusedStamp {
@@ -534,6 +588,30 @@
   color: var(--color-chamber);
   text-decoration: none;
   overflow-wrap: anywhere;
+}
+.hashValue {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 100%;
+}
+.hashText {
+  white-space: nowrap;
+}
+.copyButton {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-ink-soft);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.copyButton:hover,
+.copyButton:focus-visible {
+  color: var(--color-ink);
 }
 a.receiptTx:hover {
   text-decoration: underline;

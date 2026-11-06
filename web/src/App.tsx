@@ -13,6 +13,7 @@ import {
 } from "./screens";
 import { DocsRoute } from "./components/docs/DocPage";
 import { LicensePage, PolicyPage } from "./legal";
+import { WalletProvider } from "./chain/WalletProvider";
 import { SiteFooter, SiteHeader, TestnetStrip } from "./ui";
 
 type Route =
@@ -20,6 +21,7 @@ type Route =
   | "seat"
   | "brief"
   | "vote"
+  | "vote-proposal"
   | "vote-closed"
   | "aireceipt"
   | "vault"
@@ -34,9 +36,21 @@ type Route =
   | "license"
   | "policy";
 
-function parseRoute(): Route {
+function parseRoute(): { route: Route; proposalId?: number; tokenId?: string } {
   const h = window.location.hash.replace(/^#\/?/, "");
-  if (h === "docs" || h.startsWith("docs/")) return "docs";
+  const proposalSeatVote = h.match(/^vote\/(\d+)\/([^/]+)$/);
+  if (proposalSeatVote) {
+    return {
+      route: "vote-proposal",
+      proposalId: Number(proposalSeatVote[1]),
+      tokenId: proposalSeatVote[2],
+    };
+  }
+  const proposalVote = h.match(/^vote\/(\d+)$/);
+  if (proposalVote) {
+    return { route: "vote-proposal", proposalId: Number(proposalVote[1]) };
+  }
+  if (h === "docs" || h.startsWith("docs/")) return { route: "docs" };
   const map: Record<string, Route> = {
     "": "club",
     club: "club",
@@ -57,11 +71,19 @@ function parseRoute(): Route {
     license: "license",
     policy: "policy",
   };
-  return map[h] ?? "club";
+  return { route: map[h] ?? "club" };
 }
 
 export function App() {
-  const [route, setRoute] = useState<Route>(parseRoute);
+  return (
+    <WalletProvider>
+      <AppContent />
+    </WalletProvider>
+  );
+}
+
+function AppContent() {
+  const [route, setRoute] = useState(parseRoute);
   useEffect(() => {
     const onHash = () => setRoute(parseRoute());
     window.addEventListener("hashchange", onHash);
@@ -69,7 +91,7 @@ export function App() {
   }, []);
 
   let page: JSX.Element;
-  switch (route) {
+  switch (route.route) {
     case "seat":
       page = <MySeat />;
       break;
@@ -78,6 +100,9 @@ export function App() {
       break;
     case "vote":
       page = <ProposalVote />;
+      break;
+    case "vote-proposal":
+      page = <ProposalVote proposalId={route.proposalId} tokenId={route.tokenId} />;
       break;
     case "vote-closed":
       page = <ProposalVote closed />;

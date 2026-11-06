@@ -60,9 +60,9 @@ export function PolicyPage() {
       </RuledSection>
       <RuledSection title="What the site collects">
         <p>
-          The site doesn't use analytics, cookies, or trackers, and it makes no requests to third-party
-          servers. Fonts are bundled with the site. Links to the NEAR testnet explorer open in a new tab and
-          follow that site's own policy.
+          The site doesn't use analytics, cookies, or trackers. It makes read-only requests to the FastNear
+          testnet RPC to show public contract data. Wallet connections use the wallet you choose. Fonts are
+          bundled with the site.
         </p>
       </RuledSection>
       <RuledSection title="What is public on-chain">
@@ -75,12 +75,6 @@ export function PolicyPage() {
         <p>
           In the testnet build, the brief text is held as an OutLayer secret and isn't published. Vault content
           comes back encrypted to the holder's own key.
-        </p>
-      </RuledSection>
-      <RuledSection title="Sample data">
-        <p>
-          The screens in this build show sample names, clubs, and numbers. They don't describe real members or
-          real clubs.
         </p>
       </RuledSection>
       <RuledSection title="Reporting a security issue">

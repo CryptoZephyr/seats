@@ -5,6 +5,21 @@
   height: auto;
   margin: 0 auto;
 }
+.planSingle {
+  max-width: 180px;
+}
+.planFew {
+  max-width: 360px;
+}
+.voteLabels {
+  margin-top: var(--space-2);
+  color: var(--color-ink-soft);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+.voteLabels p {
+  margin: 0;
+}
 .seat {
   stroke-width: 1.5;
 }

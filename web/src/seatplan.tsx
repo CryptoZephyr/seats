@@ -1,4 +1,3 @@
-import { MEMBERS } from "./data";
 import styles from "./seatplan.module.css";
 
 export type VoteKind = "tick" | "cross" | "ring";
@@ -14,11 +13,12 @@ const ROWS = [
   { radius: 120, count: 3, from: 148, to: 32 },
 ];
 
-function seatPositions() {
+function seatPositions(count: number) {
   const seats: { x: number; y: number; rot: number }[] = [];
-  for (const row of ROWS) {
-    for (let i = 0; i < row.count; i++) {
-      const t = row.count === 1 ? 0.5 : i / (row.count - 1);
+  let remaining = count;
+  const addRow = (row: (typeof ROWS)[number], rowCount: number) => {
+    for (let i = 0; i < rowCount; i++) {
+      const t = rowCount === 1 ? 0.5 : i / (rowCount - 1);
       const angle = row.from + t * (row.to - row.from);
       const rad = (angle * Math.PI) / 180;
       seats.push({
@@ -27,11 +27,30 @@ function seatPositions() {
         rot: angle - 90,
       });
     }
+  };
+
+  for (const row of [...ROWS].reverse()) {
+    const rowCount = Math.min(remaining, row.count);
+    if (rowCount === 0) break;
+    addRow(row, rowCount);
+    remaining -= rowCount;
+  }
+
+  let rowIndex = ROWS.length;
+  while (remaining > 0) {
+    const row = {
+      radius: Math.max(42, 120 - (rowIndex - 2) * 24),
+      count: 5,
+      from: 148,
+      to: 32,
+    };
+    const rowCount = Math.min(remaining, row.count);
+    addRow(row, rowCount);
+    remaining -= rowCount;
+    rowIndex += 1;
   }
   return seats;
 }
-
-const POSITIONS = seatPositions();
 
 function markShape(kind: VoteKind) {
   switch (kind) {
@@ -52,31 +71,70 @@ export function VoteMark({ kind, size = 16 }: { kind: VoteKind; size?: number })
   );
 }
 
-export function SeatPlan() {
-  const held = MEMBERS.filter((m) => m.state === "held").length;
+export interface SeatPlanSeat {
+  seat: string;
+  ownerId: string;
+  lastVote?: {
+    kind: VoteKind;
+    vote: string;
+    proposalId: number;
+  };
+}
+
+export function SeatPlan({
+  seats,
+  viewerAccountId,
+}: {
+  seats: SeatPlanSeat[];
+  viewerAccountId: string | null;
+}) {
+  const positions = seatPositions(seats.length);
+  const viewBox =
+    seats.length === 1
+      ? "160 80 180 100"
+      : seats.length <= 5
+        ? "70 35 360 190"
+        : "0 0 500 250";
+  const planClass =
+    seats.length === 1
+      ? styles.planSingle
+      : seats.length <= 5
+        ? styles.planFew
+        : "";
+  const seatsWithVotes = seats
+    .filter((seat) => seat.lastVote)
+    .map((seat) => ({ ...seat, lastVote: seat.lastVote! }));
   return (
     <>
       <svg
-        viewBox="0 0 500 250"
+        viewBox={viewBox}
         role="img"
-        aria-label={`Hemicycle seat plan, ${held} of ${MEMBERS.length} seats held`}
-        className={styles.plan}
+        aria-label={`Hemicycle seat plan, ${seats.length} ${
+          seats.length === 1 ? "seat" : "seats"
+        } held`}
+        className={`${styles.plan} ${planClass}`}
       >
-        {POSITIONS.map((p, i) => {
-          const m = MEMBERS[i];
-          if (!m) return null;
-          const isHeld = m.state === "held";
-          const isMine = m.name === "Ada";
-          const cls = [styles.seat, isHeld ? styles.seatHeld : styles.seatEmpty, isMine ? styles.seatMine : ""].join(" ");
+        {positions.map((p, i) => {
+          const seat = seats[i];
+          const isMine = seat.ownerId === viewerAccountId;
+          const cls = [styles.seat, styles.seatHeld, isMine ? styles.seatMine : ""].join(" ");
+          const voteLabel = seat.lastVote
+            ? `Last vote: ${seat.lastVote.vote} on proposal ${seat.lastVote.proposalId}`
+            : "";
           return (
-            <g key={m.seat} transform={`translate(${p.x} ${p.y})`}>
+            <g
+              key={seat.seat}
+              transform={`translate(${p.x} ${p.y})`}
+              aria-label={`Seat ${seat.seat}${voteLabel ? `. ${voteLabel}` : ""}`}
+            >
+              {voteLabel && <title>{voteLabel}</title>}
               <rect x={-15} y={-15} width={30} height={30} className={cls} transform={`rotate(${p.rot})`} />
               <text x={0} y={4} textAnchor="middle" className={styles.seatNumber}>
-                {m.seat}
+                {seat.seat}
               </text>
-              {isHeld && m.mark && (
+              {seat.lastVote && (
                 <g transform="translate(0 -22)" className={styles.mark}>
-                  {markShape(m.mark)}
+                  {markShape(seat.lastVote.kind)}
                 </g>
               )}
             </g>
@@ -84,13 +142,25 @@ export function SeatPlan() {
         })}
       </svg>
       <ul className="sr-only">
-        {MEMBERS.map((m) => (
-          <li key={m.seat}>
-            Seat {m.seat}, {m.state === "held" ? "held" : "open"}
-            {m.state === "held" && m.mark ? `, voted ${VOTE_WORD[m.mark]}` : ""}
+        {seats.map((seat) => (
+          <li key={seat.seat}>
+            Seat {seat.seat}, held by {seat.ownerId}
+            {seat.lastVote
+              ? `, Last vote: ${VOTE_WORD[seat.lastVote.kind]} on proposal ${seat.lastVote.proposalId}`
+              : ""}
           </li>
         ))}
       </ul>
+      {seatsWithVotes.length > 0 && (
+        <div className={styles.voteLabels}>
+          {seatsWithVotes.map((seat) => (
+            <p key={seat.seat}>
+              {seatsWithVotes.length > 1 && `Seat ${seat.seat}. `}
+              Last vote: {VOTE_WORD[seat.lastVote.kind]} on proposal {seat.lastVote.proposalId}
+            </p>
+          ))}
+        </div>
+      )}
     </>
   );
 }

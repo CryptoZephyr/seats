@@ -1,5 +1,6 @@
-import type { CSSProperties, ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { Button } from "react-aria-components";
+import { useViewer } from "./chain/WalletProvider";
 import styles from "./ui.module.css";
 import arrowRaw from "./assets/icons/arrow.svg?raw";
 import externalRaw from "./assets/icons/external.svg?raw";
@@ -39,6 +40,7 @@ export function TestnetStrip() {
 }
 
 export function SiteHeader() {
+  const viewer = useViewer();
   return (
     <header className={styles.header}>
       <a className={styles.brand} href="#/club" aria-label="Seats home">
@@ -49,6 +51,33 @@ export function SiteHeader() {
         <a href="#/club">Club</a>
         <a href="#/seat">My seat</a>
         <a href="#/docs">Docs</a>
+        {!viewer.accountId && viewer.error ? (
+          <button
+            type="button"
+            className={styles.textButton}
+            onClick={viewer.retry}
+          >
+            Retry wallet
+          </button>
+        ) : viewer.accountId ? (
+          <button
+            type="button"
+            className={styles.textButton}
+            onClick={() => void viewer.signOut()}
+            disabled={!viewer.walletReady}
+          >
+            Sign out
+          </button>
+        ) : (
+          <button
+            type="button"
+            className={styles.textButton}
+            onClick={viewer.signIn}
+            disabled={!viewer.walletReady}
+          >
+            {viewer.walletReady ? "Sign in" : "Loading wallet"}
+          </button>
+        )}
       </nav>
     </header>
   );
@@ -164,13 +193,15 @@ export function GraphicButton({
   glyph,
   children,
   onClick,
+  disabled = false,
 }: {
   glyph: GlyphName;
   children: ReactNode;
-  onClick?: () => void;
+  onClick: () => void;
+  disabled?: boolean;
 }) {
   return (
-    <Button className={styles.graphicButton} onPress={onClick}>
+    <Button className={styles.graphicButton} onPress={onClick} isDisabled={disabled}>
       <span className={styles.graphicGlyph} data-glyph={glyph} aria-hidden="true">
         <Glyph name={glyph} />
       </span>
@@ -179,25 +210,24 @@ export function GraphicButton({
   );
 }
 
-export function TextButton({
-  children,
-  onClick,
-  href,
-}: {
+type TextButtonProps = {
   children: ReactNode;
-  onClick?: () => void;
-  href?: string;
-}) {
-  if (href) {
+} & (
+  | { href: string; onClick?: never }
+  | { href?: never; onClick: () => void }
+);
+
+export function TextButton(props: TextButtonProps) {
+  if ("href" in props) {
     return (
-      <a className={styles.textButton} href={href}>
-        {children}
+      <a className={styles.textButton} href={props.href}>
+        {props.children}
       </a>
     );
   }
   return (
-    <button type="button" className={styles.textButton} onClick={onClick}>
-      {children}
+    <button type="button" className={styles.textButton} onClick={props.onClick}>
+      {props.children}
     </button>
   );
 }
@@ -260,14 +290,22 @@ export function ErrorStatus({ children, onRetry }: { children: ReactNode; onRetr
   );
 }
 
-export function PendingStatus({ deadline, countdown }: { deadline: string; countdown: string }) {
+export function PendingStatus({
+  deadline,
+  countdown,
+  title,
+}: {
+  deadline: string;
+  countdown: string;
+  title?: string;
+}) {
   return (
     <span className={styles.statusPending} role="status" aria-live="polite">
       <span className={styles.statusWord}>Pending</span>
       <span className={styles.drainBar} aria-hidden="true">
         <span className={styles.drainFill} />
       </span>
-      <span className={styles.statusMeta}>
+      <span className={styles.statusMeta} title={title}>
         Closes at {deadline} · {countdown} left
       </span>
     </span>
@@ -292,7 +330,33 @@ export function CastStatus() {
   );
 }
 
-export function ResultStamp({ result }: { result: "Approved" | "Rejected" | "Expired" }) {
+export function CastingStatus() {
+  return (
+    <span className={styles.statusCasting} role="status" aria-live="polite">
+      <span className={styles.loadingSeats} aria-hidden="true">
+        <i />
+        <i />
+        <i />
+      </span>
+      Casting now
+    </span>
+  );
+}
+
+export function CastRetryStatus() {
+  return (
+    <span className={styles.statusCastRetry} role="status" aria-live="polite">
+      <span className={styles.castRetryShape} aria-hidden="true" />
+      Cast failed, will retry
+    </span>
+  );
+}
+
+export function ResultStamp({
+  result,
+}: {
+  result: "Approved" | "Rejected" | "Expired" | "Removed" | "Moved" | "Failed";
+}) {
   const cls =
     result === "Approved"
       ? styles.resultApproved
@@ -304,6 +368,15 @@ export function ResultStamp({ result }: { result: "Approved" | "Rejected" | "Exp
     <span className={`${styles.resultStamp} ${cls}`} role="status" aria-live="polite">
       {tick && <span aria-hidden="true">✓ </span>}
       {result}
+    </span>
+  );
+}
+
+export function VotingClosedStatus() {
+  return (
+    <span className={styles.votingClosed} role="status" aria-live="polite">
+      <span className={styles.votingClosedShape} aria-hidden="true" />
+      Voting closed
     </span>
   );
 }
@@ -362,20 +435,61 @@ export function ReceiptSteps({ steps }: { steps: { label: string; tx?: string }[
         <li key={step.label} className={styles.receiptStep}>
           <span className={styles.receiptLabel}>{step.label}</span>
           {step.tx && (
-            <a
-              className={`${styles.receiptTx} mono`}
+            <HashValue
+              value={step.tx}
+              label="transaction hash"
               href={`https://testnet.nearblocks.io/tx/${step.tx}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {step.tx.slice(0, 8)}…{step.tx.slice(-6)}
-              <span className={styles.srOnly}> (opens explorer)</span>
-              <Icon name="external" size={12} />
-            </a>
+            />
           )}
         </li>
       ))}
     </ol>
+  );
+}
+
+export function HashValue({
+  value,
+  label,
+  href,
+}: {
+  value: string;
+  label: string;
+  href?: string;
+}) {
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
+  const shortValue = value.length > 14
+    ? `${value.slice(0, 8)}…${value.slice(-6)}`
+    : value;
+
+  async function copyValue() {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopyState("copied");
+    } catch {
+      setCopyState("error");
+    }
+  }
+
+  return (
+    <span className={styles.hashValue}>
+      {href ? (
+        <a className={`${styles.receiptTx} mono`} href={href} target="_blank" rel="noreferrer">
+          <span title={value}>{shortValue}</span>
+          <span className={styles.srOnly}> (opens explorer)</span>
+          <Icon name="external" size={12} />
+        </a>
+      ) : (
+        <span className={`${styles.hashText} mono`} title={value}>{shortValue}</span>
+      )}
+      <button
+        type="button"
+        className={styles.copyButton}
+        aria-label={`Copy ${label}`}
+        onClick={() => void copyValue()}
+      >
+        {copyState === "copied" ? "Copied" : copyState === "error" ? "Copy failed" : "Copy"}
+      </button>
+    </span>
   );
 }
 
