@@ -105,11 +105,11 @@ function ProposalList({ proposals, periodNs }: { proposals: ProposalView[]; peri
   );
 }
 
-function latestVoteMark(seat: SeatSnapshot): VoteKind | undefined {
-  const latest = seat.results.results.at(-1);
-  if (latest?.vote === "Approve") return "tick";
-  if (latest?.vote === "Reject") return "cross";
-  if (latest?.vote === "Abstain") return "ring";
+function latestVote(seat: SeatSnapshot): { kind: VoteKind; vote: string; proposalId: number } | undefined {
+  const latest = [...seat.results.results].sort((a, b) => b.proposal_id - a.proposal_id)[0];
+  if (latest?.vote === "Approve") return { kind: "tick", vote: latest.vote, proposalId: latest.proposal_id };
+  if (latest?.vote === "Reject") return { kind: "cross", vote: latest.vote, proposalId: latest.proposal_id };
+  if (latest?.vote === "Abstain") return { kind: "ring", vote: latest.vote, proposalId: latest.proposal_id };
   return undefined;
 }
 
@@ -171,8 +171,10 @@ export function ClubPage() {
   const seats = data.seats.map((seat) => ({
     seat: seat.token.token_id,
     ownerId: seat.token.owner_id,
-    mark: latestVoteMark(seat),
+    lastVote: latestVote(seat),
   }));
+  const hasMine = Boolean(viewer.accountId && seats.some((seat) => seat.ownerId === viewer.accountId));
+  const voteKinds = new Set(seats.map((seat) => seat.lastVote?.kind).filter(Boolean));
 
   return (
     <main className={`${s.page} ${s.pageWide}`}>
@@ -204,10 +206,10 @@ export function ClubPage() {
             <SeatPlan seats={seats} viewerAccountId={viewer.accountId} />
             <p className={s.legend}>
               <span><i className={`${s.swatch} ${s.swatchHeld}`} /> Held</span>
-              <span><i className={`${s.swatch} ${s.swatchMine}`} /> Yours</span>
-              <span><VoteMark kind="tick" size={14} /> Approve</span>
-              <span><VoteMark kind="cross" size={14} /> Reject</span>
-              <span><VoteMark kind="ring" size={14} /> Abstain</span>
+              {hasMine && <span><i className={`${s.swatch} ${s.swatchMine}`} /> Yours</span>}
+              {voteKinds.has("tick") && <span><VoteMark kind="tick" size={14} /> Approve</span>}
+              {voteKinds.has("cross") && <span><VoteMark kind="cross" size={14} /> Reject</span>}
+              {voteKinds.has("ring") && <span><VoteMark kind="ring" size={14} /> Abstain</span>}
             </p>
           </>
         )}
