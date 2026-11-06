@@ -51,7 +51,15 @@ export function SiteHeader() {
         <a href="#/club">Club</a>
         <a href="#/seat">My seat</a>
         <a href="#/docs">Docs</a>
-        {viewer.accountId ? (
+        {!viewer.accountId && viewer.error ? (
+          <button
+            type="button"
+            className={styles.textButton}
+            onClick={viewer.retry}
+          >
+            Retry wallet
+          </button>
+        ) : viewer.accountId ? (
           <button
             type="button"
             className={styles.textButton}
@@ -67,7 +75,7 @@ export function SiteHeader() {
             onClick={viewer.signIn}
             disabled={!viewer.walletReady}
           >
-            Sign in
+            {viewer.walletReady ? "Sign in" : "Loading wallet"}
           </button>
         )}
       </nav>
@@ -188,7 +196,7 @@ export function GraphicButton({
 }: {
   glyph: GlyphName;
   children: ReactNode;
-  onClick?: () => void;
+  onClick: () => void;
 }) {
   return (
     <Button className={styles.graphicButton} onPress={onClick}>
@@ -200,25 +208,24 @@ export function GraphicButton({
   );
 }
 
-export function TextButton({
-  children,
-  onClick,
-  href,
-}: {
+type TextButtonProps = {
   children: ReactNode;
-  onClick?: () => void;
-  href?: string;
-}) {
-  if (href) {
+} & (
+  | { href: string; onClick?: never }
+  | { href?: never; onClick: () => void }
+);
+
+export function TextButton(props: TextButtonProps) {
+  if ("href" in props) {
     return (
-      <a className={styles.textButton} href={href}>
-        {children}
+      <a className={styles.textButton} href={props.href}>
+        {props.children}
       </a>
     );
   }
   return (
-    <button type="button" className={styles.textButton} onClick={onClick}>
-      {children}
+    <button type="button" className={styles.textButton} onClick={props.onClick}>
+      {props.children}
     </button>
   );
 }
@@ -313,7 +320,11 @@ export function CastStatus() {
   );
 }
 
-export function ResultStamp({ result }: { result: "Approved" | "Rejected" | "Expired" }) {
+export function ResultStamp({
+  result,
+}: {
+  result: "Approved" | "Rejected" | "Expired" | "Removed" | "Moved" | "Failed";
+}) {
   const cls =
     result === "Approved"
       ? styles.resultApproved

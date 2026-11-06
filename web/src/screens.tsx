@@ -1,30 +1,20 @@
-import type { JSX } from "react";
-import {
-  AI_RECEIPT,
-  CLUB,
-  EXPLORER,
-  LISTINGS,
-  ME,
-  OPEN_PROPOSALS,
-  PENDING_VOTE,
-  RECENT_DECISIONS,
-  SALE,
-  SALE_TX_APPROVE,
-  SALE_TX_BUY,
-  VAULT,
-} from "./data";
-import { SeatPlan, VoteMark } from "./seatplan";
+import { useEffect, useState, type JSX } from "react";
+import { chainConfig } from "./chain/config";
+import type { SeatSnapshot } from "./chain/club";
+import { useClubData } from "./chain/useClubData";
+import { useViewer } from "./chain/WalletProvider";
+import type { ProposalView } from "./chain/types";
+import { SeatPlan, VoteMark, type VoteKind } from "./seatplan";
 import { useMockRun } from "./useMockRun";
 import {
   CastStatus,
+  CheckedStamp,
   ErrorStatus,
   LoadingStatus,
   SuccessStatus,
-  CheckedStamp,
   Fact,
   GraphicButton,
   Icon,
-  MoneySplit,
   OverriddenStatus,
   PendingStatus,
   ReceiptSteps,
@@ -36,13 +26,158 @@ import {
 } from "./ui";
 import s from "./screens.module.css";
 
+type ClubDataState = ReturnType<typeof useClubData>;
+
+function ReadPageState({ state, retry }: { state: ClubDataState; retry: () => void }) {
+  if (state.status === "ready") return null;
+  return (
+    <main className={s.page}>
+      {state.status === "loading" ? (
+        <LoadingStatus>Reading NEAR testnet views…</LoadingStatus>
+      ) : (
+        <ErrorStatus onRetry={retry}>{state.error.message}</ErrorStatus>
+      )}
+    </main>
+  );
+}
+
+function proposalKindName(proposal: ProposalView): string {
+  if (typeof proposal.kind === "string") return proposal.kind;
+  const name = Object.keys(proposal.kind)[0] ?? "Unknown";
+  return name.replace(/([a-z])([A-Z])/g, "$1 $2");
+}
+
+function submittedAt(value: string): string {
+  return new Date(Number(BigInt(value) / 1_000_000n)).toLocaleString();
+}
+
+function ProposalDeadline({ deadlineNs }: { deadlineNs: bigint }) {
+  const deadlineMs = Number(deadlineNs / 1_000_000n);
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const remaining = Math.max(0, Math.floor((deadlineMs - now) / 1000));
+  const countdown = `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")}`;
+  const deadline = new Date(deadlineMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return <PendingStatus deadline={deadline} countdown={countdown} />;
+}
+
+function ProposalStatus({
+  proposal,
+  periodNs,
+}: {
+  proposal: ProposalView;
+  periodNs: string;
+}) {
+  if (proposal.status === "InProgress") {
+    return (
+      <ProposalDeadline
+        deadlineNs={BigInt(proposal.submission_time) + BigInt(periodNs)}
+      />
+    );
+  }
+  return <ResultStamp result={proposal.status} />;
+}
+
+function ProposalList({ proposals, periodNs }: { proposals: ProposalView[]; periodNs: string }) {
+  if (proposals.length === 0) return <p className={s.muted}>No proposals have been submitted.</p>;
+  return (
+    <ul className={s.proposals}>
+      {proposals.map((proposal) => (
+        <li key={proposal.id} className={s.proposal}>
+          <div>
+            <span className={s.proposalTitle}>
+              Proposal {proposal.id}: {proposal.description}
+            </span>
+            <span className={s.muted}>
+              {" "}· {proposalKindName(proposal)} · proposed by{" "}
+              <span className="mono">{proposal.proposer}</span> · submitted {submittedAt(proposal.submission_time)}
+            </span>
+          </div>
+          <ProposalStatus proposal={proposal} periodNs={periodNs} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function latestVoteMark(seat: SeatSnapshot): VoteKind | undefined {
+  const latest = seat.results.results.at(-1);
+  if (latest?.vote === "Approve") return "tick";
+  if (latest?.vote === "Reject") return "cross";
+  if (latest?.vote === "Abstain") return "ring";
+  return undefined;
+}
+
+function voteSourceLabel(source: string): string {
+  if (source === "pending") return "Pending vote";
+  if (source === "controller") return "Seat controller";
+  return source;
+}
+
+function saleArgs(args: string): { seatId: string | null; buyerId: string | null; price: string | null } {
+  try {
+    const bytes = Uint8Array.from(atob(args), (character) => character.charCodeAt(0));
+    const value = JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>;
+    return {
+      seatId: typeof value.token_id === "string" ? value.token_id : null,
+      buyerId: typeof value.buyer === "string" ? value.buyer : null,
+      price: typeof value.price === "string" && /^\d+$/.test(value.price) ? value.price : null,
+    };
+  } catch {
+    return { seatId: null, buyerId: null, price: null };
+  }
+}
+
+function saleListings(proposals: ProposalView[]) {
+  return proposals.flatMap((proposal) => {
+    if (
+      proposal.status !== "InProgress" ||
+      typeof proposal.kind !== "object" ||
+      proposal.kind === null ||
+      !("FunctionCall" in proposal.kind)
+    ) {
+      return [];
+    }
+    const functionCall = proposal.kind.FunctionCall;
+    if (functionCall.receiver_id !== chainConfig.seatNftAccountId) return [];
+    return functionCall.actions
+      .filter((action) => action.method_name === "approve_sale")
+      .map((action) => ({ proposal, ...saleArgs(action.args) }));
+  });
+}
+
+function nearAmount(yocto: string): string {
+  const amount = BigInt(yocto);
+  const whole = amount / 10n ** 24n;
+  const fraction = (amount % 10n ** 24n).toString().padStart(24, "0").replace(/0+$/, "");
+  return fraction ? `${whole}.${fraction}` : whole.toString();
+}
+
 export function ClubPage() {
-  const apply = useMockRun();
+  const state = useClubData();
+  const viewer = useViewer();
+  const pageState = ReadPageState({ state, retry: state.retry });
+  if (pageState) return pageState;
+  if (state.status !== "ready") return null;
+
+  const { data } = state;
+  const listings = saleListings(data.proposals);
+  const seats = data.seats.map((seat) => ({
+    seat: seat.token.token_id,
+    ownerId: seat.token.owner_id,
+    mark: latestVoteMark(seat),
+  }));
+
   return (
     <main className={`${s.page} ${s.pageWide}`}>
       <header className={s.pageHead}>
         <p className={s.eyebrow}>A Sputnik DAO club</p>
-        <h1>{CLUB.name}</h1>
+        <h1><span className="mono">{chainConfig.daoAccountId}</span></h1>
         <p className={s.lede}>
           Each seat carries one vote in the club's DAO and opens the club vault. Seats move only
           through a club-approved sale.
@@ -51,90 +186,86 @@ export function ClubPage() {
 
       <RuledSection
         title="The seat plan"
-        aside={<span className={s.muted}>{CLUB.seatsHeld} of {CLUB.seatCap} seats held</span>}
+        aside={<span className={s.muted}>{data.tokens.length} seats held</span>}
         inset
       >
-        <SeatPlan />
-        <p className={s.legend}>
-          <span><i className={`${s.swatch} ${s.swatchHeld}`} /> Held</span>
-          <span><i className={`${s.swatch} ${s.swatchEmpty}`} /> Open</span>
-          <span><i className={`${s.swatch} ${s.swatchMine}`} /> Yours</span>
-          <span><VoteMark kind="tick" size={14} /> Approve</span>
-          <span><VoteMark kind="cross" size={14} /> Reject</span>
-          <span><VoteMark kind="ring" size={14} /> Abstain</span>
-        </p>
+        {seats.length === 0 ? (
+          <p className={s.muted}>No seats have been minted yet.</p>
+        ) : (
+          <>
+            <SeatPlan seats={seats} viewerAccountId={viewer.accountId} />
+            <p className={s.legend}>
+              <span><i className={`${s.swatch} ${s.swatchHeld}`} /> Held</span>
+              <span><i className={`${s.swatch} ${s.swatchMine}`} /> Yours</span>
+              <span><VoteMark kind="tick" size={14} /> Approve</span>
+              <span><VoteMark kind="cross" size={14} /> Reject</span>
+              <span><VoteMark kind="ring" size={14} /> Abstain</span>
+            </p>
+          </>
+        )}
+        {viewer.accountId && viewer.isLoading && <LoadingStatus>Checking this account's seats…</LoadingStatus>}
+        {viewer.error && <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>}
       </RuledSection>
 
       <RuledSection title="Join this club">
-        <p>
-          Apply with an email. Members vote on your application. If they approve, the club pays for
-          your account, keys, and seat. You don't need crypto to apply.
-        </p>
-        <ol className={s.steps}>
-          <li>Apply with your email.</li>
-          <li>Members vote on your application.</li>
-          <li>If approved, your seat is issued and you can vote and open the vault.</li>
-        </ol>
-        <div className={s.actions}>
-          <GraphicButton glyph="seat" onClick={apply.start}>
-            Apply with email
-          </GraphicButton>
-          {apply.state === "loading" && <LoadingStatus>Sending your application…</LoadingStatus>}
-          {apply.state === "success" && <SuccessStatus>Application sent. Members are voting.</SuccessStatus>}
-          {apply.state === "error" && <ErrorStatus onRetry={apply.start}>The application wasn't sent. Nothing was recorded.</ErrorStatus>}
-        </div>
+        <p className={s.muted}>Applications are not available in this read-only testnet view.</p>
       </RuledSection>
 
       <RuledSection title="What a seat gives">
         <ul className={s.gives}>
           <li>One vote in the club's Sputnik DAO</li>
           <li>Access to the club vault</li>
-          <li>A delegate that votes from your private brief</li>
+          <li>Your delegate votes from your private brief</li>
         </ul>
       </RuledSection>
 
-      <RuledSection title="Recent decisions">
-        <ul className={s.decisions}>
-          {RECENT_DECISIONS.map((d) => (
-            <li key={d.id} className={s.decision}>
-              <div className={s.decisionMain}>
-                <span className={s.decisionTitle}>
-                  Proposal {d.id}: {d.title}
-                </span>
-                <span className={s.decisionDetail}>{d.detail}</span>
-                <span className={s.decisionTime}>{d.time}</span>
-              </div>
-              <div className={s.decisionSide}>
-                <ResultStamp result={d.result} />
-                <a className={s.txLink} href={`${EXPLORER}/tx/${d.tx}`} target="_blank" rel="noreferrer">
-                  tx <Icon name="external" size={11} />
-                </a>
-              </div>
-            </li>
-          ))}
-        </ul>
+      <RuledSection title="DAO proposals">
+        {data.proposals.length === 0 ? (
+          <p className={s.muted}>No proposals have been submitted.</p>
+        ) : (
+          <ul className={s.decisions}>
+            {[...data.proposals].reverse().map((proposal) => (
+              <li key={proposal.id} className={s.decision}>
+                <div className={s.decisionMain}>
+                  <span className={s.decisionTitle}>
+                    Proposal {proposal.id}: {proposal.description}
+                  </span>
+                  <span className={s.decisionDetail}>
+                    Proposed by <span className="mono">{proposal.proposer}</span> · {proposalKindName(proposal)}
+                  </span>
+                  <span className={s.decisionTime}>Submitted {submittedAt(proposal.submission_time)}</span>
+                </div>
+                <div className={s.decisionSide}>
+                  <ProposalStatus proposal={proposal} periodNs={data.proposalPeriodNs} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </RuledSection>
 
       <RuledSection
         title="Seats for sale"
         aside={
-          LISTINGS.length > 0 ? (
-            <TextButton href="#/buy">Buy a seat</TextButton>
+          listings.length > 0 ? (
+            <TextButton href="#/buy">Review sale</TextButton>
           ) : undefined
         }
       >
-        {LISTINGS.length === 0 ? (
+        {listings.length === 0 ? (
           <p className={s.muted}>No seats are listed right now.</p>
         ) : (
           <ul className={s.listings}>
-            {LISTINGS.map((l) => (
-              <li key={l.seat} className={s.listing}>
+            {listings.map((listing) => (
+              <li key={`${listing.proposal.id}-${listing.seatId}`} className={s.listing}>
                 <div>
-                  <strong>Seat {l.seat}</strong>
-                  <span className={s.muted}> · held by {l.holder} · listed {l.listedAgo}</span>
+                  <strong>{listing.seatId ? `Seat ${listing.seatId}` : `Proposal ${listing.proposal.id}`}</strong>
+                  {listing.buyerId && (
+                    <span className={s.muted}> · buyer <span className="mono">{listing.buyerId}</span></span>
+                  )}
                 </div>
                 <div className={s.listingRight}>
-                  <span className={s.price}>{l.priceNear} NEAR</span>
+                  {listing.price && <span className={s.price}>{nearAmount(listing.price)} NEAR</span>}
                   <TextButton href="#/buy">Review</TextButton>
                 </div>
               </li>
@@ -147,83 +278,123 @@ export function ClubPage() {
 }
 
 export function MySeat() {
-  const hasBrief = ME.briefSaved;
+  const state = useClubData();
+  const viewer = useViewer();
+  const pageState = ReadPageState({ state, retry: state.retry });
+  if (pageState) return pageState;
+  if (state.status !== "ready") return null;
+
+  const { data } = state;
+  const owned = data.seats.filter((seat) => viewer.seatIds.includes(seat.token.token_id));
+  const publicSeats = owned.length > 0 ? owned : data.seats;
+
   return (
     <main className={s.page}>
       <header className={s.pageHead}>
         <p className={s.eyebrow}>Your seat</p>
         <h1>
-          Seat <span className={s.seatBig}>{ME.seatNumber}</span>
+          {owned.length === 1 ? (
+            <>Seat <span className={s.seatBig}>{owned[0].token.token_id}</span></>
+          ) : (
+            "Your seats"
+          )}
         </h1>
-        <p className={s.lede}>
-          Held by {ME.name} since {ME.heldSince}. {ME.votesCast} votes cast. Tier: {ME.tier}.
-        </p>
+        <p className={s.lede}>Public seat and DAO proposal data from NEAR testnet.</p>
       </header>
 
+      {!viewer.accountId && (
+        <RuledSection title="Wallet">
+          <p className={s.muted}>Sign in to see which seats belong to this account. Public seat data remains visible below.</p>
+        </RuledSection>
+      )}
+      {viewer.accountId && viewer.isLoading && (
+        <RuledSection title="Wallet">
+          <LoadingStatus>Checking this account's seats…</LoadingStatus>
+        </RuledSection>
+      )}
+      {viewer.error && (
+        <RuledSection title="Wallet">
+          <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>
+        </RuledSection>
+      )}
+      {viewer.accountId && !viewer.isLoading && owned.length === 0 && (
+        <RuledSection title="Wallet">
+          <p className={s.muted}>
+            No seats are held by <span className="mono">{viewer.accountId}</span>.
+          </p>
+        </RuledSection>
+      )}
+
       <RuledSection title="Your delegate">
-        <dl className={s.facts}>
-          <Fact label="Status">{hasBrief ? "Voting from your brief" : "Waiting for a brief"}</Fact>
-          <Fact label="Brief fingerprint">
-            {hasBrief ? <span className="mono">{ME.briefHash.slice(0, 16)}…</span> : "No brief yet"}
-          </Fact>
-          <Fact label="Open proposals needing a vote">
-            {OPEN_PROPOSALS.filter((p) => p.pending !== false).length}
-          </Fact>
-        </dl>
+        {publicSeats.length === 0 ? (
+          <p className={s.muted}>No seats have been minted.</p>
+        ) : (
+          <dl className={s.facts}>
+            {publicSeats.map((seat) => {
+              const needsVote = data.proposals.filter(
+                (proposal) =>
+                  proposal.status === "InProgress" &&
+                  !seat.pending[proposal.id] &&
+                  !seat.results.results.some((result) => result.proposal_id === proposal.id),
+              ).length;
+              return (
+                <div key={seat.token.token_id}>
+                  <Fact label={`Seat ${seat.token.token_id}`}>
+                    Held by <span className="mono">{seat.token.owner_id}</span>
+                  </Fact>
+                  <Fact label="Voter controller">
+                    <span className="mono">{seat.controller}</span>
+                  </Fact>
+                  <Fact label="Brief fingerprint">
+                    {seat.briefHash ? <span className="mono">{seat.briefHash}</span> : "No fingerprint stored"}
+                  </Fact>
+                  <Fact label="Open proposals needing a vote">{needsVote}</Fact>
+                </div>
+              );
+            })}
+          </dl>
+        )}
         <div className={s.actions}>
-          {hasBrief ? (
+          {owned.length > 0 ? (
             <>
-              <GraphicButton glyph="seat" onClick={() => { location.hash = "#/vote"; }}>
-                Review your delegate's vote
-              </GraphicButton>
-              <TextButton href="#/brief">Edit your brief</TextButton>
+              {data.proposals.some((proposal) => proposal.status === "InProgress") && (
+                <GraphicButton glyph="seat" onClick={() => { location.hash = "#/vote"; }}>
+                  Review your delegate's vote
+                </GraphicButton>
+              )}
+              <TextButton href="#/brief">View your brief fingerprint</TextButton>
             </>
-          ) : (
-            <GraphicButton glyph="keys" onClick={() => { location.hash = "#/brief"; }}>
-              Write your brief
-            </GraphicButton>
-          )}
+          ) : null}
         </div>
       </RuledSection>
 
-      <RuledSection title="Open proposals">
-        <ul className={s.proposals}>
-          {OPEN_PROPOSALS.map((p) => (
-            <li key={p.id} className={s.proposal}>
-              <div>
-                <a className={s.proposalTitle} href="#/vote">
-                  {p.title}
-                </a>
-                <span className={s.muted}>
-                  {" "}· {p.kind} · {p.amount} · submitted {p.submitted}
-                </span>
-              </div>
-              {p.pending === false ? (
-                <CastStatus />
-              ) : (
-                <PendingStatus deadline={PENDING_VOTE.deadlineClock} countdown={PENDING_VOTE.countdown} />
-              )}
-            </li>
-          ))}
-        </ul>
+      <RuledSection title="DAO proposals">
+        <ProposalList proposals={data.proposals} periodNs={data.proposalPeriodNs} />
       </RuledSection>
 
       <RuledSection
         title="Club vault"
-        aside={<TextButton href="#/vault">Open the vault</TextButton>}
+        aside={<TextButton href="#/vault">View vault access</TextButton>}
       >
-        <p className={s.muted}>Encrypted content, opened only for current seat holders.</p>
+        <p className={s.muted}>Vault access is not included in these public reads.</p>
       </RuledSection>
     </main>
   );
 }
 
 export function DelegateBrief() {
-  const run = useMockRun();
+  const state = useClubData();
+  const viewer = useViewer();
+  const pageState = ReadPageState({ state, retry: state.retry });
+  if (pageState) return pageState;
+  if (state.status !== "ready") return null;
+
+  const seats = state.data.seats.filter((seat) => viewer.seatIds.includes(seat.token.token_id));
+
   return (
     <main className={s.page}>
       <header className={s.pageHead}>
-        <p className={s.eyebrow}>Seat {ME.seatNumber}</p>
+        <p className={s.eyebrow}>{viewer.seatIds.length === 1 ? `Seat ${viewer.seatIds[0]}` : "Your seat"}</p>
         <h1>Your delegate's brief</h1>
         <p className={s.lede}>
           Your delegate reads each proposal and prepares a vote from this brief. You can override
@@ -232,32 +403,24 @@ export function DelegateBrief() {
       </header>
 
       <RuledSection title="The brief">
-        <label className={s.srLabel} htmlFor="brief">Brief</label>
-        <textarea
-          id="brief"
-          className={s.briefInput}
-          rows={5}
-          defaultValue={"Back community events. Reject any spend over 50 NEAR. Prefer proposals that include a written reason."}
-        />
-        <p className={s.sample}>
-          Try: <em>"Back community events. Reject any spend over 50 NEAR."</em>
-        </p>
-        <p className={s.note}>
-          Your brief stays off-chain. Only its fingerprint is on-chain.
-        </p>
-        <dl className={s.facts}>
-          <Fact label="Fingerprint on-chain">
-            <span className="mono">{ME.briefHash}</span>
-          </Fact>
-        </dl>
-        <div className={s.actions}>
-          <GraphicButton glyph="keys" onClick={run.start}>
-            Save brief
-          </GraphicButton>
-          {run.state === "loading" && <LoadingStatus>Saving your brief…</LoadingStatus>}
-          {run.state === "success" && <SuccessStatus>Draft saved. This build doesn't send it to your delegate yet.</SuccessStatus>}
-          {run.state === "error" && <ErrorStatus onRetry={run.start}>The brief wasn't saved. Your last version is still in place.</ErrorStatus>}
-        </div>
+        {!viewer.accountId ? (
+          <p className={s.muted}>Sign in to see fingerprints for seats held by this account.</p>
+        ) : viewer.isLoading ? (
+          <LoadingStatus>Checking this account's seats…</LoadingStatus>
+        ) : viewer.error ? (
+          <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>
+        ) : seats.length > 0 ? (
+          <dl className={s.facts}>
+            {seats.map((seat) => (
+              <Fact key={seat.token.token_id} label={`Seat ${seat.token.token_id} fingerprint`}>
+                {seat.briefHash ? <span className="mono">{seat.briefHash}</span> : "No fingerprint stored"}
+              </Fact>
+            ))}
+          </dl>
+        ) : (
+          <p className={s.muted}>This account does not hold a seat with a public brief fingerprint.</p>
+        )}
+        <p className={s.note}>Brief text is private and isn't included in public testnet reads.</p>
       </RuledSection>
 
       <RuledSection title="What the delegate can and cannot do">
@@ -272,168 +435,165 @@ export function DelegateBrief() {
 }
 
 export function ProposalVote({ closed = false }: { closed?: boolean }) {
-  const run = useMockRun({ ms: 1200 });
+  const state = useClubData();
+  const viewer = useViewer();
+  const pageState = ReadPageState({ state, retry: state.retry });
+  if (pageState) return pageState;
+  if (state.status !== "ready") return null;
+  if (viewer.error) {
+    return (
+      <main className={s.page}>
+        <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>
+      </main>
+    );
+  }
+  if (viewer.accountId && viewer.isLoading) {
+    return (
+      <main className={s.page}>
+        <LoadingStatus>Checking this account's seats…</LoadingStatus>
+      </main>
+    );
+  }
+
+  const seat = state.data.seats.find((item) => viewer.seatIds.includes(item.token.token_id));
+  const voteResult = closed
+    ? seat?.results.results.at(-1)
+    : undefined;
+  const proposal = closed
+    ? state.data.proposals.find((item) => item.id === voteResult?.proposal_id)
+    : state.data.proposals.find((item) => item.status === "InProgress");
+  const pending = proposal && seat ? seat.pending[proposal.id] : null;
+
+  if (!proposal) {
+    return (
+      <main className={s.page}>
+        <header className={s.pageHead}>
+          <p className={s.eyebrow}>Your delegate</p>
+          <h1>{closed ? "No cast vote is available" : "No open proposals"}</h1>
+        </header>
+        <p className={s.muted}>
+          {closed
+            ? "No cast vote is available for this seat in the public voter views."
+            : "There are no open proposals to review. You can see all DAO proposals on the club page."}
+        </p>
+        {!closed && <TextButton href="#/club">View DAO proposals</TextButton>}
+      </main>
+    );
+  }
+
   return (
     <main className={s.page}>
       <header className={s.pageHead}>
-        <p className={s.eyebrow}>Proposal {PENDING_VOTE.proposalId}</p>
-        <h1>{PENDING_VOTE.proposalTitle}</h1>
+        <p className={s.eyebrow}>Proposal {proposal.id}</p>
+        <h1>{proposal.description}</h1>
         <dl className={s.facts}>
-          <Fact label="Kind">{PENDING_VOTE.kind}</Fact>
-          <Fact label="Amount">
-            <span className="mono">{PENDING_VOTE.amount}</span>
-          </Fact>
-          <Fact label="To">
-            <span className="mono">{PENDING_VOTE.to}</span>
-          </Fact>
+          <Fact label="Kind">{proposalKindName(proposal)}</Fact>
+          <Fact label="Proposer"><span className="mono">{proposal.proposer}</span></Fact>
+          <Fact label="DAO status"><ProposalStatus proposal={proposal} periodNs={state.data.proposalPeriodNs} /></Fact>
         </dl>
       </header>
 
       <RuledSection title="Your delegate's vote">
-        <div className={s.voteCard}>
-          <div className={s.voteChoice}>
-            <span className={`${s.voteWord} ${s.voteApprove}`}>Approve</span>
-            {closed ? (
-              <CastStatus />
-            ) : (
-              <PendingStatus deadline={PENDING_VOTE.deadlineClock} countdown={PENDING_VOTE.countdown} />
+        {!seat ? (
+          <p className={s.muted}>Sign in with the account that holds a seat to view its delegate record.</p>
+        ) : closed && voteResult ? (
+          <dl className={s.facts}>
+            <Fact label="Vote">{voteResult.vote}</Fact>
+            <Fact label="Voter status">
+              {voteResult.cast ? <CastStatus /> : <RefusedStamp>{voteResult.status}</RefusedStamp>}
+            </Fact>
+            {voteResult.receipt_hash && (
+              <Fact label="Receipt hash"><span className="mono">{voteResult.receipt_hash}</span></Fact>
             )}
+          </dl>
+        ) : pending ? (
+          <div className={s.voteCard}>
+            <div className={s.voteChoice}>
+              <span className={`${s.voteWord} ${pending.vote === "Approve" ? s.voteApprove : ""}`}>
+                {pending.vote}
+              </span>
+              <ProposalDeadline deadlineNs={BigInt(pending.deadline)} />
+            </div>
+            <p className={s.reason}>{pending.reason}</p>
           </div>
-          <p className={s.reason}>{PENDING_VOTE.delegateReason}</p>
-          {closed ? (
-            <WindowBar deadline={PENDING_VOTE.deadlineClock} countdown="0:00" fraction={0} />
-          ) : (
-            <WindowBar deadline={PENDING_VOTE.deadlineClock} countdown={PENDING_VOTE.countdown} fraction={0.72} />
-          )}
-        </div>
+        ) : (
+          <p className={s.muted}>Your delegate has not submitted a pending vote for this proposal.</p>
+        )}
       </RuledSection>
 
-      {closed ? (
-        <RuledSection title="Window closed">
-          <div role="status" aria-live="polite">
-            <span className="sr-only">Window closed. Vote cast.</span>
-          </div>
-          <p className={s.muted}>
-            The window closed at {PENDING_VOTE.deadlineClock}. The vote was cast under your seat's voter
-            account and can't be changed now.
-          </p>
-          <p className={s.muted}>Result: waiting for the DAO's voting period to end.</p>
-          <div className={s.actions}>
-            <TextButton href="#/receipt/vote">View the receipt</TextButton>
-          </div>
+      {!closed && pending && viewer.isVoterController && (
+        <RuledSection title="Override before it is cast">
+          <p className={s.muted}>Vote changes are not available in this phase.</p>
         </RuledSection>
-      ) : (
-        <>
-          <RuledSection title="Override before it is cast">
-            <p className={s.muted}>
-              The window closes at {PENDING_VOTE.deadlineClock}. After that, the vote is cast and
-              cannot be changed.
-            </p>
-            <div className={s.actions}>
-              <GraphicButton glyph="stamp" onClick={run.start}>
-                Change to Reject
-              </GraphicButton>
-              {run.state === "loading" && <LoadingStatus>Recording your override inside the window…</LoadingStatus>}
-              {run.state === "success" && (
-                <SuccessStatus>Overridden by you. The vote is cast at {PENDING_VOTE.deadlineClock}.</SuccessStatus>
-              )}
-              {run.state === "error" && (
-                <ErrorStatus onRetry={run.start}>The override didn't reach the chain. Your delegate's Approve still stands.</ErrorStatus>
-              )}
-            </div>
-          </RuledSection>
-
-          <RuledSection title="After the window">
-            <p className={s.muted}>
-              The bar locks, the override button goes away, and a status line reads when the window
-              closed. The vote is then cast under your seat's voter account.
-            </p>
-            <div className={s.voteClosed} role="status" aria-live="polite">
-              <span className="sr-only">Vote cast</span>
-              <CastStatus />
-              <span className={s.muted}> · cast at 14:32</span>
-              <ResultStamp result="Rejected" />
-            </div>
-            <p className={s.muted}>
-              The override window closed at {PENDING_VOTE.deadlineClock}. Example on this club:
-              proposal 8 recorded Reject at 13:08 under the voter account.
-            </p>
-          </RuledSection>
-        </>
       )}
     </main>
   );
 }
 
 export function AIReceiptPage() {
+  const state = useClubData();
+  const viewer = useViewer();
+  const pageState = ReadPageState({ state, retry: state.retry });
+  if (pageState) return pageState;
+  if (state.status !== "ready") return null;
+
+  if (viewer.error) {
+    return (
+      <main className={s.page}>
+        <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>
+      </main>
+    );
+  }
+  if (viewer.accountId && viewer.isLoading) {
+    return (
+      <main className={s.page}>
+        <LoadingStatus>Checking this account's seats…</LoadingStatus>
+      </main>
+    );
+  }
+
+  const seats = viewer.accountId
+    ? state.data.seats.filter((seat) => viewer.seatIds.includes(seat.token.token_id))
+    : state.data.seats;
+  const results = seats.flatMap((seat) =>
+    seat.results.results.map((result) => ({ seatId: seat.token.token_id, result })),
+  );
+
   return (
     <main className={s.page}>
       <header className={s.pageHead}>
-        <p className={s.eyebrow}>Receipt · proposal {PENDING_VOTE.proposalId}</p>
-        <h1>AI vote receipt</h1>
-        <CheckedStamp />
+        <p className={s.eyebrow}>On-chain vote records</p>
+        <h1>Delegate vote receipts</h1>
       </header>
-
-      <RuledSection title="What was signed">
-        <dl className={s.facts}>
-          <Fact label="Model">
-            <span className="mono">{AI_RECEIPT.model}</span>
-          </Fact>
-          <Fact label="Signer">
-            <span className="mono">{AI_RECEIPT.signer}</span>
-          </Fact>
-          <Fact label="Request hash">
-            <span className="mono">{AI_RECEIPT.requestHash.slice(0, 20)}…</span>
-          </Fact>
-          <Fact label="Response hash">
-            <span className="mono">{AI_RECEIPT.responseHash.slice(0, 20)}…</span>
-          </Fact>
-          <Fact label="On-chain check">
-            <a className={s.txLink} href={`${EXPLORER}/tx/${AI_RECEIPT.checkTx}`} target="_blank" rel="noreferrer">
-              {AI_RECEIPT.checkTx.slice(0, 8)}… <Icon name="external" size={11} />
-            </a>
-          </Fact>
-        </dl>
-      </RuledSection>
-
-      <RuledSection title="Hardware attestation">
-        <p>{AI_RECEIPT.hardwareLine}.</p>
-        <ul className={s.evidence}>
-          {AI_RECEIPT.evidence.map((e) => (
-            <li key={e.label}>
-              <a href={e.url} target="_blank" rel="noreferrer">
-                {e.label} <Icon name="external" size={12} />
-              </a>
-            </li>
-          ))}
-        </ul>
-        <p className={s.muted}>
-          The vote and reason come from the signed answer. The contract rebuilds the signed text,
-          recovers the signer, and checks it against the club's registered model signer.
-        </p>
-      </RuledSection>
-
-      <RuledSection title="Full receipt">
-        <ReceiptSteps
-          steps={[
-            { label: "Delegate read proposal 12 inside secure hardware", tx: AI_RECEIPT.checkTx },
-            { label: "NEAR AI signed the response" },
-            { label: "Seat voter checked the signature on-chain", tx: AI_RECEIPT.checkTx },
-            { label: "Vote stored as pending" },
-          ]}
-        />
-      </RuledSection>
+      {results.length === 0 ? (
+        <p className={s.muted}>No vote receipts are stored in the current voter views.</p>
+      ) : results.map(({ seatId, result }) => (
+        <RuledSection key={`${seatId}-${result.proposal_id}`} title={`Proposal ${result.proposal_id}`}>
+          <dl className={s.facts}>
+            <Fact label="Seat">{seatId}</Fact>
+            <Fact label="Vote">{result.vote}</Fact>
+            <Fact label="Voter status">
+              {result.cast ? <CastStatus /> : <RefusedStamp>{result.status}</RefusedStamp>}
+            </Fact>
+            <Fact label="Source">{voteSourceLabel(result.source)}</Fact>
+            <Fact label="Receipt hash">
+              {result.receipt_hash ? <span className="mono">{result.receipt_hash}</span> : "No receipt hash stored"}
+            </Fact>
+            {result.error && <Fact label="Error">{result.error}</Fact>}
+          </dl>
+        </RuledSection>
+      ))}
     </main>
   );
 }
 
 export function VaultPage() {
-  const run = useMockRun();
+  const viewer = useViewer();
   return (
     <main className={s.page}>
       <header className={s.pageHead}>
-        <p className={s.eyebrow}>Seat {ME.seatNumber}</p>
-        <h1>{VAULT.title}</h1>
+        <p className={s.eyebrow}>{viewer.seatIds.length === 1 ? `Seat ${viewer.seatIds[0]}` : "Your seat"}</p>
+        <h1>Club vault</h1>
       </header>
 
       <RuledSection inset>
@@ -441,19 +601,12 @@ export function VaultPage() {
           <p className={s.vaultIcon} aria-hidden="true">
             <Icon name="vault" size={40} />
           </p>
-          {ME.holdsSeat ? (
-            <>
-              <GraphicButton glyph="vault" onClick={run.start}>
-                Open the vault
-              </GraphicButton>
-              {run.state === "loading" && <LoadingStatus>Checking your seat inside secure hardware…</LoadingStatus>}
-              {run.state === "success" && (
-                <SuccessStatus>
-                  Vault opened. <TextButton href="#/receipt/vault">View the receipt</TextButton>
-                </SuccessStatus>
-              )}
-              {run.state === "error" && <ErrorStatus onRetry={run.start}>The check didn't finish. Nothing was opened.</ErrorStatus>}
-            </>
+          {viewer.error ? (
+            <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>
+          ) : viewer.isLoading ? (
+            <LoadingStatus>Checking the connected account's seats on testnet…</LoadingStatus>
+          ) : viewer.isSeatHolder ? (
+            <p className={s.muted}>Vault contents are not included in the public testnet views.</p>
           ) : (
             <p>
               <RefusedStamp>Not allowed</RefusedStamp>{" "}
@@ -463,198 +616,154 @@ export function VaultPage() {
         </div>
       </RuledSection>
 
-      <RuledSection title="After opening">
-        <h3 className={s.vaultDocTitle}>{VAULT.content.heading}</h3>
-        <p>{VAULT.content.body}</p>
-        <p className={s.muted}>
-          The content comes back encrypted to your own key. It is never stored on-chain in plain
-          text.
-        </p>
-      </RuledSection>
-
-      <RuledSection title="If you are not a holder">
-        <p>
-          <RefusedStamp>Not allowed</RefusedStamp>{" "}
-          <span className={s.muted}>Only current seat holders can open the vault.</span>
-        </p>
-      </RuledSection>
     </main>
   );
 }
 
 export function SellSeat() {
-  const run = useMockRun();
+  const state = useClubData();
+  const viewer = useViewer();
+  const pageState = ReadPageState({ state, retry: state.retry });
+  if (pageState) return pageState;
+  if (state.status !== "ready") return null;
+
+  const listings = saleListings(state.data.proposals);
+  const ownedSeats = state.data.seats.filter((seat) => viewer.seatIds.includes(seat.token.token_id));
+
   return (
     <main className={s.page}>
       <header className={s.pageHead}>
-        <p className={s.eyebrow}>Seat {ME.seatNumber}</p>
+        <p className={s.eyebrow}>Your seats</p>
         <h1>Sell your seat</h1>
         <p className={s.lede}>
-          The club decides who buys in. If the sale is approved, it completes in one flow.
+          The public view shows sale proposals that are already waiting for the club.
         </p>
       </header>
 
-      <RuledSection title="Set a price">
-        <label className={s.fieldLabel} htmlFor="price">
-          Price in NEAR
-        </label>
-        <input
-          id="price"
-          className={s.priceInput}
-          inputMode="decimal"
-          defaultValue={SALE.priceNear}
-        />
-        <MoneySplit price={SALE.priceNear} sellerPct={SALE.sellerGets} levyPct={SALE.levy} />
-        <p className={s.muted}>The 95/5 split is fixed by the club. You see it before signing.</p>
-      </RuledSection>
-
-      <RuledSection title="What ends when the sale completes">
-        <ul className={s.gives}>
-          <li>Your vote in the club's DAO</li>
-          <li>Your vault access</li>
-          <li>Your delegate and its brief</li>
-          <li>Your delegate's signing key</li>
-        </ul>
-        <p className={s.muted}>
-          The seat keeps its history. The buyer's vote weight starts at 1.
-        </p>
-      </RuledSection>
-
-      <RuledSection title="Waiting for the club">
-        <dl className={s.facts}>
-          <Fact label="Approval expires">{SALE.approvalExpires}</Fact>
-          <Fact label="Votes for">{SALE.tally.for}</Fact>
-          <Fact label="Votes against">{SALE.tally.against}</Fact>
-          <Fact label="Threshold">{SALE.tally.threshold}</Fact>
-        </dl>
-        <div className={s.actions}>
-          <GraphicButton glyph="padlock" onClick={run.start}>
-            List seat {ME.seatNumber}
-          </GraphicButton>
-          {run.state === "loading" && <LoadingStatus>Listing seat {ME.seatNumber} for the club to see…</LoadingStatus>}
-          {run.state === "success" && <SuccessStatus>Listed. Waiting for a buyer and the club's vote.</SuccessStatus>}
-          {run.state === "error" && <ErrorStatus onRetry={run.start}>The listing wasn't posted. Your seat is still yours.</ErrorStatus>}
-          <TextButton onClick={() => { location.hash = "#/seat"; }}>Cancel listing</TextButton>
-        </div>
-      </RuledSection>
+      {viewer.error ? (
+        <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>
+      ) : viewer.accountId && viewer.isLoading ? (
+        <LoadingStatus>Checking this account's seats…</LoadingStatus>
+      ) : !viewer.accountId ? (
+        <RuledSection title="Your seat">
+          <p className={s.muted}>Sign in with an account that holds a seat to review its sale proposals.</p>
+        </RuledSection>
+      ) : ownedSeats.length === 0 ? (
+        <RuledSection title="Your seat">
+          <p className={s.muted}>This account does not hold a seat.</p>
+        </RuledSection>
+      ) : (
+        ownedSeats.map((seat) => {
+          const listing = listings.find((item) => item.seatId === seat.token.token_id);
+          return (
+            <RuledSection key={seat.token.token_id} title={`Seat ${seat.token.token_id}`}>
+              {listing ? (
+                <dl className={s.facts}>
+                  <Fact label="Proposal">#{listing.proposal.id}</Fact>
+                  <Fact label="Status">
+                    <ProposalStatus proposal={listing.proposal} periodNs={state.data.proposalPeriodNs} />
+                  </Fact>
+                  {listing.buyerId && <Fact label="Buyer"><span className="mono">{listing.buyerId}</span></Fact>}
+                  {listing.price && <Fact label="Price">{nearAmount(listing.price)} NEAR</Fact>}
+                </dl>
+              ) : (
+                <p className={s.muted}>No sale proposal is waiting for the club for this seat.</p>
+              )}
+              <p className={s.note}>Creating or canceling a sale is not available in this phase.</p>
+            </RuledSection>
+          );
+        })
+      )}
     </main>
   );
 }
 
 export function BuySeat() {
-  const l = LISTINGS[0];
-  const run = useMockRun();
+  const state = useClubData();
+  const pageState = ReadPageState({ state, retry: state.retry });
+  if (pageState) return pageState;
+  if (state.status !== "ready") return null;
+
+  const listings = saleListings(state.data.proposals);
+
   return (
     <main className={s.page}>
       <header className={s.pageHead}>
         <p className={s.eyebrow}>Seat for sale</p>
-        <h1>
-          Seat <span className={s.seatBig}>{l.seat}</span>
-        </h1>
-        <p className={s.lede}>
-          Currently held by {l.holder}. Listed {l.listedAgo}.
-        </p>
+        <h1>Seats for sale</h1>
       </header>
 
-      <RuledSection title="What this seat gives">
-        <ul className={s.gives}>
-          <li>One vote in the club's Sputnik DAO</li>
-          <li>Access to the club vault</li>
-          <li>A delegate you configure with your own brief</li>
-        </ul>
-      </RuledSection>
-
-      <RuledSection title="Price and split">
-        <MoneySplit price={l.priceNear} sellerPct={split(l.priceNear).seller} levyPct={split(l.priceNear).levy} />
-      </RuledSection>
-
-      <RuledSection title="Seat history">
-        <ul className={s.history}>
-          {l.history.map((h) => (
-            <li key={h.event}>
-              <span>{h.event}</span>
-              <span className={s.muted}>{h.date}</span>
-            </li>
-          ))}
-        </ul>
-      </RuledSection>
-
-      <RuledSection title="Buy with club approval">
+      {listings.length === 0 ? (
         <p className={s.muted}>
-          Your payment is escrowed while the club votes. On approval the seat moves, the seller is
-          paid, the levy goes to the treasury, and your vote weight starts at 1. On rejection or
-          timeout you are refunded in full.
+          No seat sales are waiting for club approval right now. <TextButton href="#/club">View the club</TextButton>
         </p>
-        <div className={s.actions}>
-          <GraphicButton glyph="padlock" onClick={run.start}>
-            Buy seat {l.seat} for {l.priceNear} NEAR
-          </GraphicButton>
-          {run.state === "loading" && <LoadingStatus>Escrowing {l.priceNear} NEAR…</LoadingStatus>}
-          {run.state === "success" && <SuccessStatus>Escrowed. The club is reviewing your offer.</SuccessStatus>}
-          {run.state === "error" && <ErrorStatus onRetry={run.start}>The payment wasn't escrowed. Nothing was charged.</ErrorStatus>}
-        </div>
-      </RuledSection>
+      ) : listings.map((listing, index) => {
+        const holder = state.data.tokens.find((token) => token.token_id === listing.seatId)?.owner_id;
+        return (
+          <RuledSection key={`${listing.proposal.id}-${index}`} title={listing.seatId ? `Seat ${listing.seatId}` : `Proposal ${listing.proposal.id}`}>
+            <dl className={s.facts}>
+              <Fact label="Proposal">#{listing.proposal.id}: {listing.proposal.description}</Fact>
+              <Fact label="Status"><ProposalStatus proposal={listing.proposal} periodNs={state.data.proposalPeriodNs} /></Fact>
+              {holder && <Fact label="Held by"><span className="mono">{holder}</span></Fact>}
+              {listing.buyerId && <Fact label="Buyer"><span className="mono">{listing.buyerId}</span></Fact>}
+              {listing.price && <Fact label="Price">{nearAmount(listing.price)} NEAR</Fact>}
+            </dl>
+            <p className={s.note}>Buying a seat is not available in this phase.</p>
+          </RuledSection>
+        );
+      })}
     </main>
   );
 }
 
-function split(price: string) {
-  const n = Number(price);
-  return { seller: (n * 0.95).toFixed(3), levy: (n * 0.05).toFixed(3) };
-}
-
-function saleSteps(seat: string, price: string, seller: string, levy: string) {
-  return [
-    { label: "Club approved the sale", tx: SALE_TX_APPROVE },
-    { label: `Buyer escrowed ${price} NEAR`, tx: SALE_TX_BUY },
-    { label: `Seat ${seat} moved; seller paid ${seller} NEAR; levy ${levy} NEAR to the treasury`, tx: SALE_TX_BUY },
-  ];
-}
-
 export function ReceiptPage({ kind }: { kind: "vote" | "sale" | "buy" | "vault" }) {
-  const l = LISTINGS[0];
-  const data =
-    kind === "sale"
-      ? {
-          title: "Sale approved",
-          sub: `Seat ${SALE.seat} · ${SALE.priceNear} NEAR`,
-          steps: saleSteps(SALE.seat, SALE.priceNear, SALE.sellerGets, SALE.levy),
-        }
-      : kind === "buy"
-        ? {
-            title: "Purchase approved",
-            sub: `Seat ${l.seat} · ${l.priceNear} NEAR`,
-            steps: saleSteps(l.seat, l.priceNear, split(l.priceNear).seller, split(l.priceNear).levy),
-          }
-        : kind === "vault"
-          ? {
-              title: "Vault opened",
-              sub: `Seat ${ME.seatNumber} · content encrypted to your key`,
-              steps: [
-                { label: "Seat ownership checked inside secure hardware", tx: "FU8ffdZWiJBW6VXBrhYVcgGXhpst2LCtGSbdwaJCM7a7" },
-                { label: "Vault content encrypted to your key", tx: "BxBCX7X71Ci9itiuaoD9UXXM7Lx8uakq6KscMkiEmPNH" },
-              ],
-            }
-          : {
-              title: "Vote overridden",
-              sub: `Proposal ${PENDING_VOTE.proposalId} · Reject`,
-              steps: [
-                { label: "Delegate prepared Approve", tx: AI_RECEIPT.checkTx },
-                { label: "You overrode to Reject inside the window", tx: "8UJ9FTgsQauPy6rZK8LhMp4ihXy4BWyLkwsx344tTypR" },
-                { label: "Vote cast under your voter account", tx: "GbQe2qZdswMHhAFWKEq4eGSJ9948KaR6TWWsCKsdsFP4" },
-              ],
-            };
+  const state = useClubData();
+  const viewer = useViewer();
+  const pageState = ReadPageState({ state, retry: state.retry });
+  if (pageState) return pageState;
+  if (state.status !== "ready") return null;
+  if (viewer.error) {
+    return (
+      <main className={s.page}>
+        <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>
+      </main>
+    );
+  }
+  if (viewer.accountId && viewer.isLoading) {
+    return (
+      <main className={s.page}>
+        <LoadingStatus>Checking this account's seats…</LoadingStatus>
+      </main>
+    );
+  }
+
+  const seats = viewer.accountId
+    ? state.data.seats.filter((seat) => viewer.seatIds.includes(seat.token.token_id))
+    : state.data.seats;
+  const results = kind === "vote"
+    ? seats.flatMap((seat) => seat.results.results.map((result) => ({ seatId: seat.token.token_id, result })))
+    : [];
+
   return (
     <main className={s.page}>
       <header className={s.pageHead}>
         <p className={s.eyebrow}>Receipt</p>
-        <h1>{data.title}</h1>
-        <p className={s.lede}>{data.sub}</p>
-        <CheckedStamp />
+        <h1>{kind === "vote" ? "Vote records" : `${kind[0].toUpperCase()}${kind.slice(1)} records`}</h1>
       </header>
-      <RuledSection title="On-chain steps">
-        <ReceiptSteps steps={data.steps} />
-      </RuledSection>
+      {results.length === 0 ? (
+        <p className={s.muted}>No matching receipt data is exposed by the current public testnet views.</p>
+      ) : results.map(({ seatId, result }) => (
+        <RuledSection key={`${seatId}-${result.proposal_id}`} title={`Proposal ${result.proposal_id}`}>
+          <dl className={s.facts}>
+            <Fact label="Seat">{seatId}</Fact>
+            <Fact label="Vote">{result.vote}</Fact>
+            <Fact label="Voter status">
+              {result.cast ? <CastStatus /> : <RefusedStamp>{result.status}</RefusedStamp>}
+            </Fact>
+            {result.receipt_hash && <Fact label="Receipt hash"><span className="mono">{result.receipt_hash}</span></Fact>}
+          </dl>
+        </RuledSection>
+      ))}
       <div className={s.actions}>
         <GraphicButton glyph="arrow" onClick={() => { location.hash = "#/seat"; }}>
           Back to my seat
@@ -672,7 +781,11 @@ function StatusDemo({ kind }: { kind: "loading" | "success" | "error" }) {
         <TextButton onClick={run.start}>Replay</TextButton>
       </span>
       {run.state === "idle" && <span className={s.muted}>Press replay to see the state.</span>}
-      {run.state === "loading" && <LoadingStatus>Checking your seat inside secure hardware…</LoadingStatus>}
+      {run.state === "loading" && (
+        <LoadingStatus>
+          Checking your seat. Verified public OS on genuine Intel and NVIDIA hardware.
+        </LoadingStatus>
+      )}
       {run.state === "success" && <SuccessStatus>Vault opened. Content encrypted to your key.</SuccessStatus>}
       {run.state === "error" && <ErrorStatus onRetry={run.start}>The check didn't finish. Nothing was opened.</ErrorStatus>}
     </span>
@@ -691,6 +804,7 @@ const STATE_EXAMPLES: { name: string; render: () => JSX.Element }[] = [
 ];
 
 export function StatesPage() {
+  const viewer = useViewer();
   return (
     <main className={s.page}>
       <header className={s.pageHead}>
@@ -730,13 +844,13 @@ export function StatesPage() {
         <ul className={s.stateList}>
           <li className={s.stateRow}>
             <span className={s.stateName}>No seat yet</span>
-            <TextButton>Apply for a seat</TextButton>
+            <span className={s.muted}>Applications are not available in this phase.</span>
           </li>
           <li className={s.stateRow}>
             <span className={s.stateName}>Seat held, no brief</span>
             <span className={s.edgeDemo}>
               <span className={s.muted}>Your seat is held. Your delegate can't vote until you write a brief.</span>
-              <TextButton href="#/brief">Write your brief</TextButton>
+              <span className={s.muted}>Brief editing is not available in this phase.</span>
             </span>
           </li>
           <li className={s.stateRow}>
@@ -745,7 +859,9 @@ export function StatesPage() {
           </li>
           <li className={s.stateRow}>
             <span className={s.stateName}>Delegate thinking</span>
-            <span className={s.muted}>Your delegate is reading proposal 12 inside secure hardware…</span>
+            <span className={s.muted}>
+              Your delegate is reading proposal 12. Verified public OS on genuine Intel and NVIDIA hardware.
+            </span>
           </li>
           <li className={s.stateRow}>
             <span className={s.stateName}>Offer waiting for club</span>
@@ -753,7 +869,9 @@ export function StatesPage() {
           </li>
           <li className={s.stateRow}>
             <span className={s.stateName}>Vault checking</span>
-            <span className={s.muted}>Checking your seat inside secure hardware…</span>
+            <span className={s.muted}>
+              Checking your seat. Verified public OS on genuine Intel and NVIDIA hardware.
+            </span>
           </li>
           <li className={s.stateRow}>
             <span className={s.stateName}>Window closed</span>
@@ -786,11 +904,21 @@ export function StatesPage() {
           </li>
           <li className={s.stateRow}>
             <span className={s.stateName}>Network slow</span>
-            <span className={s.muted}>Your delegate is reading proposal 8 inside secure hardware…</span>
+            <span className={s.muted}>
+              Your delegate is reading proposal 8. Verified public OS on genuine Intel and NVIDIA hardware.
+            </span>
           </li>
           <li className={s.stateRow}>
             <span className={s.stateName}>Wallet not connected</span>
-            <TextButton>Connect wallet</TextButton>
+            {viewer.accountId ? (
+              <span className="mono">{viewer.accountId}</span>
+            ) : viewer.error ? (
+              <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>
+            ) : viewer.isLoading ? (
+              <LoadingStatus>Loading the wallet connection…</LoadingStatus>
+            ) : (
+              <TextButton onClick={viewer.signIn}>Connect wallet</TextButton>
+            )}
           </li>
         </ul>
       </RuledSection>
