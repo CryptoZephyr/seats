@@ -86,6 +86,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           network: {
             networkId: "testnet",
             nodeUrl: chainConfig.rpcUrl,
+            helperUrl: "https://helper.testnet.near.org",
+            explorerUrl: "https://testnet.nearblocks.io",
+            indexerUrl: "https://test.api.fastnear.com/v0",
           },
           modules: [
             setupMyNearWallet({ walletUrl: "https://testnet.mynearwallet.com" }),
