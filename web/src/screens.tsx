@@ -37,6 +37,7 @@ import {
 import s from "./screens.module.css";
 
 export function ClubPage() {
+  const apply = useMockRun();
   return (
     <main className={`${s.page} ${s.pageWide}`}>
       <header className={s.pageHead}>
@@ -62,6 +63,26 @@ export function ClubPage() {
           <span><VoteMark kind="cross" size={14} /> Reject</span>
           <span><VoteMark kind="ring" size={14} /> Abstain</span>
         </p>
+      </RuledSection>
+
+      <RuledSection title="Join this club">
+        <p>
+          Apply with an email. Members vote on your application. If they approve, the club pays for
+          your account, keys, and seat. You don't need crypto to apply.
+        </p>
+        <ol className={s.steps}>
+          <li>Apply with your email.</li>
+          <li>Members vote on your application.</li>
+          <li>If approved, your seat is issued and you can vote and open the vault.</li>
+        </ol>
+        <div className={s.actions}>
+          <GraphicButton glyph="seat" onClick={apply.start}>
+            Apply with email
+          </GraphicButton>
+          {apply.state === "loading" && <LoadingStatus>Sending your application…</LoadingStatus>}
+          {apply.state === "success" && <SuccessStatus>Application sent. Members are voting.</SuccessStatus>}
+          {apply.state === "error" && <ErrorStatus onRetry={apply.start}>The application wasn't sent. Nothing was recorded.</ErrorStatus>}
+        </div>
       </RuledSection>
 
       <RuledSection title="What a seat gives">
@@ -98,9 +119,7 @@ export function ClubPage() {
         title="Seats for sale"
         aside={
           LISTINGS.length > 0 ? (
-            <GraphicButton glyph="padlock" onClick={() => { location.hash = "#/buy"; }}>
-              Buy a seat
-            </GraphicButton>
+            <TextButton href="#/buy">Buy a seat</TextButton>
           ) : undefined
         }
       >
@@ -128,6 +147,7 @@ export function ClubPage() {
 }
 
 export function MySeat() {
+  const hasBrief = ME.briefSaved;
   return (
     <main className={s.page}>
       <header className={s.pageHead}>
@@ -142,19 +162,27 @@ export function MySeat() {
 
       <RuledSection title="Your delegate">
         <dl className={s.facts}>
-          <Fact label="Status">Voting from your brief</Fact>
+          <Fact label="Status">{hasBrief ? "Voting from your brief" : "Waiting for a brief"}</Fact>
           <Fact label="Brief fingerprint">
-            <span className="mono">{ME.briefHash.slice(0, 16)}…</span>
+            {hasBrief ? <span className="mono">{ME.briefHash.slice(0, 16)}…</span> : "No brief yet"}
           </Fact>
           <Fact label="Open proposals needing a vote">
             {OPEN_PROPOSALS.filter((p) => p.pending !== false).length}
           </Fact>
         </dl>
         <div className={s.actions}>
-          <GraphicButton glyph="seat" onClick={() => { location.hash = "#/vote"; }}>
-            Review your delegate's vote
-          </GraphicButton>
-          <TextButton href="#/brief">Edit your brief</TextButton>
+          {hasBrief ? (
+            <>
+              <GraphicButton glyph="seat" onClick={() => { location.hash = "#/vote"; }}>
+                Review your delegate's vote
+              </GraphicButton>
+              <TextButton href="#/brief">Edit your brief</TextButton>
+            </>
+          ) : (
+            <GraphicButton glyph="keys" onClick={() => { location.hash = "#/brief"; }}>
+              Write your brief
+            </GraphicButton>
+          )}
         </div>
       </RuledSection>
 
@@ -227,7 +255,7 @@ export function DelegateBrief() {
             Save brief
           </GraphicButton>
           {run.state === "loading" && <LoadingStatus>Saving your brief…</LoadingStatus>}
-          {run.state === "success" && <SuccessStatus>Brief saved. Your delegate uses it from the next proposal.</SuccessStatus>}
+          {run.state === "success" && <SuccessStatus>Draft saved. This build doesn't send it to your delegate yet.</SuccessStatus>}
           {run.state === "error" && <ErrorStatus onRetry={run.start}>The brief wasn't saved. Your last version is still in place.</ErrorStatus>}
         </div>
       </RuledSection>
@@ -413,16 +441,25 @@ export function VaultPage() {
           <p className={s.vaultIcon} aria-hidden="true">
             <Icon name="vault" size={40} />
           </p>
-          <GraphicButton glyph="vault" onClick={run.start}>
-            Open the vault
-          </GraphicButton>
-          {run.state === "loading" && <LoadingStatus>Checking your seat inside secure hardware…</LoadingStatus>}
-          {run.state === "success" && (
-            <SuccessStatus>
-              Vault opened. <TextButton href="#/receipt/vault">View the receipt</TextButton>
-            </SuccessStatus>
+          {ME.holdsSeat ? (
+            <>
+              <GraphicButton glyph="vault" onClick={run.start}>
+                Open the vault
+              </GraphicButton>
+              {run.state === "loading" && <LoadingStatus>Checking your seat inside secure hardware…</LoadingStatus>}
+              {run.state === "success" && (
+                <SuccessStatus>
+                  Vault opened. <TextButton href="#/receipt/vault">View the receipt</TextButton>
+                </SuccessStatus>
+              )}
+              {run.state === "error" && <ErrorStatus onRetry={run.start}>The check didn't finish. Nothing was opened.</ErrorStatus>}
+            </>
+          ) : (
+            <p>
+              <RefusedStamp>Not allowed</RefusedStamp>{" "}
+              <span className={s.muted}>Only current seat holders can open the vault.</span>
+            </p>
           )}
-          {run.state === "error" && <ErrorStatus onRetry={run.start}>The check didn't finish. Nothing was opened.</ErrorStatus>}
         </div>
       </RuledSection>
 

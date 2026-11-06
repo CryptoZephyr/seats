@@ -334,3 +334,9 @@
   line-height: 1.6;
   color: var(--color-ink);
 }
+
+.steps {
+  margin: 0 0 var(--space-3);
+  padding-left: var(--space-5);
+  max-width: 65ch;
+}

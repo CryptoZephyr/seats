@@ -18,6 +18,8 @@ export const ME = {
   votesCast: 9,
   tier: "Member",
   briefHash: "5f8bd6496cc91e91061650ada237077e91cfd006614f8f6abb98dedaaea5475c",
+  briefSaved: true,
+  holdsSeat: true,
 };
 
 export const MEMBERS = [
