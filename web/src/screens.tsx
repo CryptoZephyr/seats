@@ -527,7 +527,7 @@ export function MySeat() {
                     deadlineNs={
                       pending
                         ? BigInt(pending.deadline)
-                        : BigInt(proposal.submission_time) + data.proposalPeriodNs
+                        : BigInt(proposal.submission_time) + BigInt(data.proposalPeriodNs)
                     }
                   />
                 </div>
