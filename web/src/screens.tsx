@@ -13,6 +13,7 @@ import {
   CheckedStamp,
   ErrorStatus,
   LoadingStatus,
+  MoneySplit,
   SuccessStatus,
   Fact,
   GraphicButton,
@@ -173,6 +174,63 @@ function saleListings(proposals: ProposalView[]) {
   });
 }
 
+const SALE_LEVY_BPS = 500n;
+
+function activeSaleApprovals(seats: SeatSnapshot[], nowNs: bigint) {
+  return seats.flatMap((seat) => {
+    const approval = seat.record.approval;
+    if (!approval || nowNs >= BigInt(approval.expires_at)) return [];
+    return [{
+      seatId: seat.token.token_id,
+      sellerId: seat.token.owner_id,
+      buyerId: approval.buyer,
+      price: approval.price,
+      expiresAt: String(approval.expires_at),
+    }];
+  });
+}
+
+function saleSplit(price: string) {
+  const amount = BigInt(price);
+  const levy = amount * SALE_LEVY_BPS / 10_000n;
+  return { seller: amount - levy, levy };
+}
+
+function useCurrentTimeNs() {
+  const [nowNs, setNowNs] = useState(() => BigInt(Date.now()) * 1_000_000n);
+  useEffect(() => {
+    const timer = window.setInterval(
+      () => setNowNs(BigInt(Date.now()) * 1_000_000n),
+      1000,
+    );
+    return () => window.clearInterval(timer);
+  }, []);
+  return nowNs;
+}
+
+function SaleApprovalDetails({
+  listing,
+}: {
+  listing: ReturnType<typeof activeSaleApprovals>[number];
+}) {
+  const split = saleSplit(listing.price);
+  return (
+    <dl className={s.facts}>
+      <Fact label="Buyer"><span className="mono">{listing.buyerId}</span></Fact>
+      <Fact label="Price and split">
+        <MoneySplit
+          price={nearAmount(listing.price)}
+          sellerPct={nearAmount(split.seller.toString())}
+          levyPct={nearAmount(split.levy.toString())}
+        />
+      </Fact>
+      <Fact label="Approval expires">
+        <ProposalDate timestampNs={listing.expiresAt} />
+      </Fact>
+    </dl>
+  );
+}
+
 function nearAmount(yocto: string): string {
   const amount = BigInt(yocto);
   const whole = amount / 10n ** 24n;
@@ -189,7 +247,9 @@ export function ClubPage() {
 
   const { data } = state;
   const clubName = data.config.name.trim() || chainConfig.daoAccountId;
-  const listings = saleListings(data.proposals);
+  const nowNs = useCurrentTimeNs();
+  const saleApprovals = activeSaleApprovals(data.seats, nowNs);
+  const saleProposals = saleListings(data.proposals);
   const seats = data.seats.map((seat) => ({
     seat: seat.token.token_id,
     ownerId: seat.token.owner_id,
@@ -282,29 +342,52 @@ export function ClubPage() {
       </RuledSection>
 
       <RuledSection
-        title="Seats for sale"
+        title="For sale"
         aside={
-          listings.length > 0 ? (
+          saleApprovals.length > 0 ? (
             <TextButton href="#/buy">Review sale</TextButton>
           ) : undefined
         }
       >
-        {listings.length === 0 ? (
+        {saleApprovals.length === 0 ? (
           <p className={s.muted}>No seats are listed right now.</p>
         ) : (
           <ul className={s.listings}>
-            {listings.map((listing) => (
-              <li key={`${listing.proposal.id}-${listing.seatId}`} className={s.listing}>
+            {saleApprovals.map((listing) => (
+              <li key={listing.seatId} className={s.listing}>
                 <div>
-                  <strong>{listing.seatId ? `Seat ${listing.seatId}` : `Proposal ${listing.proposal.id}`}</strong>
+                  <strong>Seat {listing.seatId}</strong>
+                  <span className={s.muted}> · held by <span className="mono">{listing.sellerId}</span></span>
+                </div>
+                <SaleApprovalDetails listing={listing} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </RuledSection>
+
+      <RuledSection title="Awaiting club vote">
+        {saleProposals.length === 0 ? (
+          <p className={s.muted}>No seat sales are waiting for a club vote.</p>
+        ) : (
+          <ul className={s.listings}>
+            {saleProposals.map((listing) => (
+              <li key={listing.proposal.id} className={s.listing}>
+                <div>
+                  <strong>
+                    {listing.seatId ? `Seat ${listing.seatId}` : `Proposal ${listing.proposal.id}`}
+                  </strong>
+                  <span className={s.muted}> · Proposal {listing.proposal.id}</span>
+                </div>
+                <dl className={s.facts}>
                   {listing.buyerId && (
-                    <span className={s.muted}> · buyer <span className="mono">{listing.buyerId}</span></span>
+                    <Fact label="Buyer"><span className="mono">{listing.buyerId}</span></Fact>
                   )}
-                </div>
-                <div className={s.listingRight}>
-                  {listing.price && <span className={s.price}>{nearAmount(listing.price)} NEAR</span>}
-                  <TextButton href="#/buy">Review</TextButton>
-                </div>
+                  {listing.price && <Fact label="Price">{nearAmount(listing.price)} NEAR</Fact>}
+                  <Fact label="Status">
+                    <ProposalStatus proposal={listing.proposal} periodNs={data.proposalPeriodNs} />
+                  </Fact>
+                </dl>
               </li>
             ))}
           </ul>
@@ -670,6 +753,8 @@ export function SellSeat() {
   if (pageState) return pageState;
   if (state.status !== "ready") return null;
 
+  const nowNs = useCurrentTimeNs();
+  const approvals = activeSaleApprovals(state.data.seats, nowNs);
   const listings = saleListings(state.data.proposals);
   const ownedSeats = state.data.seats.filter((seat) => viewer.seatIds.includes(seat.token.token_id));
 
@@ -679,7 +764,7 @@ export function SellSeat() {
         <p className={s.eyebrow}>Your seats</p>
         <h1>Sell your seat</h1>
         <p className={s.lede}>
-          The public view shows sale proposals that are already waiting for the club.
+          This page shows active sale approvals and proposals waiting for the club.
         </p>
       </header>
 
@@ -697,9 +782,17 @@ export function SellSeat() {
         </RuledSection>
       ) : (
         ownedSeats.map((seat) => {
+          const approval = approvals.find((item) => item.seatId === seat.token.token_id);
           const listing = listings.find((item) => item.seatId === seat.token.token_id);
           return (
             <RuledSection key={seat.token.token_id} title={`Seat ${seat.token.token_id}`}>
+              <p className={s.eyebrow}>For sale</p>
+              {approval ? (
+                <SaleApprovalDetails listing={approval} />
+              ) : (
+                <p className={s.muted}>No active sale approval for this seat.</p>
+              )}
+              <p className={s.eyebrow}>Awaiting club vote</p>
               {listing ? (
                 <dl className={s.facts}>
                   <Fact label="Proposal">#{listing.proposal.id}</Fact>
@@ -727,6 +820,8 @@ export function BuySeat() {
   if (pageState) return pageState;
   if (state.status !== "ready") return null;
 
+  const nowNs = useCurrentTimeNs();
+  const approvals = activeSaleApprovals(state.data.seats, nowNs);
   const listings = saleListings(state.data.proposals);
 
   return (
@@ -736,25 +831,54 @@ export function BuySeat() {
         <h1>Seats for sale</h1>
       </header>
 
-      {listings.length === 0 ? (
-        <p className={s.muted}>
-          No seat sales are waiting for club approval right now. <TextButton href="#/club">View the club</TextButton>
-        </p>
-      ) : listings.map((listing, index) => {
-        const holder = state.data.tokens.find((token) => token.token_id === listing.seatId)?.owner_id;
-        return (
-          <RuledSection key={`${listing.proposal.id}-${index}`} title={listing.seatId ? `Seat ${listing.seatId}` : `Proposal ${listing.proposal.id}`}>
-            <dl className={s.facts}>
-              <Fact label="Proposal">#{listing.proposal.id}: {listing.proposal.description}</Fact>
-              <Fact label="Status"><ProposalStatus proposal={listing.proposal} periodNs={state.data.proposalPeriodNs} /></Fact>
-              {holder && <Fact label="Held by"><span className="mono">{holder}</span></Fact>}
-              {listing.buyerId && <Fact label="Buyer"><span className="mono">{listing.buyerId}</span></Fact>}
-              {listing.price && <Fact label="Price">{nearAmount(listing.price)} NEAR</Fact>}
-            </dl>
-            <p className={s.note}>Buying a seat is not available in this phase.</p>
-          </RuledSection>
-        );
-      })}
+      <RuledSection title="For sale">
+        {approvals.length === 0 ? (
+          <p className={s.muted}>No seats are for sale right now.</p>
+        ) : (
+          approvals.map((listing) => (
+            <div key={listing.seatId} className={s.listing}>
+              <div>
+                <strong>Seat {listing.seatId}</strong>
+                <span className={s.muted}> · held by <span className="mono">{listing.sellerId}</span></span>
+              </div>
+              <SaleApprovalDetails listing={listing} />
+            </div>
+          ))
+        )}
+        <p className={s.note}>Buying a seat is not available in this phase.</p>
+      </RuledSection>
+
+      <RuledSection title="Awaiting club vote">
+        {listings.length === 0 ? (
+          <p className={s.muted}>No seat sales are waiting for a club vote.</p>
+        ) : (
+          listings.map((listing) => {
+            const holder = state.data.tokens.find((token) => token.token_id === listing.seatId)?.owner_id;
+            return (
+              <div key={listing.proposal.id} className={s.listing}>
+                <div>
+                  <strong>
+                    {listing.seatId ? `Seat ${listing.seatId}` : `Proposal ${listing.proposal.id}`}
+                  </strong>
+                  {holder && (
+                    <span className={s.muted}> · held by <span className="mono">{holder}</span></span>
+                  )}
+                </div>
+                <dl className={s.facts}>
+                  <Fact label="Proposal">#{listing.proposal.id}: {listing.proposal.description}</Fact>
+                  <Fact label="Status">
+                    <ProposalStatus proposal={listing.proposal} periodNs={state.data.proposalPeriodNs} />
+                  </Fact>
+                  {listing.buyerId && (
+                    <Fact label="Buyer"><span className="mono">{listing.buyerId}</span></Fact>
+                  )}
+                  {listing.price && <Fact label="Price">{nearAmount(listing.price)} NEAR</Fact>}
+                </dl>
+              </div>
+            );
+          })
+        )}
+      </RuledSection>
     </main>
   );
 }
