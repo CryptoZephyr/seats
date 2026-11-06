@@ -129,7 +129,7 @@ function ProposalList({ proposals, periodNs }: { proposals: ProposalView[]; peri
 }
 
 function latestVote(seat: SeatSnapshot): { kind: VoteKind; vote: string; proposalId: number } | undefined {
-  const latest = [...seat.results.results].sort((a, b) => b.proposal_id - a.proposal_id)[0];
+  const latest = seat.results.results.findLast((result) => result.cast);
   if (latest?.vote === "Approve") return { kind: "tick", vote: latest.vote, proposalId: latest.proposal_id };
   if (latest?.vote === "Reject") return { kind: "cross", vote: latest.vote, proposalId: latest.proposal_id };
   if (latest?.vote === "Abstain") return { kind: "ring", vote: latest.vote, proposalId: latest.proposal_id };
@@ -577,7 +577,7 @@ export function ProposalVote({ closed = false }: { closed?: boolean }) {
 
   const seat = state.data.seats.find((item) => viewer.seatIds.includes(item.token.token_id));
   const voteResult = closed
-    ? seat?.results.results.at(-1)
+    ? seat?.results.results.findLast((result) => result.cast)
     : undefined;
   const proposal = closed
     ? state.data.proposals.find((item) => item.id === voteResult?.proposal_id)
