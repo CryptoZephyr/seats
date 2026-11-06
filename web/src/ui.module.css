@@ -550,6 +550,30 @@
   text-decoration: none;
   overflow-wrap: anywhere;
 }
+.hashValue {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 100%;
+}
+.hashText {
+  white-space: nowrap;
+}
+.copyButton {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-ink-soft);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.copyButton:hover,
+.copyButton:focus-visible {
+  color: var(--color-ink);
+}
 a.receiptTx:hover {
   text-decoration: underline;
 }

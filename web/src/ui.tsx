@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { Button } from "react-aria-components";
 import { useViewer } from "./chain/WalletProvider";
 import styles from "./ui.module.css";
@@ -411,20 +411,61 @@ export function ReceiptSteps({ steps }: { steps: { label: string; tx?: string }[
         <li key={step.label} className={styles.receiptStep}>
           <span className={styles.receiptLabel}>{step.label}</span>
           {step.tx && (
-            <a
-              className={`${styles.receiptTx} mono`}
+            <HashValue
+              value={step.tx}
+              label="transaction hash"
               href={`https://testnet.nearblocks.io/tx/${step.tx}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {step.tx.slice(0, 8)}…{step.tx.slice(-6)}
-              <span className={styles.srOnly}> (opens explorer)</span>
-              <Icon name="external" size={12} />
-            </a>
+            />
           )}
         </li>
       ))}
     </ol>
+  );
+}
+
+export function HashValue({
+  value,
+  label,
+  href,
+}: {
+  value: string;
+  label: string;
+  href?: string;
+}) {
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
+  const shortValue = value.length > 14
+    ? `${value.slice(0, 8)}…${value.slice(-6)}`
+    : value;
+
+  async function copyValue() {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopyState("copied");
+    } catch {
+      setCopyState("error");
+    }
+  }
+
+  return (
+    <span className={styles.hashValue}>
+      {href ? (
+        <a className={`${styles.receiptTx} mono`} href={href} target="_blank" rel="noreferrer">
+          <span title={value}>{shortValue}</span>
+          <span className={styles.srOnly}> (opens explorer)</span>
+          <Icon name="external" size={12} />
+        </a>
+      ) : (
+        <span className={`${styles.hashText} mono`} title={value}>{shortValue}</span>
+      )}
+      <button
+        type="button"
+        className={styles.copyButton}
+        aria-label={`Copy ${label}`}
+        onClick={() => void copyValue()}
+      >
+        {copyState === "copied" ? "Copied" : copyState === "error" ? "Copy failed" : "Copy"}
+      </button>
+    </span>
   );
 }
 

@@ -13,6 +13,7 @@ import {
   CheckedStamp,
   ErrorStatus,
   LoadingStatus,
+  HashValue,
   MoneySplit,
   SuccessStatus,
   Fact,
@@ -499,7 +500,9 @@ export function MySeat() {
                 <span className="mono">{seat.controller}</span>
               </Fact>
               <Fact label="Brief fingerprint">
-                {seat.briefHash || "No fingerprint stored"}
+                {seat.briefHash ? (
+                  <HashValue value={seat.briefHash} label="brief fingerprint" />
+                ) : "No fingerprint stored"}
               </Fact>
             </div>
           ))}
@@ -567,7 +570,9 @@ export function DelegateBrief() {
           <dl className={s.facts}>
             {seats.map((seat) => (
               <Fact key={seat.token.token_id} label={`Seat ${seat.token.token_id} fingerprint`}>
-                {seat.briefHash ? <span className="mono">{seat.briefHash}</span> : "No fingerprint stored"}
+                {seat.briefHash ? (
+                  <HashValue value={seat.briefHash} label="brief fingerprint" />
+                ) : "No fingerprint stored"}
               </Fact>
             ))}
           </dl>
@@ -672,7 +677,9 @@ export function ProposalVote({
               {voteResult.cast ? <CastStatus /> : <RefusedStamp>{voteResult.status}</RefusedStamp>}
             </Fact>
             {voteResult.receipt_hash && (
-              <Fact label="Receipt hash"><span className="mono">{voteResult.receipt_hash}</span></Fact>
+              <Fact label="Receipt hash">
+                <HashValue value={voteResult.receipt_hash} label="receipt hash" />
+              </Fact>
             )}
           </dl>
         ) : pending ? (
@@ -746,7 +753,9 @@ export function AIReceiptPage() {
             </Fact>
             <Fact label="Source">{voteSourceLabel(result.source)}</Fact>
             <Fact label="Receipt hash">
-              {result.receipt_hash ? <span className="mono">{result.receipt_hash}</span> : "No receipt hash stored"}
+              {result.receipt_hash ? (
+                <HashValue value={result.receipt_hash} label="receipt hash" />
+              ) : "No receipt hash stored"}
             </Fact>
             {result.error && <Fact label="Error">{result.error}</Fact>}
           </dl>
@@ -978,7 +987,11 @@ export function ReceiptPage({ kind }: { kind: "vote" | "sale" | "buy" | "vault" 
             <Fact label="Voter status">
               {result.cast ? <CastStatus /> : <RefusedStamp>{result.status}</RefusedStamp>}
             </Fact>
-            {result.receipt_hash && <Fact label="Receipt hash"><span className="mono">{result.receipt_hash}</span></Fact>}
+            {result.receipt_hash && (
+              <Fact label="Receipt hash">
+                <HashValue value={result.receipt_hash} label="receipt hash" />
+              </Fact>
+            )}
           </dl>
         </RuledSection>
       ))}
