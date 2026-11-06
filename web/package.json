@@ -18,6 +18,7 @@
     "@near-wallet-selector/meteor-wallet": "10.1.4",
     "@near-wallet-selector/modal-ui": "10.1.4",
     "@near-wallet-selector/my-near-wallet": "10.1.4",
+    "buffer": "6.0.3",
     "react": "^19.1.0",
     "react-aria-components": "^1.13.0",
     "react-dom": "^19.1.0"
