@@ -119,6 +119,12 @@ export interface PolicyView {
   bounty_forgiveness_period: string;
 }
 
+export interface SputnikConfigView {
+  name: string;
+  purpose: string;
+  metadata: string;
+}
+
 export interface ViewArgs {
   nft_tokens: { from_index: string | null; limit: number | null };
   nft_tokens_for_owner: {
@@ -133,6 +139,7 @@ export interface ViewArgs {
   get_brief_hash: Record<string, never>;
   get_controller: Record<string, never>;
   get_dao: Record<string, never>;
+  get_config: Record<string, never>;
   get_policy: Record<string, never>;
   get_last_proposal_id: Record<string, never>;
   get_proposals: { from_index: number; limit: number };
@@ -148,6 +155,7 @@ export interface ViewResults {
   get_brief_hash: string;
   get_controller: string;
   get_dao: string;
+  get_config: SputnikConfigView;
   get_policy: PolicyView;
   get_last_proposal_id: number;
   get_proposals: ProposalView[];

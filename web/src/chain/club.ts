@@ -24,6 +24,11 @@ export interface ClubSnapshot {
   tokens: NftToken[];
   seats: SeatSnapshot[];
   proposals: ProposalView[];
+  config: {
+    name: string;
+    purpose: string;
+    metadata: string;
+  };
   proposalPeriodNs: string;
 }
 
@@ -84,9 +89,10 @@ async function readSeat(
 }
 
 export async function loadClubSnapshot(): Promise<ClubSnapshot> {
-  const [metadata, tokens, policy, lastProposalId] = await Promise.all([
+  const [metadata, tokens, config, policy, lastProposalId] = await Promise.all([
     callView(chainConfig.seatNftAccountId, "nft_metadata", {}),
     allTokens(),
+    callView(chainConfig.daoAccountId, "get_config", {}),
     callView(chainConfig.daoAccountId, "get_policy", {}),
     callView(chainConfig.daoAccountId, "get_last_proposal_id", {}),
   ]);
@@ -102,6 +108,7 @@ export async function loadClubSnapshot(): Promise<ClubSnapshot> {
   return {
     metadata,
     tokens,
+    config,
     seats,
     proposals,
     proposalPeriodNs: policy.proposal_period,

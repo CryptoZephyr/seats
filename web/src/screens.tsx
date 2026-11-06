@@ -166,6 +166,7 @@ export function ClubPage() {
   if (state.status !== "ready") return null;
 
   const { data } = state;
+  const clubName = data.config.name.trim() || chainConfig.daoAccountId;
   const listings = saleListings(data.proposals);
   const seats = data.seats.map((seat) => ({
     seat: seat.token.token_id,
@@ -177,7 +178,10 @@ export function ClubPage() {
     <main className={`${s.page} ${s.pageWide}`}>
       <header className={s.pageHead}>
         <p className={s.eyebrow}>A Sputnik DAO club</p>
-        <h1><span className="mono">{chainConfig.daoAccountId}</span></h1>
+        <h1>{clubName}</h1>
+        <p className={s.muted}>
+          <small className="mono">{chainConfig.daoAccountId}</small>
+        </p>
         <p className={s.lede}>
           Each seat carries one vote in the club's DAO and opens the club vault. Seats move only
           through a club-approved sale.
