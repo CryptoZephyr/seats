@@ -288,14 +288,22 @@ export function ErrorStatus({ children, onRetry }: { children: ReactNode; onRetr
   );
 }
 
-export function PendingStatus({ deadline, countdown }: { deadline: string; countdown: string }) {
+export function PendingStatus({
+  deadline,
+  countdown,
+  title,
+}: {
+  deadline: string;
+  countdown: string;
+  title?: string;
+}) {
   return (
     <span className={styles.statusPending} role="status" aria-live="polite">
       <span className={styles.statusWord}>Pending</span>
       <span className={styles.drainBar} aria-hidden="true">
         <span className={styles.drainFill} />
       </span>
-      <span className={styles.statusMeta}>
+      <span className={styles.statusMeta} title={title}>
         Closes at {deadline} · {countdown} left
       </span>
     </span>

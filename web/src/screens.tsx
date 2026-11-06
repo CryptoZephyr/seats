@@ -4,6 +4,7 @@ import type { SeatSnapshot } from "./chain/club";
 import { useClubData } from "./chain/useClubData";
 import { useViewer } from "./chain/WalletProvider";
 import type { ProposalView } from "./chain/types";
+import { formatProposalDate } from "./proposalDate";
 import { SeatPlan, VoteMark, type VoteKind } from "./seatplan";
 import { useMockRun } from "./useMockRun";
 import {
@@ -47,12 +48,18 @@ function proposalKindName(proposal: ProposalView): string {
   return name.replace(/([a-z])([A-Z])/g, "$1 $2");
 }
 
-function submittedAt(value: string): string {
-  return new Date(Number(BigInt(value) / 1_000_000n)).toLocaleString();
+function ProposalDate({ timestampNs }: { timestampNs: string }) {
+  const formatted = formatProposalDate(timestampNs);
+  return (
+    <time dateTime={formatted.datetime} title={formatted.tooltip}>
+      {formatted.text}
+    </time>
+  );
 }
 
 function ProposalDeadline({ deadlineNs }: { deadlineNs: bigint }) {
   const deadlineMs = Number(deadlineNs / 1_000_000n);
+  const formatted = formatProposalDate(deadlineNs);
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
@@ -62,8 +69,13 @@ function ProposalDeadline({ deadlineNs }: { deadlineNs: bigint }) {
 
   const remaining = Math.max(0, Math.floor((deadlineMs - now) / 1000));
   const countdown = `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")}`;
-  const deadline = new Date(deadlineMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  return <PendingStatus deadline={deadline} countdown={countdown} />;
+  return (
+    <PendingStatus
+      deadline={formatted.time}
+      countdown={countdown}
+      title={formatted.tooltip}
+    />
+  );
 }
 
 function ProposalStatus({
@@ -95,7 +107,8 @@ function ProposalList({ proposals, periodNs }: { proposals: ProposalView[]; peri
             </span>
             <span className={s.muted}>
               {" "}· {proposalKindName(proposal)} · proposed by{" "}
-              <span className="mono">{proposal.proposer}</span> · submitted {submittedAt(proposal.submission_time)}
+              <span className="mono">{proposal.proposer}</span> · submitted{" "}
+              <ProposalDate timestampNs={proposal.submission_time} />
             </span>
           </div>
           <ProposalStatus proposal={proposal} periodNs={periodNs} />
@@ -246,7 +259,9 @@ export function ClubPage() {
                   <span className={s.decisionDetail}>
                     Proposed by <span className="mono">{proposal.proposer}</span> · {proposalKindName(proposal)}
                   </span>
-                  <span className={s.decisionTime}>Submitted {submittedAt(proposal.submission_time)}</span>
+                  <span className={s.decisionTime}>
+                    Submitted <ProposalDate timestampNs={proposal.submission_time} />
+                  </span>
                 </div>
                 <div className={s.decisionSide}>
                   <ProposalStatus proposal={proposal} periodNs={data.proposalPeriodNs} />
