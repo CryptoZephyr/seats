@@ -36,8 +36,16 @@ type Route =
   | "license"
   | "policy";
 
-function parseRoute(): { route: Route; proposalId?: number } {
+function parseRoute(): { route: Route; proposalId?: number; tokenId?: string } {
   const h = window.location.hash.replace(/^#\/?/, "");
+  const proposalSeatVote = h.match(/^vote\/(\d+)\/([^/]+)$/);
+  if (proposalSeatVote) {
+    return {
+      route: "vote-proposal",
+      proposalId: Number(proposalSeatVote[1]),
+      tokenId: proposalSeatVote[2],
+    };
+  }
   const proposalVote = h.match(/^vote\/(\d+)$/);
   if (proposalVote) {
     return { route: "vote-proposal", proposalId: Number(proposalVote[1]) };
@@ -94,7 +102,7 @@ function AppContent() {
       page = <ProposalVote />;
       break;
     case "vote-proposal":
-      page = <ProposalVote proposalId={route.proposalId} />;
+      page = <ProposalVote proposalId={route.proposalId} tokenId={route.tokenId} />;
       break;
     case "vote-closed":
       page = <ProposalVote closed />;

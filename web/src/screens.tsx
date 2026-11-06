@@ -3,7 +3,7 @@ import { chainConfig } from "./chain/config";
 import type { SeatSnapshot } from "./chain/club";
 import { useClubData } from "./chain/useClubData";
 import { useViewer } from "./chain/WalletProvider";
-import type { ProposalView } from "./chain/types";
+import type { PendingView, ProposalView, VoteResult } from "./chain/types";
 import { formatProposalDate } from "./proposalDate";
 import { isProposalVotingClosed, newestFirst } from "./proposals";
 import { SeatPlan, VoteMark, type VoteKind } from "./seatplan";
@@ -46,12 +46,34 @@ function ReadPageState({ state, retry }: { state: ClubDataState; retry: () => vo
   );
 }
 
-function findVoteResultForProposal(seat: SeatSnapshot, proposalId: number) {
-  return (
-    seat.results.results.findLast(
-      (result) => result.proposal_id === proposalId && result.cast,
-    ) ?? seat.results.results.findLast((result) => result.proposal_id === proposalId)
-  );
+type SeatVoteState =
+  | {
+      kind: "pending";
+      pending: PendingView;
+      sublabel?: "Casting now" | "Cast failed, will retry";
+    }
+  | { kind: "cast"; result: VoteResult }
+  | { kind: "closed"; result: VoteResult }
+  | { kind: "none" };
+
+function seatVoteState(seat: SeatSnapshot, proposalId: number): SeatVoteState {
+  const pending = seat.pending[proposalId];
+  const result = seat.results.results.findLast((item) => item.proposal_id === proposalId);
+
+  if (pending) {
+    const sublabel =
+      result && !result.cast
+        ? result.status === "Casting"
+          ? "Casting now"
+          : result.status === "Failed"
+            ? "Cast failed, will retry"
+            : undefined
+        : undefined;
+    return { kind: "pending", pending, sublabel };
+  }
+  if (result?.cast) return { kind: "cast", result };
+  if (result) return { kind: "closed", result };
+  return { kind: "none" };
 }
 
 function proposalKindName(proposal: ProposalView): string {
@@ -478,8 +500,7 @@ export function MySeat() {
     ).map((proposal) => ({
       seat,
       proposal,
-      pending: seat.pending[proposal.id],
-      result: findVoteResultForProposal(seat, proposal.id),
+      voteState: seatVoteState(seat, proposal.id),
     })),
   );
 
@@ -515,7 +536,7 @@ export function MySeat() {
           <p className={s.muted}>No open proposals right now</p>
         ) : (
           <ul className={s.proposals}>
-            {openVotes.map(({ seat, proposal, pending, result }) => (
+            {openVotes.map(({ seat, proposal, voteState }) => (
               <li key={`${seat.token.token_id}-${proposal.id}`} className={s.proposal}>
                 <div>
                   <span className={s.proposalTitle}>
@@ -526,33 +547,43 @@ export function MySeat() {
                     <ProposalDate timestampNs={proposal.submission_time} />
                   </span>
                   <dl className={s.facts}>
-                    {result ? (
-                      <Fact label="Vote">
-                        {result.cast ? (
-                          <>
-                            Your seat voted {result.vote} <CastStatus />
-                          </>
-                        ) : (
-                          <RefusedStamp>{result.status}</RefusedStamp>
+                    {voteState.kind === "pending" ? (
+                      <>
+                        <Fact label="Your delegate's vote">{voteState.pending.vote}</Fact>
+                        {voteState.sublabel && (
+                          <Fact label="Cast status">{voteState.sublabel}</Fact>
                         )}
+                      </>
+                    ) : voteState.kind === "cast" ? (
+                      <Fact label="Vote">
+                        Your seat voted {voteState.result.vote} <CastStatus />
                       </Fact>
-                    ) : pending ? (
-                      <Fact label="Your delegate's vote">{pending.vote}</Fact>
+                    ) : voteState.kind === "closed" ? (
+                      <Fact label="Voter status">
+                        <RefusedStamp>{voteState.result.status}</RefusedStamp>
+                      </Fact>
                     ) : (
                       <Fact label="Vote status">Your delegate hasn't voted yet</Fact>
                     )}
                   </dl>
-                  {!result && (
+                  {voteState.kind === "pending" && (
+                    <ProposalDeadline
+                      deadlineNs={BigInt(voteState.pending.deadline)}
+                    />
+                  )}
+                  {voteState.kind === "none" && (
                     <ProposalDeadline
                       deadlineNs={
-                        pending
-                          ? BigInt(pending.deadline)
-                          : BigInt(proposal.submission_time) + BigInt(data.proposalPeriodNs)
+                        BigInt(proposal.submission_time) + BigInt(data.proposalPeriodNs)
                       }
                     />
                   )}
                 </div>
-                <TextButton href={`#/vote/${proposal.id}`}>Review vote</TextButton>
+                <TextButton
+                  href={`#/vote/${proposal.id}/${encodeURIComponent(seat.token.token_id)}`}
+                >
+                  Review vote
+                </TextButton>
               </li>
             ))}
           </ul>
@@ -619,13 +650,14 @@ export function DelegateBrief() {
 export function ProposalVote({
   closed = false,
   proposalId,
+  tokenId,
 }: {
   closed?: boolean;
   proposalId?: number;
+  tokenId?: string;
 }) {
   const state = useClubData();
   const viewer = useViewer();
-  const nowNs = useCurrentTimeNs();
   const pageState = ReadPageState({ state, retry: state.retry });
   if (pageState) return pageState;
   if (state.status !== "ready") return null;
@@ -666,12 +698,38 @@ export function ProposalVote({
   const ownedSeats = state.data.seats.filter((item) =>
     viewer.seatIds.includes(item.token.token_id),
   );
-  const requestedSeat = proposalId === undefined
+  const routeSeat = tokenId === undefined
     ? undefined
-    : ownedSeats.find((item) => Boolean(item.pending[proposalId]));
+    : ownedSeats.find((item) => item.token.token_id === tokenId);
+  if (tokenId !== undefined && !routeSeat) {
+    if (!viewer.walletReady) {
+      return (
+        <main className={s.page}>
+          <LoadingStatus>Checking this account's seats…</LoadingStatus>
+        </main>
+      );
+    }
+    return (
+      <main className={s.page}>
+        <header className={s.pageHead}>
+          <p className={s.eyebrow}>Proposal {proposalId}</p>
+          <h1>Not your seat</h1>
+        </header>
+        <p className={s.muted}>This account doesn't hold Seat {tokenId}.</p>
+        <TextButton href="#/seat">View your seat</TextButton>
+      </main>
+    );
+  }
   const seatWithPending = ownedSeats.find((item) =>
-    openProposals.some((proposal) => Boolean(item.pending[proposal.id])),
+    openProposals.some((proposal) => seatVoteState(item, proposal.id).kind === "pending"),
   );
+  const seatForRequestedProposal = proposalId === undefined
+    ? undefined
+    : ownedSeats.find(
+        (item) => seatVoteState(item, proposalId).kind === "pending",
+      ) ??
+      ownedSeats.find((item) => seatVoteState(item, proposalId).kind === "cast") ??
+      ownedSeats.find((item) => seatVoteState(item, proposalId).kind === "closed");
   const seatWithLatestCast = ownedSeats
     .map((item) => ({
       seat: item,
@@ -682,44 +740,25 @@ export function ProposalVote({
       (left, right) =>
         (right.result?.proposal_id ?? -1) - (left.result?.proposal_id ?? -1),
     )[0]?.seat;
-  const seatWithRequestedCast = proposalId === undefined
-    ? undefined
-    : ownedSeats.find((item) =>
-        findVoteResultForProposal(item, proposalId)?.cast === true,
-      );
-  const seatWithRequestedResult = proposalId === undefined
-    ? undefined
-    : ownedSeats.find((item) =>
-        Boolean(findVoteResultForProposal(item, proposalId)),
-      );
-  const seat = closed
-    ? seatWithLatestCast ?? ownedSeats[0]
-    : proposalId !== undefined
-      ? seatWithRequestedCast ?? seatWithRequestedResult ?? requestedSeat ?? ownedSeats[0]
-      : seatWithPending ?? ownedSeats[0];
-  const proposalVoteResult =
-    proposalId === undefined || !seat
-      ? undefined
-      : findVoteResultForProposal(seat, proposalId);
-  const voteResult = closed
+  const seat = routeSeat ?? (
+    closed
+      ? seatWithLatestCast ?? ownedSeats[0]
+      : proposalId !== undefined
+        ? seatForRequestedProposal ?? ownedSeats[0]
+        : seatWithPending ?? ownedSeats[0]
+  );
+  const latestCastResult = closed
     ? seat?.results.results.findLast((result) => result.cast)
-    : proposalVoteResult?.cast
-      ? proposalVoteResult
-      : undefined;
+    : undefined;
   const pendingProposal = seat
-    ? openProposals.find((item) => Boolean(seat.pending[item.id]))
+    ? openProposals.find((item) => seatVoteState(seat, item.id).kind === "pending")
     : undefined;
   const proposal = closed
-    ? proposals.find((item) => item.id === voteResult?.proposal_id)
+    ? proposals.find((item) => item.id === latestCastResult?.proposal_id)
     : proposalId !== undefined
       ? requestedProposal
       : pendingProposal ?? openProposals[0];
-  const pending = proposal && seat ? seat.pending[proposal.id] : null;
-  const requestedProposalIsClosed =
-    proposalId !== undefined &&
-    proposal !== undefined &&
-    (proposal.status !== "InProgress" ||
-      isProposalVotingClosed(proposal, state.data.proposalPeriodNs, nowNs));
+  const voteState = proposal && seat ? seatVoteState(seat, proposal.id) : undefined;
 
   if (!proposal) {
     return (
@@ -753,35 +792,34 @@ export function ProposalVote({
       <RuledSection title="Your delegate's vote">
         {!seat ? (
           <p className={s.muted}>Sign in with the account that holds a seat to view its delegate record.</p>
-        ) : voteResult ? (
+        ) : voteState?.kind === "cast" ? (
           <dl className={s.facts}>
-            <Fact label="Vote">Your seat voted {voteResult.vote}</Fact>
+            <Fact label="Vote">Your seat voted {voteState.result.vote}</Fact>
             <Fact label="Voter status">
               <CastStatus />
             </Fact>
-            {voteResult.receipt_hash && (
+            {voteState.result.receipt_hash && (
               <Fact label="Receipt hash">
-                <HashValue value={voteResult.receipt_hash} label="receipt hash" />
+                <HashValue value={voteState.result.receipt_hash} label="receipt hash" />
               </Fact>
             )}
           </dl>
-        ) : proposalVoteResult ? (
+        ) : voteState?.kind === "closed" ? (
           <dl className={s.facts}>
             <Fact label="Voter status">
-              <RefusedStamp>{proposalVoteResult.status}</RefusedStamp>
+              <RefusedStamp>{voteState.result.status}</RefusedStamp>
             </Fact>
           </dl>
-        ) : requestedProposalIsClosed ? (
-          <p className={s.muted}>Your delegate hasn't cast a vote on this proposal.</p>
-        ) : pending ? (
+        ) : voteState?.kind === "pending" ? (
           <div className={s.voteCard}>
             <div className={s.voteChoice}>
-              <span className={`${s.voteWord} ${pending.vote === "Approve" ? s.voteApprove : ""}`}>
-                {pending.vote}
+              <span className={`${s.voteWord} ${voteState.pending.vote === "Approve" ? s.voteApprove : ""}`}>
+                {voteState.pending.vote}
               </span>
-              <ProposalDeadline deadlineNs={BigInt(pending.deadline)} />
+              <ProposalDeadline deadlineNs={BigInt(voteState.pending.deadline)} />
             </div>
-            <p className={s.reason}>{pending.reason}</p>
+            {voteState.sublabel && <p className={s.muted}>{voteState.sublabel}</p>}
+            <p className={s.reason}>{voteState.pending.reason}</p>
           </div>
         ) : (
           <>
@@ -795,7 +833,7 @@ export function ProposalVote({
         )}
       </RuledSection>
 
-      {!closed && pending && viewer.isVoterController && (
+      {!closed && voteState?.kind === "pending" && viewer.isVoterController && (
         <RuledSection title="Override before it is cast">
           <p className={s.muted}>Vote changes are not available in this phase.</p>
         </RuledSection>
