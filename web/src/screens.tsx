@@ -1018,7 +1018,6 @@ const STATE_EXAMPLES: { name: string; render: () => JSX.Element }[] = [
 ];
 
 export function StatesPage() {
-  const viewer = useViewer();
   return (
     <main className={s.page}>
       <header className={s.pageHead}>
@@ -1124,15 +1123,7 @@ export function StatesPage() {
           </li>
           <li className={s.stateRow}>
             <span className={s.stateName}>Wallet not connected</span>
-            {viewer.accountId ? (
-              <span className="mono">{viewer.accountId}</span>
-            ) : viewer.error ? (
-              <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>
-            ) : viewer.isLoading ? (
-              <LoadingStatus>Loading the wallet connection…</LoadingStatus>
-            ) : (
-              <TextButton onClick={viewer.signIn}>Connect wallet</TextButton>
-            )}
+            <span className={s.muted}>Not connected</span>
           </li>
         </ul>
       </RuledSection>
