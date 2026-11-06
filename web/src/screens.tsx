@@ -60,6 +60,25 @@ function ProposalDate({ timestampNs }: { timestampNs: string }) {
   );
 }
 
+function ProposalDeadline({ deadlineNs }: { deadlineNs: bigint }) {
+  const deadlineMs = Number(deadlineNs / 1_000_000n);
+  const formatted = formatProposalDate(deadlineNs);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const remaining = Math.max(0, Math.floor((deadlineMs - now) / 1000));
+  const countdown = `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")}`;
+  return (
+    <PendingStatus
+      deadline={formatted.time}
+      countdown={countdown}
+      title={formatted.tooltip}
+    />
+  );
+}
+
 function InProgressProposalStatus({
   proposal,
   periodNs,
@@ -407,6 +426,14 @@ export function MySeat() {
   const { data } = state;
   const owned = data.seats.filter((seat) => viewer.seatIds.includes(seat.token.token_id));
   const publicSeats = owned.length > 0 ? owned : data.seats;
+  const openProposals = newestFirst(
+    data.proposals.filter((proposal) => proposal.status === "InProgress"),
+  );
+  const seatToReview = owned[0];
+  const voteProposal =
+    (seatToReview &&
+      openProposals.find((proposal) => Boolean(seatToReview.pending[proposal.id]))) ??
+    openProposals[0];
 
   return (
     <main className={s.page}>
@@ -477,8 +504,11 @@ export function MySeat() {
         <div className={s.actions}>
           {owned.length > 0 ? (
             <>
-              {data.proposals.some((proposal) => proposal.status === "InProgress") && (
-                <GraphicButton glyph="seat" onClick={() => { location.hash = "#/vote"; }}>
+              {voteProposal && (
+                <GraphicButton
+                  glyph="seat"
+                  onClick={() => { location.hash = `#/vote/${voteProposal.id}`; }}
+                >
                   Review your delegate's vote
                 </GraphicButton>
               )}
@@ -554,7 +584,13 @@ export function DelegateBrief() {
   );
 }
 
-export function ProposalVote({ closed = false }: { closed?: boolean }) {
+export function ProposalVote({
+  closed = false,
+  proposalId,
+}: {
+  closed?: boolean;
+  proposalId?: number;
+}) {
   const state = useClubData();
   const viewer = useViewer();
   const pageState = ReadPageState({ state, retry: state.retry });
@@ -579,9 +615,18 @@ export function ProposalVote({ closed = false }: { closed?: boolean }) {
   const voteResult = closed
     ? seat?.results.results.findLast((result) => result.cast)
     : undefined;
+  const openProposals = newestFirst(
+    state.data.proposals.filter((item) => item.status === "InProgress"),
+  );
+  const pendingProposal = seat
+    ? openProposals.find((item) => Boolean(seat.pending[item.id]))
+    : undefined;
+  const requestedProposal = openProposals.find((item) => item.id === proposalId);
   const proposal = closed
     ? state.data.proposals.find((item) => item.id === voteResult?.proposal_id)
-    : state.data.proposals.find((item) => item.status === "InProgress");
+    : (requestedProposal && seat?.pending[requestedProposal.id]
+        ? requestedProposal
+        : pendingProposal ?? requestedProposal ?? openProposals[0]);
   const pending = proposal && seat ? seat.pending[proposal.id] : null;
 
   if (!proposal) {

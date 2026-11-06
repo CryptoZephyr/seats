@@ -21,6 +21,7 @@ type Route =
   | "seat"
   | "brief"
   | "vote"
+  | "vote-proposal"
   | "vote-closed"
   | "aireceipt"
   | "vault"
@@ -35,9 +36,13 @@ type Route =
   | "license"
   | "policy";
 
-function parseRoute(): Route {
+function parseRoute(): { route: Route; proposalId?: number } {
   const h = window.location.hash.replace(/^#\/?/, "");
-  if (h === "docs" || h.startsWith("docs/")) return "docs";
+  const proposalVote = h.match(/^vote\/(\d+)$/);
+  if (proposalVote) {
+    return { route: "vote-proposal", proposalId: Number(proposalVote[1]) };
+  }
+  if (h === "docs" || h.startsWith("docs/")) return { route: "docs" };
   const map: Record<string, Route> = {
     "": "club",
     club: "club",
@@ -58,7 +63,7 @@ function parseRoute(): Route {
     license: "license",
     policy: "policy",
   };
-  return map[h] ?? "club";
+  return { route: map[h] ?? "club" };
 }
 
 export function App() {
@@ -70,7 +75,7 @@ export function App() {
 }
 
 function AppContent() {
-  const [route, setRoute] = useState<Route>(parseRoute);
+  const [route, setRoute] = useState(parseRoute);
   useEffect(() => {
     const onHash = () => setRoute(parseRoute());
     window.addEventListener("hashchange", onHash);
@@ -78,7 +83,7 @@ function AppContent() {
   }, []);
 
   let page: JSX.Element;
-  switch (route) {
+  switch (route.route) {
     case "seat":
       page = <MySeat />;
       break;
@@ -87,6 +92,9 @@ function AppContent() {
       break;
     case "vote":
       page = <ProposalVote />;
+      break;
+    case "vote-proposal":
+      page = <ProposalVote proposalId={route.proposalId} />;
       break;
     case "vote-closed":
       page = <ProposalVote closed />;
