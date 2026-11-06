@@ -238,13 +238,13 @@ function nearAmount(yocto: string): string {
 export function ClubPage() {
   const state = useClubData();
   const viewer = useViewer();
+  const nowNs = useCurrentTimeNs();
   const pageState = ReadPageState({ state, retry: state.retry });
   if (pageState) return pageState;
   if (state.status !== "ready") return null;
 
   const { data } = state;
   const clubName = data.config.name.trim() || chainConfig.daoAccountId;
-  const nowNs = useCurrentTimeNs();
   const saleApprovals = activeSaleApprovals(data.seats, nowNs);
   const saleProposals = saleListings(data.proposals);
   const seats = data.seats.map((seat) => ({
@@ -390,13 +390,13 @@ export function ClubPage() {
 export function MySeat() {
   const state = useClubData();
   const viewer = useViewer();
+  const nowNs = useCurrentTimeNs();
   const pageState = ReadPageState({ state, retry: state.retry });
   if (pageState) return pageState;
   if (state.status !== "ready") return null;
 
   const { data } = state;
   const owned = data.seats.filter((seat) => viewer.seatIds.includes(seat.token.token_id));
-  const nowNs = useCurrentTimeNs();
 
   if (viewer.accountId && viewer.isLoading) {
     return (
@@ -800,11 +800,11 @@ export function VaultPage() {
 export function SellSeat() {
   const state = useClubData();
   const viewer = useViewer();
+  const nowNs = useCurrentTimeNs();
   const pageState = ReadPageState({ state, retry: state.retry });
   if (pageState) return pageState;
   if (state.status !== "ready") return null;
 
-  const nowNs = useCurrentTimeNs();
   const approvals = activeSaleApprovals(state.data.seats, nowNs);
   const listings = saleListings(state.data.proposals);
   const ownedSeats = state.data.seats.filter((seat) => viewer.seatIds.includes(seat.token.token_id));
@@ -867,11 +867,11 @@ export function SellSeat() {
 
 export function BuySeat() {
   const state = useClubData();
+  const nowNs = useCurrentTimeNs();
   const pageState = ReadPageState({ state, retry: state.retry });
   if (pageState) return pageState;
   if (state.status !== "ready") return null;
 
-  const nowNs = useCurrentTimeNs();
   const approvals = activeSaleApprovals(state.data.seats, nowNs);
   const listings = saleListings(state.data.proposals);
 
