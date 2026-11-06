@@ -465,13 +465,12 @@ export function MySeat() {
       data.proposals.filter(
         (proposal) =>
           proposal.status === "InProgress" &&
-          !isProposalVotingClosed(proposal, data.proposalPeriodNs, nowNs) &&
-          Boolean(seat.pending[proposal.id]),
+          !isProposalVotingClosed(proposal, data.proposalPeriodNs, nowNs),
       ),
     ).map((proposal) => ({
       seat,
       proposal,
-      pending: seat.pending[proposal.id]!,
+      pending: seat.pending[proposal.id],
     })),
   );
 
@@ -518,9 +517,19 @@ export function MySeat() {
                     <ProposalDate timestampNs={proposal.submission_time} />
                   </span>
                   <dl className={s.facts}>
-                    <Fact label="Your delegate's vote">{pending.vote}</Fact>
+                    {pending ? (
+                      <Fact label="Your delegate's vote">{pending.vote}</Fact>
+                    ) : (
+                      <Fact label="Vote status">Your delegate hasn't voted yet</Fact>
+                    )}
                   </dl>
-                  <ProposalDeadline deadlineNs={BigInt(pending.deadline)} />
+                  <ProposalDeadline
+                    deadlineNs={
+                      pending
+                        ? BigInt(pending.deadline)
+                        : BigInt(proposal.submission_time) + data.proposalPeriodNs
+                    }
+                  />
                 </div>
                 <TextButton href={`#/vote/${proposal.id}`}>Review vote</TextButton>
               </li>
