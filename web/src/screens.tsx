@@ -613,22 +613,41 @@ export function ProposalVote({
     );
   }
 
-  const seat = state.data.seats.find((item) => viewer.seatIds.includes(item.token.token_id));
-  const voteResult = closed
-    ? seat?.results.results.findLast((result) => result.cast)
-    : undefined;
   const openProposals = newestFirst(
     state.data.proposals.filter((item) => item.status === "InProgress"),
   );
+  const ownedSeats = state.data.seats.filter((item) =>
+    viewer.seatIds.includes(item.token.token_id),
+  );
+  const requestedSeat = proposalId === undefined
+    ? undefined
+    : ownedSeats.find((item) => Boolean(item.pending[proposalId]));
+  const seatWithPending = ownedSeats.find((item) =>
+    openProposals.some((proposal) => Boolean(item.pending[proposal.id])),
+  );
+  const seatWithLatestCast = ownedSeats
+    .map((item) => ({
+      seat: item,
+      result: item.results.results.findLast((result) => result.cast),
+    }))
+    .filter(({ result }) => Boolean(result))
+    .sort(
+      (left, right) =>
+        (right.result?.proposal_id ?? -1) - (left.result?.proposal_id ?? -1),
+    )[0]?.seat;
+  const seat = closed
+    ? seatWithLatestCast ?? ownedSeats[0]
+    : requestedSeat ?? seatWithPending ?? ownedSeats[0];
+  const voteResult = closed
+    ? seat?.results.results.findLast((result) => result.cast)
+    : undefined;
   const pendingProposal = seat
     ? openProposals.find((item) => Boolean(seat.pending[item.id]))
     : undefined;
   const requestedProposal = openProposals.find((item) => item.id === proposalId);
   const proposal = closed
     ? state.data.proposals.find((item) => item.id === voteResult?.proposal_id)
-    : (requestedProposal && seat?.pending[requestedProposal.id]
-        ? requestedProposal
-        : pendingProposal ?? requestedProposal ?? openProposals[0]);
+    : requestedProposal ?? pendingProposal ?? openProposals[0];
   const pending = proposal && seat ? seat.pending[proposal.id] : null;
 
   if (!proposal) {
