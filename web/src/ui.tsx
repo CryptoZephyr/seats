@@ -348,6 +348,15 @@ export function ResultStamp({
   );
 }
 
+export function VotingClosedStatus() {
+  return (
+    <span className={styles.votingClosed} role="status" aria-live="polite">
+      <span className={styles.votingClosedShape} aria-hidden="true" />
+      Voting closed
+    </span>
+  );
+}
+
 export function RefusedStamp({ children }: { children: ReactNode }) {
   return <span className={styles.refusedStamp}>{children}</span>;
 }

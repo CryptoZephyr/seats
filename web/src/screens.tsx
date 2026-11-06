@@ -5,6 +5,7 @@ import { useClubData } from "./chain/useClubData";
 import { useViewer } from "./chain/WalletProvider";
 import type { ProposalView } from "./chain/types";
 import { formatProposalDate } from "./proposalDate";
+import { isProposalVotingClosed, newestFirst } from "./proposals";
 import { SeatPlan, VoteMark, type VoteKind } from "./seatplan";
 import { useMockRun } from "./useMockRun";
 import {
@@ -23,6 +24,7 @@ import {
   ResultStamp,
   RuledSection,
   TextButton,
+  VotingClosedStatus,
   WindowBar,
 } from "./ui";
 import s from "./screens.module.css";
@@ -57,7 +59,14 @@ function ProposalDate({ timestampNs }: { timestampNs: string }) {
   );
 }
 
-function ProposalDeadline({ deadlineNs }: { deadlineNs: bigint }) {
+function InProgressProposalStatus({
+  proposal,
+  periodNs,
+}: {
+  proposal: ProposalView;
+  periodNs: string;
+}) {
+  const deadlineNs = BigInt(proposal.submission_time) + BigInt(periodNs);
   const deadlineMs = Number(deadlineNs / 1_000_000n);
   const formatted = formatProposalDate(deadlineNs);
   const [now, setNow] = useState(Date.now());
@@ -66,6 +75,10 @@ function ProposalDeadline({ deadlineNs }: { deadlineNs: bigint }) {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
+
+  if (isProposalVotingClosed(proposal, periodNs, BigInt(now) * 1_000_000n)) {
+    return <VotingClosedStatus />;
+  }
 
   const remaining = Math.max(0, Math.floor((deadlineMs - now) / 1000));
   const countdown = `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")}`;
@@ -86,11 +99,7 @@ function ProposalStatus({
   periodNs: string;
 }) {
   if (proposal.status === "InProgress") {
-    return (
-      <ProposalDeadline
-        deadlineNs={BigInt(proposal.submission_time) + BigInt(periodNs)}
-      />
-    );
+    return <InProgressProposalStatus proposal={proposal} periodNs={periodNs} />;
   }
   return <ResultStamp result={proposal.status} />;
 }
@@ -99,7 +108,7 @@ function ProposalList({ proposals, periodNs }: { proposals: ProposalView[]; peri
   if (proposals.length === 0) return <p className={s.muted}>No proposals have been submitted.</p>;
   return (
     <ul className={s.proposals}>
-      {proposals.map((proposal) => (
+      {newestFirst(proposals).map((proposal) => (
         <li key={proposal.id} className={s.proposal}>
           <div>
             <span className={s.proposalTitle}>
@@ -250,7 +259,7 @@ export function ClubPage() {
           <p className={s.muted}>No proposals have been submitted.</p>
         ) : (
           <ul className={s.decisions}>
-            {[...data.proposals].reverse().map((proposal) => (
+            {newestFirst(data.proposals).map((proposal) => (
               <li key={proposal.id} className={s.decision}>
                 <div className={s.decisionMain}>
                   <span className={s.decisionTitle}>

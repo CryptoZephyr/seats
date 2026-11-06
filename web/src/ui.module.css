@@ -423,6 +423,21 @@
   border-left: 3px dashed var(--color-ink-soft);
   border-bottom-style: dashed;
 }
+.votingClosed {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-ink-soft);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.votingClosedShape {
+  width: 9px;
+  height: 9px;
+  border: 1.5px dashed currentColor;
+}
 
 .refusedStamp {
   display: inline-block;

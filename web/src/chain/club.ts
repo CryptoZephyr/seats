@@ -88,6 +88,20 @@ async function readSeat(
   };
 }
 
+async function allProposals(proposalBound: number): Promise<ProposalView[]> {
+  const proposals: ProposalView[] = [];
+  for (let fromIndex = 0; fromIndex < proposalBound; fromIndex += 100) {
+    const limit = Math.min(100, proposalBound - fromIndex);
+    const page = await callView(chainConfig.daoAccountId, "get_proposals", {
+      from_index: fromIndex,
+      limit,
+    });
+    proposals.push(...page);
+    if (page.length < limit) break;
+  }
+  return proposals;
+}
+
 export async function loadClubSnapshot(): Promise<ClubSnapshot> {
   const [metadata, tokens, config, policy, lastProposalId] = await Promise.all([
     callView(chainConfig.seatNftAccountId, "nft_metadata", {}),
@@ -96,13 +110,7 @@ export async function loadClubSnapshot(): Promise<ClubSnapshot> {
     callView(chainConfig.daoAccountId, "get_policy", {}),
     callView(chainConfig.daoAccountId, "get_last_proposal_id", {}),
   ]);
-  const proposals =
-    lastProposalId === 0
-      ? []
-      : await callView(chainConfig.daoAccountId, "get_proposals", {
-          from_index: 0,
-          limit: lastProposalId,
-        });
+  const proposals = await allProposals(lastProposalId);
   const seats = await Promise.all(tokens.map((token) => readSeat(token, proposals)));
 
   return {
