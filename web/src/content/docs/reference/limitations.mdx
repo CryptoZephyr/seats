@@ -1,17 +1,17 @@
 ---
 title: Limitations
 summary: Current boundaries, and what Seats doesn't do yet.
-lastVerified: 2026-11-06
-commit: 886500f
+lastVerified: 2026-11-07
+commit: b8daa5d
 ---
 
 ## Testnet only
 
 Seats has only run on NEAR testnet with test money. It hasn't been deployed to mainnet, and it hasn't been audited.
 
-## The web app is a design
+## The web app reads only
 
-The app in `web/` is a visual design with sample data. It doesn't connect to a wallet, a backend, or the contracts. The sale and listing numbers shown there are illustrative and aren't from the testnet runs.
+The app in `web/` reads public views from the testnet contracts and signs you in with a NEAR wallet. It can't yet send any write action, so saving a brief, overriding a vote, listing a seat, and buying a seat aren't built.
 
 ## Sign-in
 

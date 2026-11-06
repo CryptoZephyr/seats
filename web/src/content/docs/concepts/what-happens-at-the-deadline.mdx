@@ -1,8 +1,8 @@
 ---
 title: What happens at the deadline
 summary: The override window closes at a set time, after which the vote is cast and can't be changed.
-lastVerified: 2026-11-06
-commit: 886500f
+lastVerified: 2026-11-07
+commit: b8daa5d
 ---
 
 ## Before the deadline
@@ -19,4 +19,4 @@ A cast before the deadline is refused with `ERR_TOO_EARLY`. After the deadline, 
 
 ## When the DAO period ends first
 
-The override window has to end before the DAO proposal period does. In one testnet run, the cast landed after the 300 second DAO period because the RPC timed out during requests. The DAO marked that proposal expired, but the overridden Reject was still recorded. See [verified examples](/docs/evidence/verified-examples).
+The override window has to end before the DAO proposal period does. The live DAO's proposal period is now 600 seconds. In one earlier testnet run, under the previous 300 second period, the cast landed after the period ended because the RPC timed out during requests. The DAO marked that proposal expired, but the overridden Reject was still recorded. See [verified examples](/docs/evidence/verified-examples).

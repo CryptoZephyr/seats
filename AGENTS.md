@@ -9,7 +9,7 @@ Seats: club memberships you can sell, with an AI delegate that votes for you whi
 - `contracts/tee-verifier` verifies the Intel TDX quote and stores the model signer.
 - `outlayer/vault-job`, `outlayer/agent-job` are WASI jobs for vault decryption and agent voting.
 - `services/agent-runner` is the TypeScript keeper that polls the DAO and casts expired pending votes.
-- `web/` is the frontend visual design: React + Vite + TypeScript, CSS Modules, no backend wiring yet.
+- `web/` is the frontend: React + Vite + TypeScript, CSS Modules, reading NEAR testnet views over JSON-RPC.
 - `web/src/content/docs/` holds the in-app docs as MDX, grouped by folder and listed in `nav.ts`. Every page needs `title`, `summary`, `lastVerified`, and `commit` frontmatter. Add a page by creating the file and listing it in `nav.ts`.
 - `docs/` holds product and measurement docs. `spikes/` preserves tested spike sources and run reports.
 - `deployments/testnet.json` records the live testnet deployment and E2E evidence.
@@ -30,7 +30,7 @@ cd web && npm run docs:check             # docs frontmatter, nav, internal links
 ## Rules
 
 - Testnet only. Never deploy these contracts to mainnet.
-- The frontend is a visual mock with hash routes and static data. Do not wire it to chain, wallet, or backend unless asked.
+- The frontend reads NEAR testnet only, never mainnet. Design review pages under `#/states` and the docs stay on static fixtures.
 - Design system is locked (Chamber direction, Two-tone surfaces). Tokens live in `web/src/tokens.css`; do not hardcode colors or fonts.
 - Member-facing copy says "your delegate", never "the AI" or "agent". Hardware wording is exactly "Verified public OS on genuine Intel and NVIDIA hardware".
 - Status is always word plus shape, never color alone. No em dashes in UI copy.
