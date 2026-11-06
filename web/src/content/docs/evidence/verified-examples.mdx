@@ -1,0 +1,30 @@
+---
+title: Verified examples
+summary: The recorded testnet runs, what each one proves, and the limits on each.
+lastVerified: 2026-11-06
+commit: 886500f
+---
+
+## Delegate vote on an 80 NEAR venue
+
+A proposal to pay 80 NEAR for a venue was voted Reject by the delegate, with the reason that it exceeds the 50 NEAR cap. The receipt hash is recorded, the DAO recorded the Reject under the voter account, the DAO status is Rejected, and no funds moved.
+
+The cast transaction isn't captured in the record.
+
+## Override inside the window
+
+The delegate prepared Approve on a 0.01 NEAR snacks proposal. The member overrode to Reject inside the window. A later override returned `ERR_WINDOW_CLOSED`.
+
+The cast landed after the DAO's 300 second period because of RPC timeouts. The DAO status is recorded as Expired, and the overridden Reject is the vote on record.
+
+## Approved resale
+
+Token 1 sold for 0.5 NEAR. The seller received 0.475 NEAR and the DAO 0.025 NEAR. The owner and the voter controller both moved to the buyer, the brief was cleared, and the seller's old delegate key was removed. The new key can call only the vote request method, with a 1 NEAR allowance.
+
+## Vault isolation
+
+The holder's vault check returned encrypted content. The former seller's check returned `ERR_NO_SEAT`. The record marks the isolation test as passing.
+
+## Limits
+
+These are single runs on testnet. They show that each step ran once, not that every case is covered.

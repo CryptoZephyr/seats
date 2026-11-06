@@ -1,0 +1,26 @@
+---
+title: Data and privacy
+summary: What Seats stores on-chain, what stays off-chain, and what anyone can read.
+lastVerified: 2026-11-06
+commit: 886500f
+---
+
+## On-chain
+
+Seat ownership, the voter controller, the brief's hash, the receipt hash, the votes, the sale transactions, and the payouts are on-chain and public.
+
+## Public in the receipt
+
+The delegate's answer is passed to the contract as response bytes. That includes the one-line reason, so anyone can read it.
+
+## Off-chain
+
+The brief text stays off-chain, held as an OutLayer secret. The request sent to the model contains the brief, so it stays off-chain too.
+
+## Vault content
+
+The vault content is returned encrypted to your key. It is never stored on-chain in plain text.
+
+## What the site shows
+
+The site uses sample names, account IDs, and transaction hashes from the testnet record. It doesn't collect personal data.

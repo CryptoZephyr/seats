@@ -1,0 +1,22 @@
+---
+title: What happens at the deadline
+summary: The override window closes at a set time, after which the vote is cast and can't be changed.
+lastVerified: 2026-11-06
+commit: 886500f
+---
+
+## Before the deadline
+
+You can override or cancel a pending vote. The contract accepts the change and records it.
+
+## At the deadline
+
+Override and cancel are refused after the deadline. In the testnet run, a late override returned `ERR_WINDOW_CLOSED`.
+
+## Casting
+
+A cast before the deadline is refused with `ERR_TOO_EARLY`. After the deadline, anyone can trigger the cast, so a stopped keeper can't hold a vote hostage.
+
+## When the DAO period ends first
+
+The override window has to end before the DAO proposal period does. In one testnet run, the cast landed after the 300 second DAO period because the RPC timed out during requests. The DAO marked that proposal expired, but the overridden Reject was still recorded. See [verified examples](/docs/evidence/verified-examples).

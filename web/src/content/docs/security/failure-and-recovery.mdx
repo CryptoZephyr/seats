@@ -1,0 +1,26 @@
+---
+title: Failure and recovery
+summary: What happens when a sale, a vote, or a cast doesn't go through.
+lastVerified: 2026-11-06
+commit: 886500f
+---
+
+## A sale that fails
+
+If the controller change fails, the buyer is refunded in full. If the club declines or the sale times out, the buyer is refunded and the seller keeps the seat.
+
+## A vote that is replayed
+
+The voter contract rejects a receipt it has already seen.
+
+## A cast that is late
+
+A cast after the DAO's proposal period ends can be recorded as expired. The overridden result may still be recorded, as in the testnet run. Check the DAO record.
+
+## A transaction hash you can't see
+
+Some tool output doesn't print a hash for a failed call. The evidence pages mark those runs as not captured instead of guessing a hash.
+
+## A stuck DAO
+
+The testnet record documents one superseded attempt, where council votes weighed zero and the DAO couldn't act. That attempt is kept in the record, not hidden.

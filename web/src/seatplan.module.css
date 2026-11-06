@@ -1,0 +1,42 @@
+.plan {
+  display: block;
+  width: 100%;
+  max-width: 480px;
+  height: auto;
+  margin: 0 auto;
+}
+.seat {
+  stroke-width: 1.5;
+}
+.seatHeld {
+  fill: var(--color-chamber);
+  stroke: var(--color-chamber);
+}
+.seatEmpty {
+  fill: var(--color-stone);
+  stroke: var(--color-line);
+}
+.seatMine {
+  fill: var(--color-brass);
+  stroke: var(--color-brass);
+}
+.seatNumber {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  fill: var(--color-white);
+  pointer-events: none;
+}
+.seatEmpty + .seatNumber,
+.seatEmpty ~ .seatNumber {
+  fill: var(--color-ink-soft);
+}
+.seatMine ~ .seatNumber {
+  fill: var(--color-white);
+}
+.mark {
+  fill: none;
+  stroke: var(--color-ink);
+  stroke-width: 2;
+  stroke-linecap: square;
+  pointer-events: none;
+}

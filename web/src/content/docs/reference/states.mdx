@@ -1,0 +1,40 @@
+---
+title: States
+summary: What each vote, sale, and seat state means on the screen.
+lastVerified: 2026-11-06
+commit: 886500f
+---
+
+## Vote states
+
+Pending, window open: your delegate's vote is recorded and you can still override it. The screen shows the clock time and countdown.
+
+Overridden, window open: you changed the vote inside the window. It will be cast at the deadline.
+
+Window closed, waiting for cast: the deadline passed and the vote hasn't been cast yet. Anyone can trigger the cast.
+
+Cast: the vote was sent to the DAO under the seat's voter account.
+
+Approved, rejected, expired: the DAO's result for the proposal. Each status uses a word and a shape, never colour alone.
+
+## Sale states
+
+Listed for sale: the seat is on the club page with its price.
+
+Offer waiting for club: a buyer escrowed the price, and the club hasn't voted.
+
+Sale approved: the seat moved. The seller sees the payout, and the buyer sees the seat.
+
+Declined or timed out: the buyer was refunded in full and the seller keeps the seat.
+
+## Access states
+
+Former member opening the vault: refused, with the message that only current seat holders can open the vault.
+
+Late override refused: the window closed before the change arrived.
+
+## Connection states
+
+Network slow: the screen says what is waiting and how long it has been. It never shows a frozen spinner.
+
+Wallet not connected: the screen offers a connect action and doesn't hide the state.
