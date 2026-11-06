@@ -430,7 +430,7 @@ export function MySeat() {
           <h1>Your seat</h1>
           <p className={s.lede}>Sign in to see your seat, your delegate, and proposals for your vote.</p>
         </header>
-        <RuledSection title="Sign in">
+        <RuledSection>
           <GraphicButton
             glyph="seat"
             onClick={viewer.signIn}
