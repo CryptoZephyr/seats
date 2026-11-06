@@ -13,6 +13,7 @@ import {
 } from "./screens";
 import { DocsRoute } from "./components/docs/DocPage";
 import { LicensePage, PolicyPage } from "./legal";
+import { WalletProvider } from "./chain/WalletProvider";
 import { SiteFooter, SiteHeader, TestnetStrip } from "./ui";
 
 type Route =
@@ -61,6 +62,14 @@ function parseRoute(): Route {
 }
 
 export function App() {
+  return (
+    <WalletProvider>
+      <AppContent />
+    </WalletProvider>
+  );
+}
+
+function AppContent() {
   const [route, setRoute] = useState<Route>(parseRoute);
   useEffect(() => {
     const onHash = () => setRoute(parseRoute());

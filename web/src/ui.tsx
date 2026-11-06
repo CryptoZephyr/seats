@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { Button } from "react-aria-components";
+import { useViewer } from "./chain/WalletProvider";
 import styles from "./ui.module.css";
 import arrowRaw from "./assets/icons/arrow.svg?raw";
 import externalRaw from "./assets/icons/external.svg?raw";
@@ -39,6 +40,7 @@ export function TestnetStrip() {
 }
 
 export function SiteHeader() {
+  const viewer = useViewer();
   return (
     <header className={styles.header}>
       <a className={styles.brand} href="#/club" aria-label="Seats home">
@@ -49,6 +51,25 @@ export function SiteHeader() {
         <a href="#/club">Club</a>
         <a href="#/seat">My seat</a>
         <a href="#/docs">Docs</a>
+        {viewer.accountId ? (
+          <button
+            type="button"
+            className={styles.textButton}
+            onClick={() => void viewer.signOut()}
+            disabled={!viewer.walletReady}
+          >
+            Sign out
+          </button>
+        ) : (
+          <button
+            type="button"
+            className={styles.textButton}
+            onClick={viewer.signIn}
+            disabled={!viewer.walletReady}
+          >
+            Sign in
+          </button>
+        )}
       </nav>
     </header>
   );
