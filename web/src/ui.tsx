@@ -330,6 +330,28 @@ export function CastStatus() {
   );
 }
 
+export function CastingStatus() {
+  return (
+    <span className={styles.statusCasting} role="status" aria-live="polite">
+      <span className={styles.loadingSeats} aria-hidden="true">
+        <i />
+        <i />
+        <i />
+      </span>
+      Casting now
+    </span>
+  );
+}
+
+export function CastRetryStatus() {
+  return (
+    <span className={styles.statusCastRetry} role="status" aria-live="polite">
+      <span className={styles.castRetryShape} aria-hidden="true" />
+      Cast failed, will retry
+    </span>
+  );
+}
+
 export function ResultStamp({
   result,
 }: {

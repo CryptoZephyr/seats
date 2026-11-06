@@ -414,6 +414,28 @@
   color: var(--color-ink);
 }
 
+.statusCasting,
+.statusCastRetry {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 700;
+  font-size: var(--text-md);
+}
+.statusCasting {
+  color: var(--color-chamber);
+}
+.statusCastRetry {
+  color: var(--color-wine);
+}
+.castRetryShape {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border: 1px solid currentColor;
+  background: transparent;
+}
+
 .resultStamp {
   display: inline-block;
   font-family: var(--font-body);
