@@ -296,13 +296,6 @@ export function ClubPage() {
         {viewer.error && <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>}
       </RuledSection>
 
-      <RuledSection title="Join this club">
-        <p className={s.muted}>
-          Applying to join from this site isn't available yet. Seats change hands through a
-          club-approved sale.
-        </p>
-      </RuledSection>
-
       <RuledSection title="What a seat gives">
         <ul className={s.gives}>
           <li>One vote in the club's Sputnik DAO</li>
