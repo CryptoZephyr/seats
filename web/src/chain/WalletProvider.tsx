@@ -7,9 +7,8 @@ import {
   type ReactNode,
 } from "react";
 import { setupWalletSelector, type WalletSelector } from "@near-wallet-selector/core";
+import { setupIntearWallet } from "@near-wallet-selector/intear-wallet";
 import { setupModal, type WalletSelectorModal } from "@near-wallet-selector/modal-ui";
-import { setupMeteorWallet } from "@near-wallet-selector/meteor-wallet";
-import { setupMyNearWallet } from "@near-wallet-selector/my-near-wallet";
 import { loadClubSnapshot } from "./club";
 import { chainConfig } from "./config";
 import { callView } from "./rpc";
@@ -90,10 +89,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             explorerUrl: "https://testnet.nearblocks.io",
             indexerUrl: "https://test.api.fastnear.com/v0",
           },
-          modules: [
-            setupMyNearWallet({ walletUrl: "https://testnet.mynearwallet.com" }),
-            setupMeteorWallet(),
-          ],
+          modules: [setupIntearWallet()],
         });
         if (!active) return;
 
