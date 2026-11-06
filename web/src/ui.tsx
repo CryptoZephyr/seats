@@ -193,13 +193,15 @@ export function GraphicButton({
   glyph,
   children,
   onClick,
+  disabled = false,
 }: {
   glyph: GlyphName;
   children: ReactNode;
   onClick: () => void;
+  disabled?: boolean;
 }) {
   return (
-    <Button className={styles.graphicButton} onPress={onClick}>
+    <Button className={styles.graphicButton} onPress={onClick} isDisabled={disabled}>
       <span className={styles.graphicGlyph} data-glyph={glyph} aria-hidden="true">
         <Glyph name={glyph} />
       </span>
