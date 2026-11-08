@@ -66,6 +66,8 @@ interface DeploymentAgentConfiguration {
   agent_wasm_sha256: string;
 }
 
+type VoterDefaults = Omit<DeploymentAgentConfiguration, "voter_id">;
+
 type Credential = {
   accountId: string;
   signer: KeyPairSigner;
@@ -186,6 +188,61 @@ export function readDeploymentAgentConfiguration(
     agent_wasm_url: wasmUrl,
     agent_wasm_sha256: wasmSha256,
   };
+}
+
+function readVoterDefaultsFromDeployment(config: Stage3Config): VoterDefaults {
+  if (config.voter_id !== `s1.${config.seat_nft_id}`) {
+    throw new Error("Voter defaults must be read from seat 1 of the configured seat NFT");
+  }
+  const agentConfiguration = readDeploymentAgentConfiguration();
+  if (agentConfiguration.voter_id !== config.voter_id) {
+    throw new Error("deployments/testnet.json agent_configuration does not match configured seat 1");
+  }
+  const defaults = {
+    model_signer_hex: agentConfiguration.model_signer_hex,
+    model: agentConfiguration.model,
+    agent_wasm_url: agentConfiguration.agent_wasm_url,
+    agent_wasm_sha256: agentConfiguration.agent_wasm_sha256,
+  };
+  if (!/^0x[0-9a-f]{40}$/.test(defaults.model_signer_hex)) {
+    throw new Error("deployments/testnet.json has an invalid model signer address");
+  }
+  if (!defaults.agent_wasm_url.trim() || !/^[a-f0-9]{64}$/.test(defaults.agent_wasm_sha256)) {
+    throw new Error("deployments/testnet.json has an invalid pinned agent WASM configuration");
+  }
+  return defaults;
+}
+
+function normalizeVoterDefaults(defaults: VoterDefaults): VoterDefaults {
+  return {
+    model_signer_hex: defaults.model_signer_hex.toLowerCase(),
+    model: defaults.model,
+    agent_wasm_url: defaults.agent_wasm_url,
+    agent_wasm_sha256: defaults.agent_wasm_sha256,
+  };
+}
+
+export function voterDefaultsMatch(
+  current: VoterDefaults | null,
+  expected: VoterDefaults,
+): boolean {
+  if (!current || typeof current.model_signer_hex !== "string") return false;
+  return sameJsonValue(
+    normalizeVoterDefaults(current),
+    normalizeVoterDefaults(expected),
+  );
+}
+
+export function assertVoterDefaultsMatch(
+  current: VoterDefaults | null,
+  expected: VoterDefaults,
+  seatNftId: string,
+): void {
+  if (!voterDefaultsMatch(current, expected)) {
+    throw new Error(
+      `Live voter defaults on ${seatNftId} must match deployments/testnet.json before proposing the council policy`,
+    );
+  }
 }
 
 function assertTestnetConfig(config: Stage3Config): void {
@@ -465,9 +522,18 @@ export function createPolicyDiff(current: Policy, desired: Policy): object {
 async function proposePolicyChanges(
   provider: JsonRpcProvider,
   credential: Credential,
-  daoId: string,
+  config: Stage3Config,
 ): Promise<void> {
-  const current = await callView<Policy>(provider, daoId, "get_policy", {});
+  const expectedDefaults = readVoterDefaultsFromDeployment(config);
+  const currentDefaults = await callView<VoterDefaults | null>(
+    provider,
+    config.seat_nft_id,
+    "get_voter_defaults",
+    {},
+  );
+  assertVoterDefaultsMatch(currentDefaults, expectedDefaults, config.seat_nft_id);
+
+  const current = await callView<Policy>(provider, config.dao_id, "get_policy", {});
   const desired = createDesiredPolicy(current);
   if (sameJsonValue(current, desired)) {
     process.stdout.write(`${JSON.stringify({
@@ -484,7 +550,7 @@ async function proposePolicyChanges(
   const proposal = await submitProposal(
     provider,
     credential,
-    daoId,
+    config.dao_id,
     { ChangePolicy: { policy: desired } },
     "Set council governance policy and visitor proposal bond",
     policyProposalBond(current),
@@ -513,34 +579,16 @@ async function proposeVoterDefaults(
   credential: Credential,
   config: Stage3Config,
 ): Promise<void> {
-  if (config.voter_id !== `s1.${config.seat_nft_id}`) {
-    throw new Error("Voter defaults must be read from seat 1 of the configured seat NFT");
-  }
+  const defaults = readVoterDefaultsFromDeployment(config);
   const policy = await callView<Policy>(provider, config.dao_id, "get_policy", {});
   assertCouncilCanApproveVoterDefaults(policy);
-  const agentConfiguration = readDeploymentAgentConfiguration();
-  if (agentConfiguration.voter_id !== config.voter_id) {
-    throw new Error("deployments/testnet.json agent_configuration does not match configured seat 1");
-  }
-  const defaults = {
-    model_signer_hex: agentConfiguration.model_signer_hex,
-    model: agentConfiguration.model,
-    agent_wasm_url: agentConfiguration.agent_wasm_url,
-    agent_wasm_sha256: agentConfiguration.agent_wasm_sha256,
-  };
-  if (!/^0x[0-9a-fA-F]{40}$/.test(defaults.model_signer_hex)) {
-    throw new Error("Seat 1 returned an invalid model signer address");
-  }
-  if (!defaults.agent_wasm_url.trim() || !/^[a-f0-9]{64}$/.test(defaults.agent_wasm_sha256)) {
-    throw new Error("Seat 1 does not have a valid pinned agent WASM configuration");
-  }
   const current = await callView<typeof defaults | null>(
     provider,
     config.seat_nft_id,
     "get_voter_defaults",
     {},
   );
-  if (current && sameJsonValue(current, defaults)) {
+  if (voterDefaultsMatch(current, defaults)) {
     process.stdout.write(`${JSON.stringify({ status: "already_set" })}\n`);
     return;
   }
@@ -904,7 +952,7 @@ export async function main(args: string[]): Promise<void> {
   const provider = new JsonRpcProvider({ url: config.rpc_url }, { retries: 0 });
   if (command === "propose-policy") {
     const credential = loadCredential(config.proposer_key_file, config.proposer_account_id);
-    await proposePolicyChanges(provider, credential, config.dao_id);
+    await proposePolicyChanges(provider, credential, config);
   } else if (command === "propose-voter-defaults") {
     const credential = loadCredential(config.proposer_key_file, config.proposer_account_id);
     await proposeVoterDefaults(provider, credential, config);

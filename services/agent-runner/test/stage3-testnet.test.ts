@@ -4,12 +4,14 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   assertCouncilCanApproveVoterDefaults,
+  assertVoterDefaultsMatch,
   assertVisitorApplicationsReady,
   createApplicationProposalKind,
   createDesiredPolicy,
   createPolicyDiff,
   createVoterDefaultsProposalKind,
   readDeploymentAgentConfiguration,
+  voterDefaultsMatch,
 } from "../src/stage3-testnet.js";
 
 const temporaryDirectories: string[] = [];
@@ -78,6 +80,26 @@ describe("visitor application proposal", () => {
 });
 
 describe("voter defaults proposal", () => {
+  it("requires live voter defaults to match deployment values, ignoring signer hex case", () => {
+    const expected = {
+      model_signer_hex: `0x${"a".repeat(40)}`,
+      model: "model-v1",
+      agent_wasm_url: "https://example.test/agent.wasm",
+      agent_wasm_sha256: "b".repeat(64),
+    };
+    const live = {
+      ...expected,
+      model_signer_hex: `0x${"A".repeat(40)}`,
+    };
+
+    expect(voterDefaultsMatch(live, expected)).toBe(true);
+    expect(voterDefaultsMatch({ ...live, model: "different-model" }, expected)).toBe(false);
+    expect(voterDefaultsMatch(null, expected)).toBe(false);
+    expect(() => assertVoterDefaultsMatch(live, expected, "seats.testnet")).not.toThrow();
+    expect(() => assertVoterDefaultsMatch(null, expected, "seats.testnet"))
+      .toThrow("must match deployments/testnet.json");
+  });
+
   it("encodes the defaults under the named method argument", () => {
     const defaults = {
       model_signer_hex: "0x" + "a".repeat(40),
