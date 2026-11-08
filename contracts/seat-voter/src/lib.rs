@@ -68,6 +68,14 @@ pub struct BriefView {
     secrets_profile: Option<String>,
 }
 
+#[near(serializers = [json])]
+pub struct VoterConfigurationView {
+    model_signer_hex: String,
+    model: String,
+    agent_wasm_url: String,
+    agent_wasm_sha256: String,
+}
+
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
 pub struct SeatVoter {
@@ -176,6 +184,15 @@ impl SeatVoter {
 
     pub fn get_dao(&self) -> AccountId {
         self.dao.clone()
+    }
+
+    pub fn get_voter_configuration(&self) -> VoterConfigurationView {
+        VoterConfigurationView {
+            model_signer_hex: format!("0x{}", hex_encode(&self.model_signer)),
+            model: self.model.clone(),
+            agent_wasm_url: self.agent_wasm_url.clone(),
+            agent_wasm_sha256: self.agent_wasm_hash.clone(),
+        }
     }
 
     pub fn submit_pending(
@@ -1142,5 +1159,32 @@ mod tests {
         );
         set_context(CONTROLLER, 101);
         contract.set_controller(account_id("buyer.testnet"), next_agent_key());
+    }
+
+    #[test]
+    fn voter_configuration_view_reports_signer_model_and_pinned_wasm() {
+        set_context(VOTER, 100);
+        let mut contract = SeatVoter::new(
+            account_id(DAO),
+            account_id(ADMIN),
+            account_id(CONTROLLER),
+            60,
+            test_agent_key(),
+        );
+        set_context(ADMIN, 101);
+        let signer = format!("0x{}", "1".repeat(40));
+        let wasm_hash = "a".repeat(64);
+        contract.set_model_signer(signer.clone(), "model-v1".to_string());
+        contract.pin_agent_wasm(
+            "https://example.test/agent.wasm".to_string(),
+            wasm_hash.clone(),
+        );
+
+        let configuration = contract.get_voter_configuration();
+
+        assert_eq!(configuration.model_signer_hex, signer);
+        assert_eq!(configuration.model, "model-v1");
+        assert_eq!(configuration.agent_wasm_url, "https://example.test/agent.wasm");
+        assert_eq!(configuration.agent_wasm_sha256, wasm_hash);
     }
 }

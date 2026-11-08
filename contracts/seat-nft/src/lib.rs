@@ -18,11 +18,13 @@ use near_sdk::{
 
 const SEAT_SVG: &str = include_str!("../../../design/nft/seat-label.svg");
 const DAO_SVG: &str = include_str!("../../../design/nft/dao-label.svg");
+const VOTER_DEFAULTS_STORAGE_KEY: &[u8] = b"voter_defaults";
 
 const VOTER_INIT_GAS: Gas = Gas::from_tgas(30);
 const DAO_CALL_GAS: Gas = Gas::from_tgas(30);
 const VOTER_CALL_GAS: Gas = Gas::from_tgas(30);
-const VOTER_CREATED_CALLBACK_GAS: Gas = Gas::from_tgas(80);
+const VOTER_DEFAULT_CONFIG_GAS: Gas = Gas::from_tgas(15);
+const VOTER_CREATED_CALLBACK_GAS: Gas = Gas::from_tgas(70);
 const REGISTRATION_CALLBACK_GAS: Gas = Gas::from_tgas(40);
 const BUY_CALLBACK_GAS: Gas = Gas::from_tgas(40);
 const MIN_VOTER_FUNDING: u128 = 10_000_000_000_000_000_000_000;
@@ -55,6 +57,15 @@ pub struct SaleApproval {
 pub struct SeatView {
     pub voter_id: AccountId,
     pub approval: Option<SaleApproval>,
+}
+
+#[near(serializers = [borsh, json])]
+#[derive(Clone, PartialEq, Eq)]
+pub struct VoterDefaults {
+    pub model_signer_hex: String,
+    pub model: String,
+    pub agent_wasm_url: String,
+    pub agent_wasm_sha256: String,
 }
 
 #[near(serializers = [borsh])]
@@ -188,6 +199,28 @@ impl SeatNft {
             )
     }
 
+    pub fn set_voter_defaults(&mut self, defaults: VoterDefaults) {
+        self.assert_dao();
+        assert!(
+            is_model_signer_hex(&defaults.model_signer_hex),
+            "ERR_BAD_SIGNER_ADDRESS"
+        );
+        assert!(!defaults.agent_wasm_url.is_empty(), "ERR_BAD_AGENT_WASM_URL");
+        assert!(
+            is_lower_hex_32(&defaults.agent_wasm_sha256),
+            "ERR_BAD_AGENT_WASM_HASH"
+        );
+        let value =
+            near_sdk::borsh::to_vec(&defaults).expect("ERR_SERIALIZE_VOTER_DEFAULTS");
+        env::storage_write(VOTER_DEFAULTS_STORAGE_KEY, &value);
+    }
+
+    pub fn get_voter_defaults(&self) -> Option<VoterDefaults> {
+        env::storage_read(VOTER_DEFAULTS_STORAGE_KEY).map(|value| {
+            near_sdk::borsh::from_slice(&value).expect("ERR_INVALID_VOTER_DEFAULTS")
+        })
+    }
+
     pub fn set_voter_model_signer(
         &self,
         token_id: TokenId,
@@ -271,17 +304,27 @@ impl SeatNft {
             },
         );
         let registration_deposit = env::storage_byte_cost().as_yoctonear() * 16;
-        PromiseOrValue::Promise(
-            ext_dao::ext(self.dao.clone())
-                .with_attached_deposit(NearToken::from_yoctonear(registration_deposit))
-                .with_static_gas(DAO_CALL_GAS)
-                .register_delegation(voter_id.clone())
-                .then(
-                    ext_self::ext(env::current_account_id())
-                        .with_static_gas(REGISTRATION_CALLBACK_GAS)
-                        .on_registration_complete(voter_id),
-                ),
-        )
+        let registration = ext_dao::ext(self.dao.clone())
+            .with_attached_deposit(NearToken::from_yoctonear(registration_deposit))
+            .with_static_gas(DAO_CALL_GAS)
+            .register_delegation(voter_id.clone())
+            .then(
+                ext_self::ext(env::current_account_id())
+                    .with_static_gas(REGISTRATION_CALLBACK_GAS)
+                    .on_registration_complete(voter_id.clone()),
+            );
+        match self.get_voter_defaults() {
+            Some(defaults) => {
+                let set_signer = ext_voter::ext(voter_id.clone())
+                    .with_static_gas(VOTER_DEFAULT_CONFIG_GAS)
+                    .set_model_signer(defaults.model_signer_hex, defaults.model);
+                let pin_agent = ext_voter::ext(voter_id)
+                    .with_static_gas(VOTER_DEFAULT_CONFIG_GAS)
+                    .pin_agent_wasm(defaults.agent_wasm_url, defaults.agent_wasm_sha256);
+                PromiseOrValue::Promise(registration.and(set_signer).and(pin_agent))
+            }
+            None => PromiseOrValue::Promise(registration),
+        }
     }
 
     #[private]
@@ -489,6 +532,19 @@ impl SeatNft {
     }
 }
 
+fn is_model_signer_hex(value: &str) -> bool {
+    value
+        .strip_prefix("0x")
+        .is_some_and(|hex| hex.len() == 40 && hex.bytes().all(|byte| byte.is_ascii_hexdigit()))
+}
+
+fn is_lower_hex_32(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
 #[near]
 impl NonFungibleTokenCore for SeatNft {
     #[payable]
@@ -595,8 +651,12 @@ impl NonFungibleTokenApproval for SeatNft {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use near_sdk::test_utils::VMContextBuilder;
+    use near_sdk::environment::mock::MockAction;
+    use near_sdk::test_utils::{
+        get_created_receipts, testing_env_with_promise_results, VMContextBuilder,
+    };
     use near_sdk::testing_env;
+    use near_sdk::serde_json::{json, Value};
 
     const SEAT: &str = "seat.testnet";
     const DAO: &str = "dao.testnet";
@@ -640,6 +700,151 @@ mod tests {
             account_id(VOTER),
         );
         contract
+    }
+
+    fn empty_contract() -> SeatNft {
+        set_context(DAO, 1_000, 0);
+        SeatNft::new(
+            account_id(DAO),
+            Base58CryptoHash::from([1; 32]),
+            500,
+            60,
+        )
+    }
+
+    fn voter_defaults() -> VoterDefaults {
+        VoterDefaults {
+            model_signer_hex: format!("0x{}", "a".repeat(40)),
+            model: "test-model".to_string(),
+            agent_wasm_url: "https://example.test/agent.wasm".to_string(),
+            agent_wasm_sha256: "b".repeat(64),
+        }
+    }
+
+    fn call_voter_created(contract: &mut SeatNft) {
+        let context = VMContextBuilder::new()
+            .current_account_id(account_id(SEAT))
+            .predecessor_account_id(account_id(SEAT))
+            .attached_deposit(NearToken::from_yoctonear(1_000_000_000_000_000_000_000_000))
+            .build();
+        testing_env_with_promise_results(context, PromiseResult::Successful(Vec::new()));
+        contract.on_voter_created(
+            "1".to_string(),
+            account_id(SELLER),
+            account_id(VOTER),
+            U128(1_000_000_000_000_000_000_000_000),
+        );
+    }
+
+    fn scheduled_calls() -> Vec<(String, String, Value)> {
+        get_created_receipts()
+            .into_iter()
+            .flat_map(|receipt| {
+                let receiver_id = receipt.receiver_id.to_string();
+                receipt.actions.into_iter().filter_map(move |action| match action {
+                    MockAction::FunctionCallWeight {
+                        method_name, args, ..
+                    } => Some((
+                        receiver_id.clone(),
+                        String::from_utf8(method_name).unwrap(),
+                        near_sdk::serde_json::from_slice(&args).unwrap(),
+                    )),
+                    _ => None,
+                })
+            })
+            .collect()
+    }
+
+    #[test]
+    fn voter_defaults_are_stored_outside_contract_state() {
+        let mut contract = empty_contract();
+        assert_eq!(contract.get_voter_defaults(), None);
+
+        set_context(DAO, 1_001, 0);
+        let defaults = voter_defaults();
+        contract.set_voter_defaults(defaults.clone());
+
+        assert_eq!(contract.get_voter_defaults(), Some(defaults));
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_NOT_DAO")]
+    fn setting_voter_defaults_is_dao_only() {
+        let mut contract = empty_contract();
+        set_context(OTHER, 1_001, 0);
+        contract.set_voter_defaults(voter_defaults());
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_BAD_SIGNER_ADDRESS")]
+    fn voter_defaults_reject_an_invalid_signer_address() {
+        let mut contract = empty_contract();
+        let mut defaults = voter_defaults();
+        defaults.model_signer_hex = format!("0X{}", "a".repeat(40));
+        contract.set_voter_defaults(defaults);
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_BAD_AGENT_WASM_URL")]
+    fn voter_defaults_reject_an_empty_agent_url() {
+        let mut contract = empty_contract();
+        let mut defaults = voter_defaults();
+        defaults.agent_wasm_url.clear();
+        contract.set_voter_defaults(defaults);
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_BAD_AGENT_WASM_HASH")]
+    fn voter_defaults_reject_a_non_lowercase_wasm_hash() {
+        let mut contract = empty_contract();
+        let mut defaults = voter_defaults();
+        defaults.agent_wasm_sha256 = "A".repeat(64);
+        contract.set_voter_defaults(defaults);
+    }
+
+    #[test]
+    fn mint_callback_configures_the_new_voter_from_defaults() {
+        let mut contract = empty_contract();
+        let defaults = voter_defaults();
+        contract.set_voter_defaults(defaults.clone());
+
+        call_voter_created(&mut contract);
+
+        let calls = scheduled_calls();
+        assert!(calls.iter().any(|(receiver, method, args)| {
+            receiver == VOTER
+                && method == "set_model_signer"
+                && args == &json!({
+                    "address_hex": defaults.model_signer_hex,
+                    "model": defaults.model,
+                })
+        }));
+        assert!(calls.iter().any(|(receiver, method, args)| {
+            receiver == VOTER
+                && method == "pin_agent_wasm"
+                && args == &json!({
+                    "url": defaults.agent_wasm_url,
+                    "sha256": defaults.agent_wasm_sha256,
+                })
+        }));
+        assert!(calls
+            .iter()
+            .any(|(receiver, method, _)| receiver == DAO && method == "register_delegation"));
+    }
+
+    #[test]
+    fn mint_callback_keeps_the_existing_registration_path_without_defaults() {
+        let mut contract = empty_contract();
+
+        call_voter_created(&mut contract);
+
+        let calls = scheduled_calls();
+        assert!(calls
+            .iter()
+            .any(|(receiver, method, _)| receiver == DAO && method == "register_delegation"));
+        assert!(!calls.iter().any(|(_, method, _)| {
+            method == "set_model_signer" || method == "pin_agent_wasm"
+        }));
     }
 
     #[test]
