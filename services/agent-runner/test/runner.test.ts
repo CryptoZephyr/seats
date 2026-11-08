@@ -6,6 +6,7 @@ import { readState } from "../src/index.js";
 import {
   initialRunnerState,
   isProposalPeriodTooShort,
+  rewindCursorForNewDiscoveredVoters,
   runTick,
   type AgentRunnerRpc,
   type RunnerState,
@@ -58,6 +59,50 @@ describe("initial runner state", () => {
 });
 
 describe("runTick with mocked RPC", () => {
+  it("rewinds for a new discovered voter, requests open proposals, and skips existing results", async () => {
+    const currentState: RunnerState = {
+      cursor: 50,
+      pendingByVoter: {},
+      inFlight: {},
+    };
+    expect(rewindCursorForNewDiscoveredVoters(
+      currentState,
+      ["discovered.testnet"],
+      50,
+      0,
+    )).toBe(true);
+    expect(currentState.cursor).toBe(29);
+
+    const requestVote = vi.fn(async (voterId: string, id: number) => `${voterId}-${id}`);
+    const rpc = createRpc({
+      getLastProposalId: vi.fn(async () => 51),
+      getProposals: vi.fn(async () => [{ id: 40, status: "InProgress" }]),
+      getResults: vi.fn(async (voterId) => ({
+        results: voterId === "existing.testnet" ? [{ proposal_id: 40 }] : [],
+      })),
+      requestVote,
+    });
+    const result = await runTick({
+      rpc,
+      daoId: "club.testnet",
+      voters: [
+        { voterId: "discovered.testnet", source: "discovered" },
+        { voterId: "existing.testnet", source: "file" },
+      ],
+      state: currentState,
+      nowNanoseconds: 0n,
+      nowMilliseconds: 0,
+      requestTtlMs: 180_000,
+      persistState: () => undefined,
+      log: () => undefined,
+    });
+
+    expect(requestVote).toHaveBeenCalledTimes(1);
+    expect(requestVote).toHaveBeenCalledWith("discovered.testnet", 40);
+    expect(requestVote).not.toHaveBeenCalledWith("existing.testnet", 40);
+    expect(result.cursor).toBe(50);
+  });
+
   it("requests each in-progress proposal once and persists the cursor", async () => {
     const rpc = createRpc();
     const logs: unknown[] = [];

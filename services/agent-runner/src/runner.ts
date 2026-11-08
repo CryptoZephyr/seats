@@ -51,6 +51,27 @@ export function initialRunnerState(
   return { cursor: firstProposalId - 1, pendingByVoter: {}, inFlight: {} };
 }
 
+export function rewindCursorForNewDiscoveredVoters(
+  state: RunnerState,
+  newlyDiscoveredVoterIds: string[],
+  newestKnownId: number,
+  lookbackProposals: number,
+): boolean {
+  if (newlyDiscoveredVoterIds.length === 0) return false;
+  if (!Number.isSafeInteger(newestKnownId) || newestKnownId < -1) {
+    throw new Error("Newest proposal ID must be an integer greater than or equal to -1");
+  }
+  if (!Number.isSafeInteger(lookbackProposals) || lookbackProposals < 0) {
+    throw new Error("Proposal lookback must be a non-negative integer");
+  }
+  const lookback = lookbackProposals === 0 ? 20 : lookbackProposals;
+  const rewindFloor = Math.max(-1, newestKnownId - lookback - 1);
+  const nextCursor = Math.min(state.cursor, rewindFloor);
+  if (nextCursor === state.cursor) return false;
+  state.cursor = nextCursor;
+  return true;
+}
+
 export interface ActionLog {
   action: string;
   status: "ok" | "skipped" | "error" | "warning";

@@ -12,6 +12,7 @@ import {
 import {
   initialRunnerState,
   isProposalPeriodTooShort,
+  rewindCursorForNewDiscoveredVoters,
   runTick,
   type ActionLog,
   type RunnerState,
@@ -251,6 +252,38 @@ async function main(): Promise<void> {
     const nextDiscoveredVoterIds = discovery.voters;
     const fileVoterSet = new Set(fileVoterIds);
     const nextDiscoveredSet = new Set(nextDiscoveredVoterIds);
+    const previousDiscoveredSet = new Set(discoveredVoterIds);
+    const newlyDiscoveredVoterIds = nextDiscoveredVoterIds.filter(
+      (voterId) => !previousDiscoveredSet.has(voterId) && !fileVoterSet.has(voterId),
+    );
+    if (newlyDiscoveredVoterIds.length > 0) {
+      const currentState = state;
+      if (!currentState) return;
+      try {
+        const newestKnownId = await rpc.getLastProposalId(config.daoId) - 1;
+        if (rewindCursorForNewDiscoveredVoters(
+          currentState,
+          newlyDiscoveredVoterIds,
+          newestKnownId,
+          config.lookbackProposals,
+        )) {
+          writeState(config.stateFile, currentState);
+          log({
+            action: "discovery_cursor_rewind",
+            status: "ok",
+            reason: "new_discovered_voter",
+          });
+        }
+      } catch (error) {
+        log({
+          action: "discover_voters",
+          status: "error",
+          reason: "cursor_rewind_failed",
+          error: String(error),
+        });
+        return;
+      }
+    }
     for (const voterId of discoveredVoterIds) {
       if (!fileVoterSet.has(voterId) && !nextDiscoveredSet.has(voterId)) {
         rpc.removeCredential(voterId);
