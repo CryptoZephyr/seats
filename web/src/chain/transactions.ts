@@ -3,11 +3,13 @@ import type { FinalExecutionOutcome, Wallet } from "@near-wallet-selector/core";
 import { chainConfig } from "./config";
 import { getTransactionStatus } from "./rpc";
 
-export type VoterMethod = "override_vote" | "cancel";
+export type VoterMethod = "override_vote" | "cancel" | "set_brief";
 export type VoterArgs<Method extends VoterMethod> =
   Method extends "override_vote"
     ? { proposal_id: number; vote: "Approve" | "Reject" }
-    : { proposal_id: number };
+    : Method extends "cancel"
+      ? { proposal_id: number }
+      : { brief_hash: string; secrets_account_id: string; secrets_profile: string };
 
 const VOTER_CALL_GAS = 30_000_000_000_000n;
 const TGAS = 1_000_000_000_000n;
@@ -20,6 +22,7 @@ export const VAULT_REQUEST_GAS = 300n * TGAS;
 export const VAULT_ESTIMATE_BUFFER = 500_000_000_000n;
 export const APPLICATION_DURATION_NS = 7 * 24 * 60 * 60 * 1_000_000_000;
 export const SALE_LEVY_BPS = 500n;
+export const SET_BRIEF_GAS = 30_000_000_000_000n;
 
 export interface FunctionCallRequest {
   receiverId: string;
@@ -95,7 +98,7 @@ export function buildSaleRequest(
     methodName: "add_proposal",
     args: {
       proposal: {
-        description: `Seat sale: token ${tokenId}, buyer ${buyer}, price ${priceYocto}`,
+        description: `Sell Seat ${tokenId} to ${buyer} for ${formatNearAmount(priceYocto)} NEAR`,
         kind: {
           FunctionCall: {
             receiver_id: chainConfig.seatNftAccountId,
@@ -119,6 +122,13 @@ export function buildSaleRequest(
   };
 }
 
+export function formatNearAmount(value: string | bigint): string {
+  const amount = BigInt(value);
+  const whole = amount / 10n ** 24n;
+  const fraction = (amount % 10n ** 24n).toString().padStart(24, "0").replace(/0+$/, "");
+  return fraction ? `${whole}.${fraction}` : whole.toString();
+}
+
 export function buildBuyRequest(tokenId: string, priceYocto: string): FunctionCallRequest {
   if (!/^\d+$/.test(priceYocto) || BigInt(priceYocto) <= 0n) throw new Error("Sale approval has an invalid price.");
   return {
@@ -127,6 +137,26 @@ export function buildBuyRequest(tokenId: string, priceYocto: string): FunctionCa
     args: { token_id: tokenId, agent_public_key: chainConfig.runnerAgentPublicKey },
     gas: BUY_SEAT_GAS,
     deposit: BigInt(priceYocto),
+  };
+}
+
+export function buildSetBriefRequest(
+  voterId: string,
+  briefHash: string,
+  secretsAccountId: string,
+  secretsProfile: string,
+): FunctionCallRequest {
+  if (!/^[0-9a-f]{64}$/.test(briefHash)) throw new Error("The brief fingerprint is invalid.");
+  if (!isTestnetAccountId(voterId) || !isTestnetAccountId(secretsAccountId)) {
+    throw new Error("Brief transactions are restricted to NEAR testnet accounts.");
+  }
+  if (!/^s\d+-[0-9a-f]{16}$/.test(secretsProfile)) throw new Error("The private profile name is invalid.");
+  return {
+    receiverId: voterId,
+    methodName: "set_brief",
+    args: { brief_hash: briefHash, secrets_account_id: secretsAccountId, secrets_profile: secretsProfile },
+    gas: SET_BRIEF_GAS,
+    deposit: 0n,
   };
 }
 
@@ -182,9 +212,10 @@ export function calculateSaleSplit(priceYocto: string | bigint, levyBps: number 
 }
 
 export function parseNearAmount(value: string): bigint {
-  const match = value.trim().match(/^(?:0|[1-9]\d*)(?:\.(\d{0,24}))?$/);
+  const normalized = value.trim();
+  const match = normalized.match(/^(?:0|[1-9]\d*)(?:\.(\d{0,24}))?$/);
   if (!match) throw new Error("Enter a NEAR price with up to 24 decimal places.");
-  const [whole, fraction = ""] = value.trim().split(".");
+  const [whole, fraction = ""] = normalized.split(".");
   const amount = BigInt(whole) * 10n ** 24n + BigInt((fraction + "0".repeat(24)).slice(0, 24));
   if (amount <= 0n) throw new Error("Enter a price above zero.");
   return amount;

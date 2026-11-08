@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useViewer } from "./chain/WalletProvider";
+import { useClubData } from "./chain/useClubData";
 import { estimateVaultExecutionCost, getTransactionStatus } from "./chain/rpc";
 import { buildVaultRequest, contractErrorCode, VAULT_REQUEST_GAS } from "./chain/transactions";
 import { decryptVaultResponse, generateVaultKeyPair, type VaultCiphertext } from "./chain/vaultCrypto";
@@ -21,6 +22,7 @@ function payloadFromOutcome(outcome: unknown): VaultCiphertext | null {
 
 export function VaultPageFlow() {
   const viewer = useViewer();
+  const state = useClubData();
   const [cost, setCost] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -62,9 +64,11 @@ export function VaultPageFlow() {
       if (!payload.ok) throw new Error(payload.error || "ERR_NO_SEAT");
       setText(decryptVaultResponse(payload, keyPair.secretKey));
     } catch (cause) {
+      state.retry();
+      viewer.retry();
       const code = contractErrorCode(cause);
       const causeText = cause instanceof Error ? cause.message : "";
-      if (code === "ERR_NO_SEAT" || /ERR_NO_SEAT/.test(causeText)) {
+      if (code === "ERR_NO_SEAT" || causeText === "ERR_NO_SEAT") {
         setNotAllowed(true);
       } else {
         setError(friendly(cause));

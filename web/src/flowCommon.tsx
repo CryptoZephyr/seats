@@ -25,7 +25,8 @@ export function friendly(error: unknown): string {
 
 export async function checkFunds(accountId: string, request: FunctionCallRequest): Promise<boolean> {
   const [account, gasPrice] = await Promise.all([getAccountInfo(accountId), getGasPrice()]);
-  return BigInt(account.amount) >= request.deposit + request.gas * gasPrice;
+  const spendable = BigInt(account.amount) - BigInt(account.storage_usage) * 10n ** 19n;
+  return spendable >= request.deposit + request.gas * gasPrice;
 }
 
 export function useGasEstimate(gas: bigint): string | null {

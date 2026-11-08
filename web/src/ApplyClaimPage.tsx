@@ -18,8 +18,24 @@ import { ErrorStatus, Fact, GraphicButton, LoadingStatus, PendingStatus, ResultS
 import { checkFunds, friendly, near, PageHead, TxLink, useGasEstimate } from "./flowCommon";
 import s from "./screens.module.css";
 
-const findApplication = (proposals: ProposalView[], accountId: string) =>
-  [...proposals].reverse().find((proposal) => proposal.description === `Apply for a seat for ${accountId}`);
+export function findApplication(proposals: ProposalView[], accountId: string): ProposalView | undefined {
+  return [...proposals].reverse().find((proposal) => {
+    if (typeof proposal.kind !== "object" || proposal.kind === null || !("FunctionCall" in proposal.kind)) {
+      return false;
+    }
+    const call = proposal.kind.FunctionCall;
+    if (call.receiver_id !== chainConfig.seatNftAccountId) return false;
+    return call.actions.some((action) => {
+      if (action.method_name !== "approve_application") return false;
+      try {
+        const args = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(action.args), (char) => char.charCodeAt(0))));
+        return args.applicant === accountId;
+      } catch {
+        return false;
+      }
+    });
+  });
+}
 
 function Deadline({ value }: { value: bigint }) {
   const [now, setNow] = useState(Date.now());
@@ -92,9 +108,9 @@ export function ApplyClaimPage() {
       }
       const tx = await viewer.callContract(request);
       setResult({ hash: tx.hash, action });
+    } catch (cause) {
       state.retry();
       viewer.retry();
-    } catch (cause) {
       const code = contractErrorCode(cause);
       setError(code ? friendlyContractError(code) : friendly(cause));
     } finally { setBusy(false); }
@@ -105,10 +121,11 @@ export function ApplyClaimPage() {
   const rejectCount = tallies.reduce((sum, tally) => sum + tally[1], 0);
   return <main className={s.page}>
     <PageHead eyebrow="Join the club" title="Apply for a seat">
-      <p className={s.lede}>Your delegate votes from your private brief while you're away.</p>
+      <p className={s.lede}>Members vote on each application. Once approved, you claim your seat here.</p>
     </PageHead>
     <RuledSection title="Your application">
       {!viewer.accountId ? <p className={s.muted}>Sign in with a NEAR testnet account to apply.</p>
+        : viewer.error ? <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>
         : viewer.isLoading || approvalState === "loading" ? <LoadingStatus>Checking your seat and application…</LoadingStatus>
         : viewer.isSeatHolder ? <p>You already hold a seat in this club.</p>
         : inVote && application ? <>
@@ -123,11 +140,11 @@ export function ApplyClaimPage() {
             : previousDecision && application ? <p>The last application was {application.status.toLowerCase()}. You can apply again.</p> : null}
           <p>Application decisions are recorded on the club's testnet DAO.</p>
         </>}
-      {viewer.accountId && !viewer.isLoading && !viewer.isSeatHolder && !inVote && approvalState === "ready" && (
+      {viewer.accountId && !viewer.error && !viewer.isLoading && !viewer.isSeatHolder && !inVote && approvalState === "ready" && (
         <>
           <dl className={s.facts}>
-            <Fact label="Proposal bond">{near(BigInt(state.data.proposalBond))} NEAR, returned when the proposal is decided</Fact>
-            <Fact label="Claim deposit">4.5 NEAR funds your delegate. Nearly all is returned after each vote.</Fact>
+            {!claimable && <Fact label="Proposal bond">{near(BigInt(state.data.proposalBond))} NEAR, returned when the proposal is decided</Fact>}
+            {claimable && <Fact label="Claim deposit">4.5 NEAR funds your delegate. Nearly all is returned after each vote.</Fact>}
             <Fact label="Estimated gas">{gasEstimate ? `${gasEstimate} NEAR at the current testnet gas price` : "Current testnet gas price is unavailable"}</Fact>
           </dl>
           <GraphicButton glyph="seat" onClick={() => void submit(claimable ? "claim" : "apply")} disabled={busy}>
@@ -138,7 +155,10 @@ export function ApplyClaimPage() {
       {approvalState === "error" && <ErrorStatus onRetry={() => setAttempt((value) => value + 1)}>Your application approval couldn't be read.</ErrorStatus>}
       {error && <ErrorStatus>{error}</ErrorStatus>}
       {busy && <LoadingStatus>Waiting for your wallet…</LoadingStatus>}
-      {result && <SuccessStatus>{result.action === "apply" ? "Application submitted." : "Seat claimed."} <TxLink hash={result.hash} /></SuccessStatus>}
+      {result && <SuccessStatus>
+        {result.action === "apply" ? "Application submitted." : <>Seat claimed. <a href="#/brief">Save your delegate's brief so it can vote for you.</a></>}
+        {" "}<TxLink hash={result.hash} />
+      </SuccessStatus>}
       {!viewer.accountId && <p className={s.note}>Use a testnet NEAR wallet and testnet NEAR from a NEAR testnet faucet.</p>}
     </RuledSection>
   </main>;

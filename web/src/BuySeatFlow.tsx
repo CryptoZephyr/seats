@@ -12,9 +12,9 @@ export function BuySeatFlow() {
   const state = useClubData();
   const viewer = useViewer();
   const [levy, setLevy] = useState<number | null>(null);
-  const [busy, setBusy] = useState("");
-  const [error, setError] = useState("");
-  const [hash, setHash] = useState("");
+  const [busySeatId, setBusySeatId] = useState<string | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [hashes, setHashes] = useState<Record<string, string>>({});
   const gasEstimate = useGasEstimate(BUY_SEAT_GAS);
   useEffect(() => { void readSeatNftLevyBps().then(setLevy).catch(() => setLevy(-1)); }, []);
   if (state.status === "loading") return <main className={s.page}><LoadingStatus>Reading active sale approvals…</LoadingStatus></main>;
@@ -26,21 +26,23 @@ export function BuySeatFlow() {
   });
   const buy = async (tokenId: string, price: string) => {
     if (!viewer.accountId) return;
-    setError("");
-    setHash("");
-    setBusy(tokenId);
+    setErrors((previous) => ({ ...previous, [tokenId]: "" }));
+    setHashes((previous) => ({ ...previous, [tokenId]: "" }));
+    setBusySeatId(tokenId);
     try {
       const request = buildBuyRequest(tokenId, price);
       if (!await checkFunds(viewer.accountId, request)) {
         throw new Error("Your balance is too low for the approved price and gas.");
       }
       const tx = await viewer.callContract(request);
-      setHash(tx.hash);
+      setHashes((previous) => ({ ...previous, [tokenId]: tx.hash }));
       viewer.retry();
       state.retry();
     } catch (cause) {
-      setError(friendly(cause));
-    } finally { setBusy(""); }
+      state.retry();
+      viewer.retry();
+      setErrors((previous) => ({ ...previous, [tokenId]: friendly(cause) }));
+    } finally { setBusySeatId(null); }
   };
   return <main className={s.page}>
     <PageHead eyebrow="Seat for sale" title="Seats for sale" />
@@ -53,14 +55,14 @@ export function BuySeatFlow() {
           <p className={s.muted}>Reserved for <span className="mono">{approval.buyer}</span></p>
           <p>Price: {near(BigInt(approval.price))} NEAR</p>
           <p>Estimated gas: {gasEstimate ? `${gasEstimate} NEAR` : "checking testnet gas price"}.</p>
-          {split ? <p className={s.note}>Seller receives {near(split.seller)} NEAR. Club receives {near(split.club)} NEAR (5%).</p>
+          {split ? <p className={s.note}>Seller receives {near(split.seller)} NEAR (95%). Club receives {near(split.club)} NEAR (5%).</p>
             : <p className={s.note}>The live 95/5 split couldn't be verified. Buying is disabled.</p>}
           {!viewer.accountId ? <p className={s.muted}>Sign in as the named buyer to purchase this seat.</p>
-            : namedBuyer && split ? <GraphicButton glyph="ticket" disabled={busy === seat.token.token_id} onClick={() => void buy(seat.token.token_id, approval.price)}>Buy for {near(BigInt(approval.price))} NEAR</GraphicButton>
+            : namedBuyer && split ? <GraphicButton glyph="ticket" disabled={busySeatId !== null} onClick={() => void buy(seat.token.token_id, approval.price)}>Buy for {near(BigInt(approval.price))} NEAR</GraphicButton>
             : <p className={s.muted}>This seat is reserved for {approval.buyer}.</p>}
-          {busy === seat.token.token_id && <LoadingStatus>Waiting for your wallet…</LoadingStatus>}
-          {error && <ErrorStatus>{error}</ErrorStatus>}
-          {hash && <SuccessStatus>Purchase submitted. <TxLink hash={hash} /></SuccessStatus>}
+          {busySeatId === seat.token.token_id && <LoadingStatus>Waiting for your wallet…</LoadingStatus>}
+          {errors[seat.token.token_id] && <ErrorStatus>{errors[seat.token.token_id]}</ErrorStatus>}
+          {hashes[seat.token.token_id] && <SuccessStatus>Purchase submitted. <TxLink hash={hashes[seat.token.token_id]} /> <a href="#/brief">Save your delegate's brief so it can vote for you.</a></SuccessStatus>}
         </RuledSection>;
       })}
     <RuledSection title="Awaiting club vote">

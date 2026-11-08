@@ -62,7 +62,7 @@ describe("flow transaction builders", () => {
     expect(request.receiverId).toBe(chainConfig.daoAccountId);
     expect(request.methodName).toBe("add_proposal");
     expect((request.args.proposal as any).description)
-      .toBe("Seat sale: token 1, buyer buyer.testnet, price 101");
+      .toBe("Sell Seat 1 to buyer.testnet for 0.000000000000000000000101 NEAR");
     expect((request.args.proposal as any).kind.FunctionCall).toMatchObject({
       receiver_id: chainConfig.seatNftAccountId,
       actions: [{ method_name: "approve_sale", deposit: "0", gas: String(PROPOSAL_ACTION_GAS) }],
@@ -78,6 +78,7 @@ describe("flow transaction builders", () => {
     expect(calculateSaleSplit("101", 500)).toEqual({ seller: 96n, club: 5n });
     expect(() => calculateSaleSplit("101", 499)).toThrow(/require 500 bps/);
     expect(parseNearAmount("1.25")).toBe(1_250_000_000_000_000_000_000_000n);
+    expect(parseNearAmount(" 1.25 ")).toBe(1_250_000_000_000_000_000_000_000n);
   });
 
   it("attaches the approved Buy price and uses the E2E-proven gas", () => {
