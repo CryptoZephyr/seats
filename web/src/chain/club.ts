@@ -47,6 +47,23 @@ async function allTokens(): Promise<NftToken[]> {
   }
 }
 
+async function readPendingEntries(
+  voterId: string,
+  proposals: ProposalView[],
+): Promise<Array<readonly [number, PendingView | null]>> {
+  const entries: Array<readonly [number, PendingView | null]> = [];
+  for (let index = 0; index < proposals.length; index += 8) {
+    const batch = await Promise.all(
+      proposals.slice(index, index + 8).map(async (proposal) => [
+        proposal.id,
+        await callView(voterId, "get_pending", { proposal_id: proposal.id }),
+      ] as const),
+    );
+    entries.push(...batch);
+  }
+  return entries;
+}
+
 async function readSeat(
   token: NftToken,
   proposals: ProposalView[],
@@ -68,14 +85,7 @@ async function readSeat(
     throw new Error(`Seat ${token.token_id} points to an unexpected DAO.`);
   }
 
-  const pendingEntries = await Promise.all(
-    proposals
-      .filter((proposal) => proposal.status === "InProgress")
-      .map(async (proposal) => [
-        proposal.id,
-        await callView(record.voter_id, "get_pending", { proposal_id: proposal.id }),
-      ] as const),
-  );
+  const pendingEntries = await readPendingEntries(record.voter_id, proposals);
 
   return {
     token,

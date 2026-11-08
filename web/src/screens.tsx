@@ -29,6 +29,7 @@ import {
   RuledSection,
   TextButton,
   VotingClosedStatus,
+  WindowClosedStatus,
   WindowBar,
 } from "./ui";
 import s from "./screens.module.css";
@@ -52,7 +53,7 @@ type SeatVoteState =
   | {
       kind: "pending";
       pending: PendingView;
-      sublabel?: "casting" | "retry";
+      sublabel?: "casting" | "retry" | "windowClosed";
     }
   | { kind: "missed"; pending: PendingView }
   | { kind: "cast"; result: VoteResult }
@@ -63,6 +64,7 @@ function seatVoteState(
   seat: SeatSnapshot,
   proposalId: number,
   votingClosed: boolean,
+  nowNs: bigint,
 ): SeatVoteState {
   const pending = seat.pending[proposalId];
   const result = seat.results.results.findLast((item) => item.proposal_id === proposalId);
@@ -70,14 +72,15 @@ function seatVoteState(
   if (result?.cast) return { kind: "cast", result };
   if (pending) {
     if (votingClosed) return { kind: "missed", pending };
+    const uncastResult = result && !result.cast ? result : undefined;
     const sublabel =
-      result && !result.cast
-        ? result.status === "Casting"
-          ? "casting"
-          : result.status === "Failed"
-            ? "retry"
-            : undefined
-        : undefined;
+      pending.casting || uncastResult?.status === "Casting"
+        ? "casting"
+        : uncastResult?.status === "Failed"
+          ? "retry"
+          : BigInt(pending.deadline) <= nowNs
+            ? "windowClosed"
+            : undefined;
     return { kind: "pending", pending, sublabel };
   }
   if (result) return { kind: "closed", result };
@@ -513,6 +516,7 @@ export function MySeat() {
         proposal.id,
         proposal.status !== "InProgress" ||
           isProposalVotingClosed(proposal, data.proposalPeriodNs, nowNs),
+        nowNs,
       ),
     })),
   );
@@ -569,6 +573,15 @@ export function MySeat() {
                         {voteState.sublabel === "retry" && (
                           <Fact label="Cast status"><CastRetryStatus /></Fact>
                         )}
+                        {voteState.sublabel === "windowClosed" && (
+                          <>
+                            <Fact label="Cast status"><WindowClosedStatus /></Fact>
+                            <Fact label="Override window">
+                              Closed at{" "}
+                              <ProposalDate timestampNs={voteState.pending.deadline} />
+                            </Fact>
+                          </>
+                        )}
                       </>
                     ) : voteState.kind === "missed" ? (
                       <Fact label="Vote status">
@@ -591,7 +604,7 @@ export function MySeat() {
                       <Fact label="Vote status">Your delegate hasn't voted yet</Fact>
                     )}
                   </dl>
-                  {voteState.kind === "pending" && (
+                  {voteState.kind === "pending" && voteState.sublabel !== "windowClosed" && (
                     <ProposalDeadline
                       deadlineNs={BigInt(voteState.pending.deadline)}
                     />
@@ -687,20 +700,6 @@ export function ProposalVote({
   const pageState = ReadPageState({ state, retry: state.retry });
   if (pageState) return pageState;
   if (state.status !== "ready") return null;
-  if (viewer.error) {
-    return (
-      <main className={s.page}>
-        <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>
-      </main>
-    );
-  }
-  if (viewer.accountId && viewer.isLoading) {
-    return (
-      <main className={s.page}>
-        <LoadingStatus>Checking this account's seats…</LoadingStatus>
-      </main>
-    );
-  }
 
   const proposals = state.data.proposals;
   const openProposals = newestFirst(
@@ -731,31 +730,12 @@ export function ProposalVote({
   const routeSeat = tokenId === undefined
     ? undefined
     : ownedSeats.find((item) => item.token.token_id === tokenId);
-  if (tokenId !== undefined && !routeSeat) {
-    if (!viewer.walletReady) {
-      return (
-        <main className={s.page}>
-          <LoadingStatus>Checking this account's seats…</LoadingStatus>
-        </main>
-      );
-    }
-    return (
-      <main className={s.page}>
-        <header className={s.pageHead}>
-          <p className={s.eyebrow}>Proposal {proposalId}</p>
-          <h1>Not your seat</h1>
-        </header>
-        <p className={s.muted}>This account doesn't hold Seat {tokenId}.</p>
-        <TextButton href="#/seat">View your seat</TextButton>
-      </main>
-    );
-  }
   const seatWithPending = ownedSeats.find((item) =>
     openProposals.some((proposal) => {
       const votingClosed =
         proposal.status !== "InProgress" ||
         isProposalVotingClosed(proposal, state.data.proposalPeriodNs, nowNs);
-      const voteState = seatVoteState(item, proposal.id, votingClosed);
+      const voteState = seatVoteState(item, proposal.id, votingClosed, nowNs);
       return voteState.kind === "pending" || voteState.kind === "missed";
     }),
   );
@@ -763,14 +743,14 @@ export function ProposalVote({
     ? undefined
     : ownedSeats.find(
         (item) =>
-          seatVoteState(item, proposalId, requestedProposalVotingClosed).kind === "pending",
+          seatVoteState(item, proposalId, requestedProposalVotingClosed, nowNs).kind === "pending",
       ) ??
       ownedSeats.find(
         (item) =>
-          seatVoteState(item, proposalId, requestedProposalVotingClosed).kind === "cast",
+          seatVoteState(item, proposalId, requestedProposalVotingClosed, nowNs).kind === "cast",
       ) ??
       ownedSeats.find((item) => {
-        const voteState = seatVoteState(item, proposalId, requestedProposalVotingClosed);
+        const voteState = seatVoteState(item, proposalId, requestedProposalVotingClosed, nowNs);
         return voteState.kind === "closed" || voteState.kind === "missed";
       });
   const seatWithLatestCast = ownedSeats
@@ -798,7 +778,7 @@ export function ProposalVote({
         const votingClosed =
           item.status !== "InProgress" ||
           isProposalVotingClosed(item, state.data.proposalPeriodNs, nowNs);
-        const voteState = seatVoteState(seat, item.id, votingClosed);
+        const voteState = seatVoteState(seat, item.id, votingClosed, nowNs);
         return voteState.kind === "pending" || voteState.kind === "missed";
       })
     : undefined;
@@ -812,7 +792,7 @@ export function ProposalVote({
     (proposal.status !== "InProgress" ||
       isProposalVotingClosed(proposal, state.data.proposalPeriodNs, nowNs));
   const voteState =
-    proposal && seat ? seatVoteState(seat, proposal.id, votingClosed) : undefined;
+    proposal && seat ? seatVoteState(seat, proposal.id, votingClosed, nowNs) : undefined;
 
   if (!proposal) {
     return (
@@ -844,7 +824,16 @@ export function ProposalVote({
       </header>
 
       <RuledSection title="Your delegate's vote">
-        {!seat ? (
+        {viewer.error ? (
+          <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>
+        ) : viewer.isLoading ? (
+          <LoadingStatus>Checking this account's seats…</LoadingStatus>
+        ) : tokenId !== undefined && viewer.accountId && !routeSeat ? (
+          <>
+            <p className={s.muted}>This account doesn't hold Seat {tokenId}.</p>
+            <TextButton href="#/seat">View your seat</TextButton>
+          </>
+        ) : !seat ? (
           <p className={s.muted}>Sign in with the account that holds a seat to view its delegate record.</p>
         ) : voteState?.kind === "cast" ? (
           <dl className={s.facts}>
@@ -877,10 +866,18 @@ export function ProposalVote({
               <span className={`${s.voteWord} ${voteState.pending.vote === "Approve" ? s.voteApprove : ""}`}>
                 {voteState.pending.vote}
               </span>
-              <ProposalDeadline deadlineNs={BigInt(voteState.pending.deadline)} />
+              {voteState.sublabel === "windowClosed" ? (
+                <span className={s.muted}>
+                  Override window closed at{" "}
+                  <ProposalDate timestampNs={voteState.pending.deadline} />
+                </span>
+              ) : (
+                <ProposalDeadline deadlineNs={BigInt(voteState.pending.deadline)} />
+              )}
             </div>
             {voteState.sublabel === "casting" && <CastingStatus />}
             {voteState.sublabel === "retry" && <CastRetryStatus />}
+            {voteState.sublabel === "windowClosed" && <WindowClosedStatus />}
             <p className={s.reason}>{voteState.pending.reason}</p>
           </div>
         ) : voteState?.kind === "none" && voteState.votingClosed ? (
@@ -916,22 +913,7 @@ export function AIReceiptPage() {
   if (pageState) return pageState;
   if (state.status !== "ready") return null;
 
-  if (viewer.error) {
-    return (
-      <main className={s.page}>
-        <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>
-      </main>
-    );
-  }
-  if (viewer.accountId && viewer.isLoading) {
-    return (
-      <main className={s.page}>
-        <LoadingStatus>Checking this account's seats…</LoadingStatus>
-      </main>
-    );
-  }
-
-  const seats = viewer.accountId
+  const seats = viewer.accountId && !viewer.error && !viewer.isLoading
     ? state.data.seats.filter((seat) => viewer.seatIds.includes(seat.token.token_id))
     : state.data.seats;
   const results = seats.flatMap((seat) =>
@@ -944,6 +926,18 @@ export function AIReceiptPage() {
         <p className={s.eyebrow}>On-chain vote records</p>
         <h1>Delegate vote receipts</h1>
       </header>
+      {viewer.error && (
+        <RuledSection title="Your records">
+          <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>
+          <p className={s.muted}>Public vote records are shown below.</p>
+        </RuledSection>
+      )}
+      {!viewer.error && viewer.accountId && viewer.isLoading && (
+        <RuledSection title="Your records">
+          <LoadingStatus>Checking this account's seats…</LoadingStatus>
+          <p className={s.muted}>Public vote records are shown while membership is checked.</p>
+        </RuledSection>
+      )}
       {results.length === 0 ? (
         <p className={s.muted}>No vote receipts are stored in the current voter views.</p>
       ) : results.map(({ seatId, result }) => (
@@ -1150,22 +1144,8 @@ export function ReceiptPage({ kind }: { kind: "vote" | "sale" | "buy" | "vault" 
   const pageState = ReadPageState({ state, retry: state.retry });
   if (pageState) return pageState;
   if (state.status !== "ready") return null;
-  if (viewer.error) {
-    return (
-      <main className={s.page}>
-        <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>
-      </main>
-    );
-  }
-  if (viewer.accountId && viewer.isLoading) {
-    return (
-      <main className={s.page}>
-        <LoadingStatus>Checking this account's seats…</LoadingStatus>
-      </main>
-    );
-  }
 
-  const seats = viewer.accountId
+  const seats = viewer.accountId && !viewer.error && !viewer.isLoading
     ? state.data.seats.filter((seat) => viewer.seatIds.includes(seat.token.token_id))
     : state.data.seats;
   const results = kind === "vote"
@@ -1178,6 +1158,18 @@ export function ReceiptPage({ kind }: { kind: "vote" | "sale" | "buy" | "vault" 
         <p className={s.eyebrow}>Receipt</p>
         <h1>{kind === "vote" ? "Vote records" : `${kind[0].toUpperCase()}${kind.slice(1)} records`}</h1>
       </header>
+      {viewer.error && (
+        <RuledSection title="Your records">
+          <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>
+          <p className={s.muted}>Public record information is shown below.</p>
+        </RuledSection>
+      )}
+      {!viewer.error && viewer.accountId && viewer.isLoading && (
+        <RuledSection title="Your records">
+          <LoadingStatus>Checking this account's seats…</LoadingStatus>
+          <p className={s.muted}>Public record information is shown while membership is checked.</p>
+        </RuledSection>
+      )}
       {results.length === 0 ? (
         <p className={s.muted}>
           Vote receipts are on the public record. Sale, purchase, and vault receipts aren't recorded.

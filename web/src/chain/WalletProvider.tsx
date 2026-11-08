@@ -130,26 +130,30 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
 
     setMembership({ status: "loading", seatIds: [], isVoterController: false });
-    Promise.all([ownedTokens(accountId), loadClubSnapshot()])
-      .then(([tokens, snapshot]) => {
-        if (active) {
-          setMembership({
-            status: "ready",
-            seatIds: tokens.map((token) => token.token_id),
-            isVoterController: snapshot.seats.some((seat) => seat.controller === accountId),
-          });
-        }
-      })
-      .catch((error: unknown) => {
-        if (active) {
+    Promise.allSettled([ownedTokens(accountId), loadClubSnapshot()]).then(
+      ([tokensResult, snapshotResult]) => {
+        if (!active) return;
+        if (tokensResult.status === "rejected") {
           setMembership({
             status: "error",
-            error: error instanceof Error ? error : new Error("Your seat information could not be loaded."),
+            error: tokensResult.reason instanceof Error
+              ? tokensResult.reason
+              : new Error("Your seat information could not be loaded."),
             seatIds: [],
             isVoterController: false,
           });
+          return;
         }
-      });
+
+        const snapshot = snapshotResult.status === "fulfilled" ? snapshotResult.value : null;
+        setMembership({
+          status: "ready",
+          seatIds: tokensResult.value.map((token) => token.token_id),
+          isVoterController:
+            snapshot?.seats.some((seat) => seat.controller === accountId) ?? false,
+        });
+      },
+    );
 
     return () => {
       active = false;
