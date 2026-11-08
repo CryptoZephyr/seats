@@ -20,13 +20,47 @@ import { loadCredential } from "./rpc.js";
 
 const TGAS = 1_000_000_000_000n;
 const PROPOSAL_BOND = 100_000_000_000_000_000_000_000n;
-const VISITOR_FUNDING = 2n * 10n ** 23n;
+const VISITOR_FUNDING = 5n * 10n ** 23n;
 const VISITOR_CLAIM_DEPOSIT = 5n * 10n ** 22n;
-const VISITOR_GAS_RESERVE = 5n * 10n ** 22n;
-const VISITOR_MINIMUM_BALANCE = PROPOSAL_BOND + VISITOR_CLAIM_DEPOSIT + VISITOR_GAS_RESERVE;
 const CLAIM_SEAT_GAS = 300n * TGAS;
+const PROPOSAL_SUBMISSION_GAS = 50n * TGAS;
+const PESSIMISTIC_GAS_PRICE_MULTIPLIER = 10n;
 const APPLICATION_DURATION_NS = 7 * 24 * 60 * 60 * 1_000_000_000;
 const APPLICATION_PROPOSAL_ACTION_GAS = 10n * TGAS;
+
+export function calculateVisitorBalanceRequirements(gasPrice: bigint): {
+  apply: bigint;
+  claim: bigint;
+  minimum: bigint;
+  funding: bigint;
+} {
+  if (gasPrice <= 0n) {
+    throw new Error("Gas price must be positive");
+  }
+
+  const apply = PROPOSAL_BOND
+    + PROPOSAL_SUBMISSION_GAS * gasPrice * PESSIMISTIC_GAS_PRICE_MULTIPLIER;
+  const claim = VISITOR_CLAIM_DEPOSIT
+    + CLAIM_SEAT_GAS * gasPrice * PESSIMISTIC_GAS_PRICE_MULTIPLIER;
+
+  return {
+    apply,
+    claim,
+    minimum: apply + claim,
+    funding: VISITOR_FUNDING,
+  };
+}
+
+async function visitorBalanceRequirements(
+  provider: JsonRpcProvider,
+): Promise<ReturnType<typeof calculateVisitorBalanceRequirements>> {
+  const response = await provider.sendJsonRpc<{ gas_price: string }>("gas_price", [null]);
+  if (!/^\d+$/.test(response.gas_price)) {
+    throw new Error("NEAR RPC returned an invalid gas price");
+  }
+  return calculateVisitorBalanceRequirements(BigInt(response.gas_price));
+}
+
 const COUNCIL_GOVERNANCE_LABELS = [
   "config",
   "policy",
@@ -387,7 +421,7 @@ async function submitProposal(
       [actionCreators.functionCall(
         "add_proposal",
         { proposal: { description, kind } },
-        150n * TGAS,
+        PROPOSAL_SUBMISSION_GAS,
         bond,
       )],
     );
@@ -713,8 +747,9 @@ async function ensureVisitorAccount(
   const fundedAccount = await viewAccountOrNull(provider, visitorId);
   if (!fundedAccount) throw new Error(`Could not confirm visitor account ${visitorId}`);
   const balance = BigInt(fundedAccount.amount);
-  if (balance < VISITOR_MINIMUM_BALANCE) {
-    const transfer = VISITOR_MINIMUM_BALANCE - balance;
+  const requirements = await visitorBalanceRequirements(provider);
+  if (balance < requirements.minimum) {
+    const transfer = requirements.minimum - balance;
     try {
       await sendActionsOnce(
         provider,
@@ -724,7 +759,7 @@ async function ensureVisitorAccount(
       );
     } catch (error) {
       const after = await viewAccountOrNull(provider, visitorId);
-      if (!after || BigInt(after.amount) < VISITOR_MINIMUM_BALANCE) {
+      if (!after || BigInt(after.amount) < requirements.minimum) {
         throw new Error(
           `Visitor funding status is unknown. Check the account before resending: ${String(error)}`,
           { cause: error },
@@ -879,8 +914,11 @@ async function claimSeatAsVisitor(
   if (!await hasAccessKey(provider, config.visitor_account_id, visitor.publicKey)) {
     throw new Error(`Visitor account ${config.visitor_account_id} does not have the configured full-access key`);
   }
-  if (BigInt(account.amount) < VISITOR_CLAIM_DEPOSIT + VISITOR_GAS_RESERVE) {
-    throw new Error("Visitor account does not have enough NEAR for the claim deposit and gas reserve");
+  const requirements = await visitorBalanceRequirements(provider);
+  if (BigInt(account.amount) < requirements.claim) {
+    throw new Error(
+      `Visitor account does not have enough NEAR for claim. Required ${requirements.claim} yoctoNEAR`,
+    );
   }
 
   const currentSeat = await readClaimedSeat(

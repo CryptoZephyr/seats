@@ -6,6 +6,7 @@ import {
   assertCouncilCanApproveVoterDefaults,
   assertVoterDefaultsMatch,
   assertVisitorApplicationsReady,
+  calculateVisitorBalanceRequirements,
   checkVoterDefaultsProposalState,
   createApplicationProposalKind,
   createDesiredPolicy,
@@ -77,6 +78,22 @@ describe("visitor application proposal", () => {
       applicant: "visitor.testnet",
       expires_in_ns: 604_800_000_000_000,
     });
+  });
+
+  it("budgets apply and claim gas at the pessimistic prepaid gas price", () => {
+    const requirements = calculateVisitorBalanceRequirements(100_000_000n);
+
+    expect(requirements).toEqual({
+      apply: 150_000_000_000_000_000_000_000n,
+      claim: 350_000_000_000_000_000_000_000n,
+      minimum: 500_000_000_000_000_000_000_000n,
+      funding: 500_000_000_000_000_000_000_000n,
+    });
+  });
+
+  it("rejects invalid gas prices", () => {
+    expect(() => calculateVisitorBalanceRequirements(0n))
+      .toThrow("Gas price must be positive");
   });
 });
 
