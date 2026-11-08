@@ -14,7 +14,7 @@ export interface AccountInfo {
 
 const READ_METHODS = new Set(["query", "gas_price", "tx", "EXPERIMENTAL_tx_status", "block"]);
 const READ_CONCURRENCY_LIMIT = 6;
-const RETRY_DELAYS_MS = [300, 900, 2_000];
+const RETRY_DELAYS_MS = [300, 900, 2_000, 4_000];
 let activeReadRequests = 0;
 const queuedReadRequests: Array<() => void> = [];
 
@@ -39,8 +39,8 @@ async function withReadSlot<T>(request: () => Promise<T>): Promise<T> {
   }
 }
 
-async function rpcRequestOnce<T>(method: string, params: unknown): Promise<T> {
-  const response = await fetch(chainConfig.rpcUrl, {
+async function rpcRequestOnce<T>(url: string, method: string, params: unknown): Promise<T> {
+  const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: method, method, params }),
@@ -62,7 +62,10 @@ export async function rpcRequest<T>(method: string, params: unknown): Promise<T>
   let retries = 0;
   while (true) {
     try {
-      const request = () => rpcRequestOnce<T>(method, params);
+      const url = isRead
+        ? chainConfig.readRpcUrls[retries % chainConfig.readRpcUrls.length]
+        : chainConfig.rpcUrl;
+      const request = () => rpcRequestOnce<T>(url, method, params);
       return isRead ? await withReadSlot(request) : await request();
     } catch (error) {
       if (!isRead || retries >= RETRY_DELAYS_MS.length || !isRetryableRpcError(error)) throw error;

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { chainConfig } from "./config";
 import { rpcRequest } from "./rpc";
 
 afterEach(() => {
@@ -12,6 +13,23 @@ const successResponse = () => new Response(JSON.stringify({ result: { value: "ok
 });
 
 describe("rpcRequest", () => {
+  it("retries a read on the second URL after a fetch error", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce(successResponse());
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = rpcRequest("query", {});
+    await vi.runAllTimersAsync();
+
+    await expect(request).resolves.toEqual({ value: "ok" });
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      chainConfig.readRpcUrls[0],
+      chainConfig.readRpcUrls[1],
+    ]);
+  });
+
   it("retries fetch errors and HTTP 429 responses before succeeding", async () => {
     vi.useFakeTimers();
     const fetchMock = vi.fn()
@@ -28,15 +46,16 @@ describe("rpcRequest", () => {
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
-  it("doesn't retry broadcast methods", async () => {
+  it("sends broadcast methods to the primary once without retrying", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("", { status: 429 }));
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(rpcRequest("broadcast_tx_async", {})).rejects.toThrow("HTTP 429");
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe(chainConfig.rpcUrl);
   });
 
-  it("gives up after three read retries", async () => {
+  it("cycles through read URLs and gives up after four retries", async () => {
     vi.useFakeTimers();
     const fetchMock = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
     vi.stubGlobal("fetch", fetchMock);
@@ -45,7 +64,14 @@ describe("rpcRequest", () => {
     await vi.runAllTimersAsync();
 
     await rejectedRequest;
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      chainConfig.readRpcUrls[0],
+      chainConfig.readRpcUrls[1],
+      chainConfig.readRpcUrls[2],
+      chainConfig.readRpcUrls[0],
+      chainConfig.readRpcUrls[1],
+    ]);
   });
 
   it("limits concurrent read requests to six", async () => {
