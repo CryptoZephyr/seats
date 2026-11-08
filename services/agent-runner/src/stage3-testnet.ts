@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -20,8 +21,7 @@ import { loadCredential } from "./rpc.js";
 
 const TGAS = 1_000_000_000_000n;
 const PROPOSAL_BOND = 100_000_000_000_000_000_000_000n;
-const VISITOR_FUNDING = 5n * 10n ** 23n;
-const VISITOR_CLAIM_DEPOSIT = 5n * 10n ** 22n;
+const VISITOR_CLAIM_DEPOSIT = 4_500_000_000_000_000_000_000_000n;
 const CLAIM_SEAT_GAS = 300n * TGAS;
 const PROPOSAL_SUBMISSION_GAS = 50n * TGAS;
 const PESSIMISTIC_GAS_PRICE_MULTIPLIER = 10n;
@@ -32,7 +32,6 @@ export function calculateVisitorBalanceRequirements(gasPrice: bigint): {
   apply: bigint;
   claim: bigint;
   minimum: bigint;
-  funding: bigint;
 } {
   if (gasPrice <= 0n) {
     throw new Error("Gas price must be positive");
@@ -47,7 +46,6 @@ export function calculateVisitorBalanceRequirements(gasPrice: bigint): {
     apply,
     claim,
     minimum: apply + claim,
-    funding: VISITOR_FUNDING,
   };
 }
 
@@ -190,6 +188,17 @@ function writeKeyFile(path: string, accountId?: string): string {
       .publicKey.toString();
   }
   return keyFile.public_key;
+}
+
+function defaultVisitorKeyPath(accountId: string): string {
+  return join(
+    homedir(),
+    "near-spike",
+    "secrets",
+    ".near-credentials",
+    "testnet",
+    `${accountId}.json`,
+  );
 }
 
 function readConfig(path: string): Stage3Config {
@@ -730,65 +739,70 @@ async function hasAccessKey(
 
 async function ensureVisitorAccount(
   provider: JsonRpcProvider,
-  funder: Credential,
   visitorId: string,
   visitorKey: ReturnType<typeof loadCredential>,
 ): Promise<void> {
-  const account = await viewAccountOrNull(provider, visitorId);
-  const hasVisitorKey = account
-    ? await hasAccessKey(provider, visitorId, visitorKey.publicKey)
-    : false;
-  if (account && !hasVisitorKey) {
+  let account = await viewAccountOrNull(provider, visitorId);
+  if (account && !await hasAccessKey(provider, visitorId, visitorKey.publicKey)) {
     throw new Error(`Visitor account ${visitorId} does not have the configured full-access key`);
   }
   if (!account) {
-    try {
-      await sendActionsOnce(
-        provider,
-        funder,
-        visitorId,
-        [
-          actionCreators.createAccount(),
-          actionCreators.transfer(VISITOR_FUNDING),
-          actionCreators.addKey(visitorKey.publicKey, actionCreators.fullAccessKey()),
-        ],
-      );
-    } catch (error) {
-      const landedAccount = await viewAccountOrNull(provider, visitorId);
-      const landedKey = landedAccount
-        ? await hasAccessKey(provider, visitorId, visitorKey.publicKey)
-        : false;
-      if (!landedAccount || !landedKey) {
-        throw new Error(
-          `Visitor account creation status is unknown. No automatic resend was attempted: ${String(error)}`,
-          { cause: error },
-        );
-      }
+    const accountName = visitorId.slice(0, -".testnet".length);
+    if (!accountName || accountName.includes(".")) {
+      throw new Error("Faucet-sponsored visitor creation requires a top-level .testnet account ID");
     }
+    const cargoNear = join(homedir(), ".cargo", "bin", "near");
+    const nearCli = process.env.NEAR_CLI_PATH?.trim()
+      || (existsSync(cargoNear) ? cargoNear : "near");
+    const child = spawnSync(
+      nearCli,
+      [
+        "account",
+        "create-account",
+        "sponsor-by-faucet-service",
+        visitorId,
+        "use-manually-provided-public-key",
+        visitorKey.publicKey.toString(),
+        "network-config",
+        "testnet",
+        "create",
+      ],
+      { encoding: "utf8", input: "\n", timeout: 120_000 },
+    );
+    const output = `${child.stdout ?? ""}\n${child.stderr ?? ""}`;
+    const safeOutput = output.replace(
+      /(?:ed25519|secp256k1):[1-9A-HJ-NP-Za-km-z]+/g,
+      "[KEY OMITTED]",
+    );
+    account = await viewAccountOrNull(provider, visitorId);
+    const hasVisitorKey = account
+      ? await hasAccessKey(provider, visitorId, visitorKey.publicKey)
+      : false;
+    if (!account || !hasVisitorKey) {
+      const commandStatus = child.error?.message ?? `exit status ${child.status}`;
+      const diagnostic = safeOutput.trim().split("\n").slice(-20).join("\n");
+      throw new Error(
+        `Faucet-sponsored visitor creation is unconfirmed for ${visitorId} (${commandStatus}). Check account state before retrying.${diagnostic ? ` ${diagnostic}` : ""}`,
+        child.error ? { cause: child.error } : undefined,
+      );
+    }
+    const txHash = output.match(
+      /(?:Transaction ID|transaction hash):\s*([1-9A-HJ-NP-Za-km-z]{30,})/i,
+    )?.[1];
+    process.stdout.write(`${JSON.stringify({
+      status: "visitor_created",
+      account_id: visitorId,
+      ...(txHash ? { tx_hash: txHash } : {}),
+    })}\n`);
   }
 
-  const fundedAccount = await viewAccountOrNull(provider, visitorId);
-  if (!fundedAccount) throw new Error(`Could not confirm visitor account ${visitorId}`);
-  const balance = BigInt(fundedAccount.amount);
+  if (!account) throw new Error(`Could not confirm visitor account ${visitorId}`);
+  const balance = BigInt(account.amount);
   const requirements = await visitorBalanceRequirements(provider);
   if (balance < requirements.minimum) {
-    const transfer = requirements.minimum - balance;
-    try {
-      await sendActionsOnce(
-        provider,
-        funder,
-        visitorId,
-        [actionCreators.transfer(transfer)],
-      );
-    } catch (error) {
-      const after = await viewAccountOrNull(provider, visitorId);
-      if (!after || BigInt(after.amount) < requirements.minimum) {
-        throw new Error(
-          `Visitor funding status is unknown. Check the account before resending: ${String(error)}`,
-          { cause: error },
-        );
-      }
-    }
+    throw new Error(
+      `Faucet-sponsored visitor account has insufficient balance. Required ${requirements.minimum} yoctoNEAR, available ${balance}`,
+    );
   }
 }
 
@@ -869,15 +883,11 @@ async function applyAsVisitor(
   provider: JsonRpcProvider,
   config: Stage3Config,
 ): Promise<void> {
-  if (!config.visitor_account_id.endsWith(`.${config.funder_account_id}`)) {
-    throw new Error("visitor_account_id must be an immediate subaccount of funder_account_id");
-  }
   const visitorKeyPath = assertExternalFile(
-    config.visitor_key_file ?? join(homedir(), "near-spike", "secrets", "visitor-apply.json"),
+    config.visitor_key_file ?? defaultVisitorKeyPath(config.visitor_account_id),
   );
   writeKeyFile(visitorKeyPath, config.visitor_account_id);
   const visitor = loadCredential(visitorKeyPath, config.visitor_account_id);
-  const funder = loadCredential(config.funder_key_file, config.funder_account_id);
   const policy = await callView<Policy>(provider, config.dao_id, "get_policy", {});
   assertVisitorApplicationsReady(policy);
   const visitorsRoleIsReady = policy.roles.some((role) =>
@@ -891,7 +901,7 @@ async function applyAsVisitor(
     throw new Error("DAO proposal_bond must be 0.1 NEAR before visitor apply");
   }
 
-  await ensureVisitorAccount(provider, funder, config.visitor_account_id, visitor);
+  await ensureVisitorAccount(provider, config.visitor_account_id, visitor);
   const activeApproval = await activeApplicationExpiry(
     provider,
     config.seat_nft_id,
@@ -932,7 +942,7 @@ async function claimSeatAsVisitor(
   config: Stage3Config,
 ): Promise<void> {
   const visitorKeyPath = assertExternalFile(
-    config.visitor_key_file ?? join(homedir(), "near-spike", "secrets", "visitor-apply.json"),
+    config.visitor_key_file ?? defaultVisitorKeyPath(config.visitor_account_id),
   );
   const visitor = loadCredential(visitorKeyPath, config.visitor_account_id);
   const runner = loadCredential(config.runner_agent_key_file, "runner-agent.testnet", false);
