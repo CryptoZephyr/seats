@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { getAccountInfo, getGasPrice } from "./chain/rpc";
+import { INITIAL_LOAD_RETRY_DELAYS_MS, retryInitialLoad } from "./chain/useClubData";
 import {
   contractErrorCode,
   explorerTxUrl,
@@ -42,10 +43,26 @@ export function useGasEstimate(gas: bigint): string | null {
   const [estimate, setEstimate] = useState<string | null>(null);
   useEffect(() => {
     let active = true;
-    void getGasPrice().then((price) => {
-      if (active) setEstimate(near(gas * price));
-    }).catch(() => { if (active) setEstimate(null); });
-    return () => { active = false; };
+    let retryTimer: number | undefined;
+    const wait = (milliseconds: number) => new Promise<void>((resolve, reject) => {
+      if (!active) {
+        reject(new Error("Gas estimate was cancelled."));
+        return;
+      }
+      retryTimer = window.setTimeout(() => {
+        retryTimer = undefined;
+        resolve();
+      }, milliseconds);
+    });
+    void retryInitialLoad(getGasPrice, INITIAL_LOAD_RETRY_DELAYS_MS, wait)
+      .then((price) => {
+        if (active) setEstimate(near(gas * price));
+      })
+      .catch(() => { if (active) setEstimate(null); });
+    return () => {
+      active = false;
+      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
+    };
   }, [gas]);
   return estimate;
 }

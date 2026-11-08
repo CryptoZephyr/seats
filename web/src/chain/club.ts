@@ -53,9 +53,10 @@ async function readPendingEntries(
   proposals: ProposalView[],
 ): Promise<Array<readonly [number, PendingView | null]>> {
   const entries: Array<readonly [number, PendingView | null]> = [];
-  for (let index = 0; index < proposals.length; index += 8) {
+  const openProposals = proposals.filter((proposal) => proposal.status === "InProgress");
+  for (let index = 0; index < openProposals.length; index += 8) {
     const batch = await Promise.all(
-      proposals.slice(index, index + 8).map(async (proposal) => [
+      openProposals.slice(index, index + 8).map(async (proposal) => [
         proposal.id,
         await callView(voterId, "get_pending", { proposal_id: proposal.id }),
       ] as const),
