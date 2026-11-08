@@ -1,0 +1,603 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { KeyPair } from "@near-js/crypto";
+import { JsonRpcProvider } from "@near-js/providers";
+import { KeyPairSigner } from "@near-js/signers";
+import {
+  actionCreators,
+  createTransaction,
+  type Action,
+} from "@near-js/transactions";
+import { baseDecode, baseEncode } from "@near-js/utils";
+import {
+  callView,
+  isMissingAccountError,
+  parseProposalId,
+} from "./deploy-testnet.js";
+import { loadCredential } from "./rpc.js";
+
+const TGAS = 1_000_000_000_000n;
+const PROPOSAL_BOND = 100_000_000_000_000_000_000_000n;
+const VISITOR_FUNDING = 2n * 10n ** 23n;
+const VISITOR_MINIMUM_BALANCE = PROPOSAL_BOND + 10n ** 22n;
+const VISITOR_MINT_DEPOSIT = 5n * 10n ** 22n;
+const MINT_SEAT_GAS = 250n * TGAS;
+const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
+
+interface Stage3Config {
+  network: string;
+  rpc_url: string;
+  dao_id: string;
+  seat_nft_id: string;
+  voter_id: string;
+  proposer_account_id: string;
+  proposer_key_file: string;
+  funder_account_id: string;
+  funder_key_file: string;
+  visitor_account_id: string;
+  visitor_key_file?: string;
+  runner_agent_key_file: string;
+}
+
+type Credential = {
+  accountId: string;
+  signer: KeyPairSigner;
+};
+
+type ProposalView = {
+  id: number | string;
+  kind: unknown;
+  status: string;
+};
+
+type Policy = {
+  proposal_bond: string | number;
+  roles: Array<{
+    name: string;
+    kind: unknown;
+    permissions: string[];
+    vote_policy: Record<string, unknown>;
+  }>;
+};
+
+type ProposalStatus = {
+  id: number;
+  status: string;
+};
+
+type TransactionResult = {
+  hash: string;
+  value: unknown;
+};
+
+function findRoot(start: string): string {
+  let current = resolve(start);
+  while (dirname(current) !== current) {
+    if (existsSync(join(current, "Cargo.toml")) && existsSync(join(current, "contracts"))) {
+      return current;
+    }
+    current = dirname(current);
+  }
+  throw new Error("Could not locate Seats repository root");
+}
+
+function defaultRunnerKeyPath(): string {
+  return join(homedir(), "near-spike", "secrets", "runner-agent.json");
+}
+
+function assertExternalFile(path: string): string {
+  const absolutePath = resolve(path);
+  if (absolutePath === ROOT || absolutePath.startsWith(`${ROOT}/`)) {
+    throw new Error("Key files must be stored outside the repository");
+  }
+  return absolutePath;
+}
+
+function writeKeyFile(path: string, accountId?: string): string {
+  const absolutePath = assertExternalFile(path);
+  mkdirSync(dirname(absolutePath), { recursive: true, mode: 0o700 });
+  if (existsSync(absolutePath)) {
+    return loadCredential(absolutePath, accountId ?? "runner-agent.testnet", false)
+      .publicKey.toString();
+  }
+
+  const keyPair = KeyPair.fromRandom("ed25519");
+  const keyFile = {
+    ...(accountId ? { account_id: accountId } : {}),
+    public_key: keyPair.getPublicKey().toString(),
+    private_key: keyPair.toString(),
+  };
+  try {
+    writeFileSync(absolutePath, `${JSON.stringify(keyFile, null, 2)}\n`, {
+      encoding: "utf8",
+      flag: "wx",
+      mode: 0o600,
+    });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    return loadCredential(absolutePath, accountId ?? "runner-agent.testnet", false)
+      .publicKey.toString();
+  }
+  return keyFile.public_key;
+}
+
+function readConfig(path: string): Stage3Config {
+  return JSON.parse(readFileSync(resolve(path), "utf8")) as Stage3Config;
+}
+
+function assertTestnetConfig(config: Stage3Config): void {
+  const host = new URL(config.rpc_url).hostname.toLowerCase();
+  if (config.network !== "testnet" || !host.includes("testnet")) {
+    throw new Error("Refusing to run unless the configured RPC is NEAR testnet");
+  }
+  for (const [name, accountId] of Object.entries({
+    dao_id: config.dao_id,
+    seat_nft_id: config.seat_nft_id,
+    voter_id: config.voter_id,
+    proposer_account_id: config.proposer_account_id,
+    funder_account_id: config.funder_account_id,
+    visitor_account_id: config.visitor_account_id,
+  })) {
+    if (!accountId.endsWith(".testnet")) {
+      throw new Error(`${name} must be a .testnet account`);
+    }
+  }
+  for (const path of [
+    config.proposer_key_file,
+    config.funder_key_file,
+    config.runner_agent_key_file,
+    config.visitor_key_file,
+  ]) {
+    if (path) assertExternalFile(path);
+  }
+}
+
+function canonicalJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalJson);
+  if (typeof value === "object" && value !== null) {
+    return Object.fromEntries(
+      Object.entries(value).sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, child]) => [key, canonicalJson(child)]),
+    );
+  }
+  return value;
+}
+
+function sameJsonValue(left: unknown, right: unknown): boolean {
+  return JSON.stringify(canonicalJson(left)) === JSON.stringify(canonicalJson(right));
+}
+
+async function findMatchingProposal(
+  provider: JsonRpcProvider,
+  daoId: string,
+  kind: object,
+): Promise<ProposalStatus | null> {
+  const nextIdValue = await callView<number | string>(provider, daoId, "get_last_proposal_id", {});
+  const nextId = Number(nextIdValue);
+  if (!Number.isSafeInteger(nextId) || nextId < 0) {
+    throw new Error("DAO returned an invalid get_last_proposal_id value");
+  }
+
+  let latest: ProposalStatus | null = null;
+  for (let fromIndex = 0; fromIndex < nextId; fromIndex += 50) {
+    const proposals = await callView<ProposalView[]>(provider, daoId, "get_proposals", {
+      from_index: fromIndex,
+      limit: Math.min(50, nextId - fromIndex),
+    });
+    for (const proposal of proposals) {
+      if (sameJsonValue(proposal.kind, kind)) {
+        const id = parseProposalId(proposal.id);
+        if (latest === null || id > latest.id) {
+          latest = { id, status: proposal.status };
+        }
+      }
+    }
+  }
+  return latest;
+}
+
+async function sendActionsOnce(
+  provider: JsonRpcProvider,
+  credential: Credential,
+  receiverId: string,
+  actions: Action[],
+): Promise<TransactionResult> {
+  const publicKey = await credential.signer.getPublicKey();
+  const accessKey = await provider.viewAccessKey(
+    credential.accountId,
+    publicKey,
+    { finality: "optimistic" },
+  );
+  const block = await provider.viewBlock({ finality: "optimistic" });
+  const transaction = createTransaction(
+    credential.accountId,
+    publicKey,
+    receiverId,
+    BigInt(accessKey.nonce) + 1n,
+    actions,
+    baseDecode(block.header.hash),
+  );
+  const [hashBytes, signed] = await credential.signer.signTransaction(transaction);
+  const outcome = await provider.sendTransaction(signed);
+  const result = outcome as unknown as {
+    status?: { Failure?: unknown; SuccessValue?: string };
+    transaction_outcome?: { outcome?: { status?: { Failure?: unknown } } };
+    receipts_outcome?: Array<{ outcome?: { status?: { Failure?: unknown } } }>;
+  };
+  const failures = [
+    result.status?.Failure,
+    result.transaction_outcome?.outcome?.status?.Failure,
+    ...(result.receipts_outcome ?? []).map((receipt) => receipt.outcome?.status?.Failure),
+  ].filter((failure) => failure !== undefined);
+  if (failures.length > 0) {
+    throw new Error(`Transaction failed: ${JSON.stringify(failures)}`);
+  }
+
+  let value: unknown = null;
+  if (result.status?.SuccessValue) {
+    const decoded = Buffer.from(result.status.SuccessValue, "base64").toString("utf8");
+    try {
+      value = JSON.parse(decoded);
+    } catch {
+      value = decoded;
+    }
+  }
+  return { hash: baseEncode(hashBytes), value };
+}
+
+async function submitProposal(
+  provider: JsonRpcProvider,
+  credential: Credential,
+  daoId: string,
+  kind: object,
+  description: string,
+  bond: bigint,
+): Promise<{ proposalId: number; status: string; txHash?: string }> {
+  const existing = await findMatchingProposal(provider, daoId, kind);
+  if (existing) return { proposalId: existing.id, status: existing.status };
+
+  try {
+    const result = await sendActionsOnce(
+      provider,
+      credential,
+      daoId,
+      [actionCreators.functionCall(
+        "add_proposal",
+        { proposal: { description, kind } },
+        150n * TGAS,
+        bond,
+      )],
+    );
+    return {
+      proposalId: parseProposalId(result.value),
+      status: "submitted",
+      txHash: result.hash,
+    };
+  } catch (error) {
+    const landed = await findMatchingProposal(provider, daoId, kind);
+    if (landed) return { proposalId: landed.id, status: landed.status };
+    throw new Error(
+      `Proposal status is unknown after submission. No automatic resend was attempted: ${String(error)}`,
+      { cause: error },
+    );
+  }
+}
+
+function policyProposalBond(policy: Policy): bigint {
+  const bond = String(policy.proposal_bond);
+  if (!/^\d+$/.test(bond)) throw new Error("DAO returned an invalid proposal_bond");
+  return BigInt(bond);
+}
+
+const visitorRole = {
+  name: "visitors",
+  kind: "Everyone",
+  permissions: ["call:AddProposal"],
+  vote_policy: {},
+};
+
+async function proposePolicyChanges(
+  provider: JsonRpcProvider,
+  credential: Credential,
+  daoId: string,
+  dropCouncilCallVote: boolean,
+): Promise<void> {
+  if (dropCouncilCallVote) {
+    process.stderr.write(
+      "--drop-council-call-vote is a pending owner decision and has no effect.\n",
+    );
+  }
+  const policy = await callView<Policy>(provider, daoId, "get_policy", {});
+  const currentVisitorsRole = policy.roles.find((role) => role.name === "visitors");
+  if (!sameJsonValue(currentVisitorsRole, visitorRole)) {
+    const roleKind = { ChangePolicyAddOrUpdateRole: { role: visitorRole } };
+    const proposal = await submitProposal(
+      provider,
+      credential,
+      daoId,
+      roleKind,
+      "Allow visitors to add proposals",
+      policyProposalBond(policy),
+    );
+    process.stdout.write(`${JSON.stringify({ role_proposal_id: proposal.proposalId, status: proposal.status })}\n`);
+  }
+
+  if (policyProposalBond(policy) !== PROPOSAL_BOND) {
+    const bondKind = {
+      ChangePolicyUpdateParameters: {
+        parameters: {
+          proposal_period: null,
+          proposal_bond: PROPOSAL_BOND.toString(),
+          bounty_bond: null,
+          bounty_forgiveness_period: null,
+        },
+      },
+    };
+    const proposal = await submitProposal(
+      provider,
+      credential,
+      daoId,
+      bondKind,
+      "Set the visitor proposal bond",
+      policyProposalBond(policy),
+    );
+    process.stdout.write(`${JSON.stringify({ bond_proposal_id: proposal.proposalId, status: proposal.status })}\n`);
+  }
+}
+
+async function proposeVoterDefaults(
+  provider: JsonRpcProvider,
+  credential: Credential,
+  config: Stage3Config,
+): Promise<void> {
+  if (config.voter_id !== `s1.${config.seat_nft_id}`) {
+    throw new Error("Voter defaults must be read from seat 1 of the configured seat NFT");
+  }
+  const values = await callView<{
+    model_signer_hex: string;
+    model: string;
+    agent_wasm_url: string;
+    agent_wasm_sha256: string;
+  }>(provider, config.voter_id, "get_voter_configuration", {});
+  const defaults = {
+    model_signer_hex: values.model_signer_hex,
+    model: values.model,
+    agent_wasm_url: values.agent_wasm_url,
+    agent_wasm_sha256: values.agent_wasm_sha256,
+  };
+  if (!/^0x[0-9a-fA-F]{40}$/.test(defaults.model_signer_hex)) {
+    throw new Error("Seat 1 returned an invalid model signer address");
+  }
+  if (!defaults.agent_wasm_url.trim() || !/^[a-f0-9]{64}$/.test(defaults.agent_wasm_sha256)) {
+    throw new Error("Seat 1 does not have a valid pinned agent WASM configuration");
+  }
+  const current = await callView<typeof defaults | null>(
+    provider,
+    config.seat_nft_id,
+    "get_voter_defaults",
+    {},
+  );
+  if (current && sameJsonValue(current, defaults)) {
+    process.stdout.write(`${JSON.stringify({ status: "already_set" })}\n`);
+    return;
+  }
+
+  const kind = {
+    FunctionCall: {
+      receiver_id: config.seat_nft_id,
+      actions: [{
+        method_name: "set_voter_defaults",
+        args: Buffer.from(JSON.stringify(defaults)).toString("base64"),
+        deposit: "0",
+        gas: String(50n * TGAS),
+      }],
+    },
+  };
+  const policy = await callView<Policy>(provider, config.dao_id, "get_policy", {});
+  const proposal = await submitProposal(
+    provider,
+    credential,
+    config.dao_id,
+    kind,
+    "Set defaults for new voter accounts",
+    policyProposalBond(policy),
+  );
+  process.stdout.write(`${JSON.stringify({ proposal_id: proposal.proposalId, status: proposal.status })}\n`);
+}
+
+function keyIsPresent(error: unknown): boolean {
+  const details = error && typeof error === "object"
+    ? error as { type?: unknown; name?: unknown; message?: unknown }
+    : undefined;
+  return /UNKNOWN_ACCESS_KEY|AccessKeyDoesNotExist|access key[^\n]*(?:not found|does not exist)/i
+    .test([details?.type, details?.name, details?.message, error].map(String).join(" "));
+}
+
+async function viewAccountOrNull(
+  provider: JsonRpcProvider,
+  accountId: string,
+): Promise<{ amount: string | bigint } | null> {
+  try {
+    return await provider.viewAccount(accountId, { finality: "optimistic" });
+  } catch (error) {
+    if (isMissingAccountError(error)) return null;
+    throw error;
+  }
+}
+
+async function hasAccessKey(
+  provider: JsonRpcProvider,
+  accountId: string,
+  publicKey: Awaited<ReturnType<KeyPairSigner["getPublicKey"]>>,
+): Promise<boolean> {
+  try {
+    const accessKey = await provider.viewAccessKey(accountId, publicKey, { finality: "optimistic" });
+    return accessKey.permission === "FullAccess";
+  } catch (error) {
+    if (keyIsPresent(error)) return false;
+    throw error;
+  }
+}
+
+async function ensureVisitorAccount(
+  provider: JsonRpcProvider,
+  funder: Credential,
+  visitorId: string,
+  visitorKey: ReturnType<typeof loadCredential>,
+): Promise<void> {
+  const account = await viewAccountOrNull(provider, visitorId);
+  const hasVisitorKey = account
+    ? await hasAccessKey(provider, visitorId, visitorKey.publicKey)
+    : false;
+  if (account && !hasVisitorKey) {
+    throw new Error(`Visitor account ${visitorId} does not have the configured full-access key`);
+  }
+  if (!account) {
+    try {
+      await sendActionsOnce(
+        provider,
+        funder,
+        visitorId,
+        [
+          actionCreators.createAccount(),
+          actionCreators.transfer(VISITOR_FUNDING),
+          actionCreators.addKey(visitorKey.publicKey, actionCreators.fullAccessKey()),
+        ],
+      );
+    } catch (error) {
+      const landedAccount = await viewAccountOrNull(provider, visitorId);
+      const landedKey = landedAccount
+        ? await hasAccessKey(provider, visitorId, visitorKey.publicKey)
+        : false;
+      if (!landedAccount || !landedKey) {
+        throw new Error(
+          `Visitor account creation status is unknown. No automatic resend was attempted: ${String(error)}`,
+          { cause: error },
+        );
+      }
+    }
+  }
+
+  const fundedAccount = await viewAccountOrNull(provider, visitorId);
+  if (!fundedAccount) throw new Error(`Could not confirm visitor account ${visitorId}`);
+  const balance = BigInt(fundedAccount.amount);
+  if (balance < VISITOR_MINIMUM_BALANCE) {
+    const transfer = VISITOR_MINIMUM_BALANCE - balance;
+    try {
+      await sendActionsOnce(
+        provider,
+        funder,
+        visitorId,
+        [actionCreators.transfer(transfer)],
+      );
+    } catch (error) {
+      const after = await viewAccountOrNull(provider, visitorId);
+      if (!after || BigInt(after.amount) < VISITOR_MINIMUM_BALANCE) {
+        throw new Error(
+          `Visitor funding status is unknown. Check the account before resending: ${String(error)}`,
+          { cause: error },
+        );
+      }
+    }
+  }
+}
+
+async function applyAsVisitor(
+  provider: JsonRpcProvider,
+  config: Stage3Config,
+): Promise<void> {
+  if (!config.visitor_account_id.endsWith(`.${config.funder_account_id}`)) {
+    throw new Error("visitor_account_id must be an immediate subaccount of funder_account_id");
+  }
+  const runner = loadCredential(config.runner_agent_key_file, "runner-agent.testnet", false);
+  const visitorKeyPath = assertExternalFile(
+    config.visitor_key_file ?? join(homedir(), "near-spike", "secrets", "visitor-apply.json"),
+  );
+  writeKeyFile(visitorKeyPath, config.visitor_account_id);
+  const visitor = loadCredential(visitorKeyPath, config.visitor_account_id);
+  const funder = loadCredential(config.funder_key_file, config.funder_account_id);
+  const policy = await callView<Policy>(provider, config.dao_id, "get_policy", {});
+  const visitorsRoleIsReady = policy.roles.some((role) =>
+    role.name === "visitors"
+      && role.kind === "Everyone"
+      && role.permissions.includes("call:AddProposal"));
+  if (!visitorsRoleIsReady) {
+    throw new Error("DAO visitors role must be approved before visitor apply");
+  }
+  if (policyProposalBond(policy) !== PROPOSAL_BOND) {
+    throw new Error("DAO proposal_bond must be 0.1 NEAR before visitor apply");
+  }
+
+  const kind = {
+    FunctionCall: {
+      receiver_id: config.seat_nft_id,
+      actions: [{
+        method_name: "mint_seat",
+        args: Buffer.from(JSON.stringify({
+          receiver_id: config.visitor_account_id,
+          agent_public_key: runner.publicKey.toString(),
+        })).toString("base64"),
+        deposit: VISITOR_MINT_DEPOSIT.toString(),
+        gas: MINT_SEAT_GAS.toString(),
+      }],
+    },
+  };
+  const existing = await findMatchingProposal(provider, config.dao_id, kind);
+  if (existing) {
+    process.stdout.write(`${JSON.stringify({ proposal_id: existing.id, status: existing.status })}\n`);
+    return;
+  }
+
+  await ensureVisitorAccount(provider, funder, config.visitor_account_id, visitor);
+  const proposal = await submitProposal(
+    provider,
+    visitor,
+    config.dao_id,
+    kind,
+    `Apply for a seat for ${config.visitor_account_id}`,
+    PROPOSAL_BOND,
+  );
+  process.stdout.write(`${JSON.stringify({ proposal_id: proposal.proposalId, status: proposal.status })}\n`);
+}
+
+export async function main(args: string[]): Promise<void> {
+  const command = args[0];
+  if (command === "generate-runner-key") {
+    const outputIndex = args.indexOf("--output");
+    const outputPath = outputIndex >= 0
+      ? args[outputIndex + 1]
+      : defaultRunnerKeyPath();
+    if (!outputPath) throw new Error("--output requires a path");
+    const publicKey = writeKeyFile(outputPath);
+    process.stdout.write(`${publicKey}\n`);
+    return;
+  }
+  if (!["propose-policy", "propose-voter-defaults", "apply-visitor"].includes(command ?? "")) {
+    throw new Error(
+      "Usage: stage3-testnet.js generate-runner-key [--output path] | propose-policy --config path [--drop-council-call-vote] | propose-voter-defaults --config path | apply-visitor --config path",
+    );
+  }
+  const configIndex = args.indexOf("--config");
+  if (configIndex < 0 || !args[configIndex + 1]) {
+    throw new Error(`${command} requires --config /path/to/stage3-testnet.json`);
+  }
+  const config = readConfig(args[configIndex + 1]);
+  assertTestnetConfig(config);
+  const provider = new JsonRpcProvider({ url: config.rpc_url }, { retries: 0 });
+  if (command === "propose-policy") {
+    const credential = loadCredential(config.proposer_key_file, config.proposer_account_id);
+    await proposePolicyChanges(
+      provider,
+      credential,
+      config.dao_id,
+      args.includes("--drop-council-call-vote"),
+    );
+  } else if (command === "propose-voter-defaults") {
+    const credential = loadCredential(config.proposer_key_file, config.proposer_account_id);
+    await proposeVoterDefaults(provider, credential, config);
+  } else {
+    await applyAsVisitor(provider, config);
+  }
+}

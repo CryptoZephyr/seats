@@ -1,0 +1,14 @@
+{
+  "network": "testnet",
+  "rpc_url": "https://rpc.testnet.fastnear.com",
+  "dao_id": "seats2-1793847972.sputnikv2.testnet",
+  "seat_nft_id": "seatsnft3-1793848334.testnet",
+  "voter_id": "s1.seatsnft3-1793848334.testnet",
+  "proposer_account_id": "seatsfund1-1793846395.testnet",
+  "proposer_key_file": "/home/ubuntu/near-spike/secrets/seatsfund1.json",
+  "funder_account_id": "seatsfund1-1793846395.testnet",
+  "funder_key_file": "/home/ubuntu/near-spike/secrets/seatsfund1.json",
+  "visitor_account_id": "visitor.seatsfund1-1793846395.testnet",
+  "visitor_key_file": "/home/ubuntu/near-spike/secrets/visitor-apply.json",
+  "runner_agent_key_file": "/home/ubuntu/near-spike/secrets/runner-agent.json"
+}
