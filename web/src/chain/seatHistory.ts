@@ -165,6 +165,6 @@ export async function loadSeatOwnershipHistory(tokenId: string): Promise<SeatOwn
 
 export function seatHolderDescription(holder: SeatHolderRecord): string {
   return holder.acquiredBy === "claim"
-    ? "Claimed"
+    ? "Minted"
     : `Bought from ${holder.sellerId} for ${formatNearAmount(holder.priceYocto!)} NEAR`;
 }

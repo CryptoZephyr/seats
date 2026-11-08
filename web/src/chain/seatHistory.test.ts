@@ -23,7 +23,7 @@ describe("parseSeatOwnershipHistory", () => {
     }))).toEqual([
       {
         ownerId: "seats-final-1794157607.testnet",
-        description: "Claimed",
+        description: "Minted",
         txHash: "4rLzf36PgdCwMhBhwRRAXHeADNjteRztppsuy6cMXSRm",
       },
       {

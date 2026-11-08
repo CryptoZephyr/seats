@@ -11,7 +11,6 @@ import {
   type SeatOwnershipHistory,
 } from "./chain/seatHistory";
 import { explorerTxUrl, formatNearAmount } from "./chain/transactions";
-import { changeAttribution } from "./voteControls";
 import { formatProposalDate } from "./proposalDate";
 import { SeatArtwork } from "./SeatArtwork";
 import { VoteMark } from "./seatplan";
@@ -21,7 +20,6 @@ import {
   RuledSection,
   TextButton,
 } from "./ui";
-import type { SeatSnapshot } from "./chain/club";
 import type { VoteResult } from "./chain/types";
 import s from "./SeatHistoryPage.module.css";
 import pageStyles from "./screens.module.css";
@@ -38,19 +36,13 @@ type HistoryState =
 function decidedBy(
   result: VoteResult,
   changes: MemberChangeHistory | undefined,
-  seat: SeatSnapshot,
 ): string {
-  if (result.status === "Canceled") {
-    const cancel = changes?.latest?.method === "cancel" ? changes.latest : null;
-    return cancel && changeAttribution(cancel.signerId, seat.controller, null) === "member"
-      ? "Canceled by member"
-      : "Canceled";
-  }
+  if (result.status === "Canceled") return "Canceled";
   return result.source === "member" ||
     changes?.latest?.method === "override_vote" ||
     isCurrentVoteOverridden(changes ?? null, result.vote, result.source)
     ? "Member override"
-    : "Your delegate";
+    : "Delegate";
 }
 
 function VoteDecision({ result }: { result: VoteResult }) {
@@ -184,7 +176,7 @@ export function SeatHistoryPage({ tokenId }: { tokenId: string }) {
             )}
           </RuledSection>
 
-          <RuledSection title="Your delegate’s votes">
+          <RuledSection title={`Seat ${tokenId}'s delegate votes`}>
             {(results?.results.length ?? 0) === 0 ? (
               <p className={pageStyles.muted}>No vote results are recorded for this delegate yet.</p>
             ) : (
@@ -202,7 +194,7 @@ export function SeatHistoryPage({ tokenId }: { tokenId: string }) {
                           <VoteDecision result={result} />
                           <span className={s.voteWord}>
                             <VoteMark kind="ring" size={16} />
-                            {decidedBy(result, changes, seat)}
+                            {decidedBy(result, changes)}
                           </span>
                           <span className={s.voteWord}>
                             <VoteMark kind={result.cast ? "tick" : "ring"} size={16} />
