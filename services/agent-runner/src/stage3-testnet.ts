@@ -567,7 +567,7 @@ async function proposePolicyChanges(
     policyProposalBond(current),
   );
   if (proposal.status === "Approved") {
-    const applied = await callView<Policy>(provider, daoId, "get_policy", {});
+    const applied = await callView<Policy>(provider, config.dao_id, "get_policy", {});
     if (!sameJsonValue(applied, desired)) {
       throw new Error(
         `Policy proposal ${proposal.proposalId} is approved, but live get_policy does not match the desired policy`,
