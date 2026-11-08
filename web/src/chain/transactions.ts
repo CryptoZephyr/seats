@@ -79,6 +79,7 @@ export async function voterCall<Method extends VoterMethod>(
     receiverId: voterId,
     actions: [actionCreators.functionCall(method, args, VOTER_CALL_GAS, 0n)],
   });
+  if (!outcome) throw new Error("The wallet returned no transaction outcome.");
 
   if (isFailureStatus(outcome.status)) {
     const code = contractErrorCode(outcome);
