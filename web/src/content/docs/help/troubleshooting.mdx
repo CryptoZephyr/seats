@@ -1,8 +1,8 @@
 ---
 title: Troubleshooting
 summary: Use the message on screen to find the next safe step.
-lastVerified: 2026-11-07
-commit: b8daa5d
+lastVerified: 2026-11-08
+commit: 241724d
 ---
 
 ## The page doesn't load
@@ -20,6 +20,22 @@ You don't hold a seat, or the seat was sold. This is the intended refusal.
 ## The window says closed
 
 The override window has passed. The vote is cast or about to be cast. Read the receipt.
+
+## A vote change was refused
+
+- "This account doesn't control this seat." Sign in with the account that controls the seat.
+- "This vote is no longer waiting to be sent." Refresh the proposal. The vote may already be cast or canceled.
+- "The time to change this vote has passed." The override window has closed. Read the vote status or receipt.
+- "Your delegate's vote is already being sent." Wait for the cast status to update before trying again.
+- "That vote choice isn't allowed." A vote can only be changed to Approve or Reject.
+
+## The vote change couldn't be confirmed
+
+A wallet timeout or network error can happen after a testnet transaction lands. Refresh the proposal and its change history before trying again.
+
+## Change history couldn't be loaded
+
+Choose retry to load FastNear transaction history again. The screen doesn't show an override badge unless the history confirms one.
 
 ## A screen says it couldn't read the chain
 
