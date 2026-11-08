@@ -6,6 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { Buffer } from "buffer";
 import { setupWalletSelector, type SignedMessage, type WalletSelector } from "@near-wallet-selector/core";
 import { setupIntearWallet } from "@near-wallet-selector/intear-wallet";
 import { setupModal, type WalletSelectorModal } from "@near-wallet-selector/modal-ui";
@@ -27,6 +28,15 @@ interface Membership {
   error?: Error;
   seatIds: string[];
   isVoterController: boolean;
+}
+
+export function callSignMessageWithBufferNonce<Result>(
+  signMessage: (params: { message: string; nonce: Buffer; recipient: string }) => Promise<Result>,
+  message: string,
+  nonce: Uint8Array,
+  recipient: string,
+): Promise<Result> {
+  return signMessage({ message, nonce: Buffer.from(nonce), recipient });
 }
 
 interface ViewerValue {
@@ -219,7 +229,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     if (!accountId) throw new Error("Sign in to save your delegate's brief.");
     if (!selector) throw new Error("Wallet isn't ready. Try again.");
     const wallet = await selector.wallet();
-    const signed = await wallet.signMessage({ message, nonce: nonce as Buffer, recipient });
+    const signed = await callSignMessageWithBufferNonce(
+      (params) => wallet.signMessage(params),
+      message,
+      nonce,
+      recipient,
+    );
     if (!signed || signed.accountId !== accountId) throw new Error("The wallet didn't sign for the connected account.");
     return signed;
   }, [accountId, selector]);
