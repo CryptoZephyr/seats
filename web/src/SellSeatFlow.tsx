@@ -11,7 +11,17 @@ import {
 } from "./chain/transactions";
 import { saleListings } from "./chain/sales";
 import { ErrorStatus, Fact, GraphicButton, LoadingStatus, RuledSection, SuccessStatus } from "./ui";
-import { checkFunds, friendly, InsufficientFundsError, near, PageHead, TxLink, useGasEstimate } from "./flowCommon";
+import {
+  checkFunds,
+  FaucetLink,
+  friendly,
+  InsufficientFundsError,
+  isInsufficientFundsError,
+  near,
+  PageHead,
+  TxLink,
+  useGasEstimate,
+} from "./flowCommon";
 import s from "./screens.module.css";
 
 export function SellSeatFlow() {
@@ -24,6 +34,7 @@ export function SellSeatFlow() {
   const [levy, setLevy] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [needsFaucet, setNeedsFaucet] = useState(false);
   const [hash, setHash] = useState("");
   const gasEstimate = useGasEstimate(PROPOSAL_CALL_GAS);
   useEffect(() => { void readSeatNftLevyBps().then(setLevy).catch(() => setLevy(-1)); }, []);
@@ -41,6 +52,7 @@ export function SellSeatFlow() {
   })();
   const submit = async () => {
     setError("");
+    setNeedsFaucet(false);
     setHash("");
     if (!viewer.accountId || seats.length === 0) {
       setError("Sign in with the seat holder account to create an offer.");
@@ -63,7 +75,7 @@ export function SellSeatFlow() {
         state.data.proposalBond,
       );
       if (!await checkFunds(viewer.accountId, request)) {
-        throw new InsufficientFundsError(`This account needs ${near(request.deposit)} NEAR for the deposit and about ${gasEstimate ?? "the current"} testnet NEAR for the network fee. Get testnet NEAR from a NEAR testnet faucet.`);
+        throw new InsufficientFundsError(`This account needs ${near(request.deposit)} NEAR for the deposit and about ${gasEstimate ?? "the current"} testnet NEAR for the network fee.`);
       }
       const tx = await viewer.callContract(request);
       setHash(tx.hash);
@@ -71,6 +83,7 @@ export function SellSeatFlow() {
     } catch (cause) {
       state.retry();
       viewer.retry();
+      setNeedsFaucet(isInsufficientFundsError(cause));
       setError(friendly(cause));
     } finally { setBusy(false); }
   };
@@ -117,7 +130,7 @@ export function SellSeatFlow() {
       <p>Network fee about {gasEstimate ? `${gasEstimate} testnet NEAR` : "checking testnet network fee"}.</p>
       <GraphicButton glyph="ticket" onClick={() => void submit()} disabled={busy || levy !== 500 || !split}>Submit sale for club vote</GraphicButton>
       {busy && <LoadingStatus>Waiting for your wallet…</LoadingStatus>}
-      {error && <ErrorStatus>{error}</ErrorStatus>}
+      {error && <ErrorStatus>{error}{needsFaucet && <> <FaucetLink /></>}</ErrorStatus>}
       {hash && <SuccessStatus>Sale proposal submitted. <TxLink hash={hash} /></SuccessStatus>}
       </>}
     </RuledSection>}
