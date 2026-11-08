@@ -257,17 +257,17 @@ export class NearAgentRpc implements AgentRunnerRpc, VoterDiscoveryRpc {
     operation: (provider: JsonRpcProvider) => Promise<T>,
     { broadcast = false }: RetryOptions = {},
   ): Promise<T> {
-    for (let attempt = 0; attempt < maxRpcAttempts; attempt += 1) {
+    const attempts = Math.max(maxRpcAttempts, this.providers.length);
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
       try {
         const provider = this.providers[attempt % this.providers.length];
         if (!provider) throw new Error("No NEAR RPC providers configured");
         return await operation(provider);
       } catch (error) {
-        if (attempt + 1 >= maxRpcAttempts || !isRetryableRpcError(error, { broadcast })) {
+        if (attempt + 1 >= attempts || !isRetryableRpcError(error, { broadcast })) {
           throw error;
         }
-        const baseDelayMs = retryDelaysMs[attempt];
-        if (baseDelayMs === undefined) throw error;
+        const baseDelayMs = retryDelaysMs[Math.min(attempt, retryDelaysMs.length - 1)]!;
         const delayMs = baseDelayMs * (0.5 + Math.random() * 0.5);
         await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
       }

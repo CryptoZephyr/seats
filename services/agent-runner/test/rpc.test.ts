@@ -9,6 +9,7 @@ const rpcUrls = [
   "https://secondary.testnet.example",
   "https://tertiary.testnet.example",
 ];
+const sixRpcUrls = Array.from({ length: 6 }, (_, index) => `https://host-${index}.testnet.example`);
 
 type ProviderCall = {
   url: string;
@@ -126,6 +127,42 @@ describe("runner RPC failover", () => {
       rpcUrls[0],
       rpcUrls[1],
     ]);
+  });
+
+  it("tries the sixth configured host when the first five are rate-limited", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    let attempt = 0;
+    const calls = stubSendJsonRpc((call) => {
+      if (attempt++ < 5) {
+        throw new Error('{"code": -429, "message": "Rate limits exceeded"}');
+      }
+      return successfulRpcResponse(call);
+    });
+
+    const result = createRpc(sixRpcUrls).getLastProposalId("dao.testnet");
+    await vi.runAllTimersAsync();
+
+    await expect(result).resolves.toBe(19);
+    expect(calls.map(({ url }) => url)).toEqual(sixRpcUrls);
+  });
+
+  it("exhausts exactly six attempts for six rate-limited hosts", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const errors = Array.from({ length: 6 }, (_, attempt) =>
+      new Error(`{"code": -429, "message": "Rate limits exceeded", "attempt": ${attempt}}`));
+    let attempt = 0;
+    const calls = stubSendJsonRpc(() => {
+      throw errors[attempt++];
+    });
+
+    const result = createRpc(sixRpcUrls).getLastProposalId("dao.testnet");
+    const rejection = expect(result).rejects.toBe(errors[5]);
+    await vi.runAllTimersAsync();
+
+    await rejection;
+    expect(calls.map(({ url }) => url)).toEqual(sixRpcUrls);
   });
 
   it("does not retry non-retryable read errors", async () => {
