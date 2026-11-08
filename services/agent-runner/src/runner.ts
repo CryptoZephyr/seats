@@ -454,6 +454,10 @@ export async function runTick(options: TickOptions): Promise<RunnerState> {
           voter_id: voter.voterId,
           error: String(error),
         });
+        if (hasLowBalanceState) {
+          firstIncompleteId = firstIncompleteId === null ? id : Math.min(firstIncompleteId, id);
+          continue;
+        }
       }
 
       const retryAfterTtl = requestedAtMs !== undefined;

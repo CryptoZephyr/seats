@@ -390,6 +390,38 @@ describe("runTick with mocked RPC", () => {
     }));
   });
 
+  it("does not request a vote when an account read fails for a low-balance voter", async () => {
+    const lowBalance = { available_yocto: "99", required_yocto: "100" };
+    const currentState: RunnerState = {
+      ...state(),
+      lowBalanceVoters: { "voter.testnet": lowBalance },
+    };
+    const rpc = createRpc({
+      getLastProposalId: vi.fn(async () => 1),
+      getProposals: vi.fn(async () => [{ id: 0, status: "InProgress" }]),
+      getAccountInfo: vi.fn(async () => {
+        throw new Error("RPC unavailable");
+      }),
+    });
+
+    await runTick({
+      rpc,
+      daoId: "club.testnet",
+      voters: [{ voterId: "voter.testnet", source: "file" }],
+      state: currentState,
+      nowNanoseconds: 0n,
+      nowMilliseconds: 1_000,
+      requestTtlMs: 180_000,
+      voterMinAvailableYocto: 100n,
+      persistState: () => undefined,
+      log: () => undefined,
+    });
+
+    expect(rpc.requestVote).not.toHaveBeenCalled();
+    expect(currentState.lowBalanceVoters?.["voter.testnet"]).toEqual(lowBalance);
+    expect(currentState.cursor).toBe(-1);
+  });
+
   it.each(["ERR_AGENT_WASM_NOT_PINNED", "ERR_BRIEF_NOT_SET"])(
     "backs off discovered voters for an hour after %s",
     async (errorCode) => {
