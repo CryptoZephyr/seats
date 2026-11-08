@@ -8,6 +8,8 @@ import {
 } from "./chain/transactions";
 import s from "./screens.module.css";
 
+export class InsufficientFundsError extends Error {}
+
 export function near(value: bigint): string {
   const whole = value / 10n ** 24n;
   const fraction = (value % 10n ** 24n).toString().padStart(24, "0").replace(/0+$/, "");
@@ -15,9 +17,10 @@ export function near(value: bigint): string {
 }
 
 export function friendly(error: unknown): string {
+  if (error instanceof InsufficientFundsError) return error.message;
   const code = contractErrorCode(error);
   if (code) return friendlyContractError(code);
-  if (error instanceof Error && /timeout|timed out|network|fetch/i.test(error.message)) {
+  if (error instanceof Error && /timed? ?out|failed to fetch|networkerror|network request failed|network error/i.test(error.message)) {
     return "The wallet didn't confirm the result. Check the transaction before trying again.";
   }
   return error instanceof Error ? error.message : "The request couldn't be completed.";

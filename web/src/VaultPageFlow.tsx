@@ -5,7 +5,7 @@ import { estimateVaultExecutionCost, getTransactionStatus } from "./chain/rpc";
 import { buildVaultRequest, contractErrorCode, VAULT_REQUEST_GAS } from "./chain/transactions";
 import { decryptVaultResponse, generateVaultKeyPair, type VaultCiphertext } from "./chain/vaultCrypto";
 import { ErrorStatus, GraphicButton, LoadingStatus, RefusedStamp, RuledSection } from "./ui";
-import { checkFunds, friendly, near, PageHead, TxLink, useGasEstimate } from "./flowCommon";
+import { checkFunds, friendly, InsufficientFundsError, near, PageHead, TxLink, useGasEstimate } from "./flowCommon";
 import s from "./screens.module.css";
 
 function payloadFromOutcome(outcome: unknown): VaultCiphertext | null {
@@ -54,7 +54,7 @@ export function VaultPageFlow() {
       const requester = Array.from(keyPair.publicKey, (byte) => byte.toString(16).padStart(2, "0")).join("");
       const request = buildVaultRequest(requester, cost);
       if (!await checkFunds(viewer.accountId, request)) {
-        throw new Error(`Your balance must cover the ${near(request.deposit)} NEAR deposit and network fee.`);
+        throw new InsufficientFundsError(`Your balance must cover the ${near(request.deposit)} NEAR deposit and about ${gasEstimate ?? "the current"} testnet NEAR for the network fee. Get testnet NEAR from a NEAR testnet faucet.`);
       }
       const tx = await viewer.callContract(request);
       setHash(tx.hash);

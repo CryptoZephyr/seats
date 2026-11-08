@@ -1,0 +1,67 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { rpcRequest } from "./rpc";
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
+
+const successResponse = () => new Response(JSON.stringify({ result: { value: "ok" } }), {
+  status: 200,
+  headers: { "content-type": "application/json" },
+});
+
+describe("rpcRequest", () => {
+  it("retries fetch errors and HTTP 429 responses before succeeding", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce(new Response("", { status: 429 }))
+      .mockResolvedValueOnce(new Response("", { status: 503 }))
+      .mockResolvedValueOnce(successResponse());
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = rpcRequest("query", {});
+    await vi.runAllTimersAsync();
+
+    await expect(request).resolves.toEqual({ value: "ok" });
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("doesn't retry broadcast methods", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("", { status: 429 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(rpcRequest("broadcast_tx_async", {})).rejects.toThrow("HTTP 429");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives up after three read retries", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const rejectedRequest = expect(rpcRequest("query", {})).rejects.toThrow("Failed to fetch");
+    await vi.runAllTimersAsync();
+
+    await rejectedRequest;
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("limits concurrent read requests to six", async () => {
+    let active = 0;
+    let peak = 0;
+    const fetchMock = vi.fn(async () => {
+      active += 1;
+      peak = Math.max(peak, active);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      active -= 1;
+      return successResponse();
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await Promise.all(Array.from({ length: 20 }, () => rpcRequest("query", {})));
+
+    expect(peak).toBe(6);
+  });
+});

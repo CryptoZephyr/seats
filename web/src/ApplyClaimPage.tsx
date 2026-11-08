@@ -15,8 +15,21 @@ import {
 import { formatProposalDate } from "./proposalDate";
 import { isProposalVotingClosed } from "./proposals";
 import { ErrorStatus, Fact, GraphicButton, LoadingStatus, PendingStatus, ResultStamp, RuledSection, SuccessStatus } from "./ui";
-import { checkFunds, friendly, near, PageHead, TxLink, useGasEstimate } from "./flowCommon";
+import { checkFunds, friendly, InsufficientFundsError, near, PageHead, TxLink, useGasEstimate } from "./flowCommon";
 import s from "./screens.module.css";
+
+type ApplyAction = "apply" | "claim";
+type ApplyResult = { hash: string; action: ApplyAction };
+
+export function recordSuccessfulAction(
+  action: ApplyAction,
+  hash: string,
+  setResult: (result: ApplyResult) => void,
+  retryViewer: () => void,
+): void {
+  setResult({ hash, action });
+  if (action === "claim") retryViewer();
+}
 
 export function findApplication(proposals: ProposalView[], accountId: string): ProposalView | undefined {
   return [...proposals].reverse().find((proposal) => {
@@ -58,7 +71,7 @@ export function ApplyClaimPage() {
   const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ hash: string; action: "apply" | "claim" } | null>(null);
+  const [result, setResult] = useState<ApplyResult | null>(null);
   const claimWindowOpen = expiry !== null && BigInt(Date.now()) * 1_000_000n < BigInt(expiry);
   const gasEstimate = useGasEstimate(claimWindowOpen ? CLAIM_SEAT_GAS : PROPOSAL_CALL_GAS);
 
@@ -104,13 +117,15 @@ export function ApplyClaimPage() {
     setBusy(true);
     try {
       if (!await checkFunds(viewer.accountId, request)) {
-        throw new Error(`This account needs ${near(request.deposit)} NEAR for the deposit and about ${gasEstimate ?? "the current"} testnet NEAR for the network fee. Get testnet NEAR from a NEAR testnet faucet.`);
+        throw new InsufficientFundsError(`This account needs ${near(request.deposit)} NEAR for the deposit and about ${gasEstimate ?? "the current"} testnet NEAR for the network fee. Get testnet NEAR from a NEAR testnet faucet.`);
       }
       const tx = await viewer.callContract(request);
-      setResult({ hash: tx.hash, action });
+      recordSuccessfulAction(action, tx.hash, setResult, viewer.retry);
     } catch (cause) {
-      state.retry();
-      viewer.retry();
+      if (!(cause instanceof InsufficientFundsError)) {
+        state.retry();
+        viewer.retry();
+      }
       const code = contractErrorCode(cause);
       setError(code ? friendlyContractError(code) : friendly(cause));
     } finally { setBusy(false); }

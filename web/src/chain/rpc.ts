@@ -12,17 +12,66 @@ export interface AccountInfo {
   storage_usage: number;
 }
 
-async function rpcRequest<T>(method: string, params: unknown): Promise<T> {
+const READ_METHODS = new Set(["query", "gas_price", "tx", "EXPERIMENTAL_tx_status", "block"]);
+const READ_CONCURRENCY_LIMIT = 6;
+const RETRY_DELAYS_MS = [300, 900, 2_000];
+let activeReadRequests = 0;
+const queuedReadRequests: Array<() => void> = [];
+
+class RpcHttpError extends Error {
+  constructor(readonly status: number) {
+    super(`Testnet RPC returned HTTP ${status}.`);
+  }
+}
+
+async function withReadSlot<T>(request: () => Promise<T>): Promise<T> {
+  if (activeReadRequests >= READ_CONCURRENCY_LIMIT) {
+    await new Promise<void>((resolve) => queuedReadRequests.push(resolve));
+  } else {
+    activeReadRequests += 1;
+  }
+  try {
+    return await request();
+  } finally {
+    const next = queuedReadRequests.shift();
+    if (next) next();
+    else activeReadRequests -= 1;
+  }
+}
+
+async function rpcRequestOnce<T>(method: string, params: unknown): Promise<T> {
   const response = await fetch(chainConfig.rpcUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: method, method, params }),
   });
-  if (!response.ok) throw new Error(`Testnet RPC returned HTTP ${response.status}.`);
+  if (!response.ok) throw new RpcHttpError(response.status);
   const payload = await response.json() as { result?: T; error?: { message?: string; data?: string } };
   if (payload.error) throw new Error(payload.error.data ?? payload.error.message ?? `${method} failed.`);
   if (payload.result === undefined) throw new Error(`${method} returned no result.`);
   return payload.result;
+}
+
+function isRetryableRpcError(error: unknown): boolean {
+  return error instanceof TypeError ||
+    (error instanceof RpcHttpError && (error.status === 429 || (error.status >= 500 && error.status < 600)));
+}
+
+export async function rpcRequest<T>(method: string, params: unknown): Promise<T> {
+  const isRead = READ_METHODS.has(method);
+  let retries = 0;
+  while (true) {
+    try {
+      const request = () => rpcRequestOnce<T>(method, params);
+      return isRead ? await withReadSlot(request) : await request();
+    } catch (error) {
+      if (!isRead || retries >= RETRY_DELAYS_MS.length || !isRetryableRpcError(error)) throw error;
+      const jitter = 0.8 + Math.random() * 0.4;
+      const waitMs = Math.round(RETRY_DELAYS_MS[retries] * jitter);
+      retries += 1;
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+    }
+  }
 }
 
 function encodeArgs(args: object): string {
