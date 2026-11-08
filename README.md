@@ -148,3 +148,11 @@ The final `/health` snapshot captured after the casts was `ok`, with s1 listed a
 ### Phase 3A Vault frontend proof
 
 The browser-only Vault request from Seat 1 holder `rb.seatsfund1-1793846395.testnet` succeeded in transaction `BqR6a2ajQMo8DHKwXhF8qCwv5yRSwcVVtqdmr4ZkY9Kj`. The live estimate was `0.0070001` NEAR, so the request attached `0.0070001000005` NEAR including the 500,000,000,000 yocto buffer. The holder's measured net balance decrease was `0.0024259193923695` NEAR, and the result decrypted successfully. The vault text is not recorded.
+
+### Seat 1 brief proof recovery
+
+The brief profile was stored under `seatsbriefs-1794146327.testnet`, profile `s1-ad583f34b7478b80`, in `GHd7E8z1rUszdKKQnYMuQjjYbahAdWBXSTetBxx8KyEF`. The measured owner balance decrease was `0.0130519366507306` NEAR. Seat 1's new profile reference was set in `64C3JF3uLM3rWpbFndG1bXvpp2YD1SZovCf9a8c583e5` and again in `2CioBQ4xx2BmtiNp8vZMm1nFHUXeKyboAXStWYSis4y9`.
+
+The recovered OutLayer request `Btk1qzMkhDsYpDyyDnt2KPzRTjttZ2Lgbw9S8fLmWpdW` and the single retry `CpkqryemnTmBETmPA8xm2ducX1QzV9Kwj29d28jHer66`, both for proposal 15, finished without a vote decision. Both returned the exact error `rpc result`. Their measured net costs were `0.0027790853721591` NEAR and `0.00278031289895` NEAR. OutLayer charged `0.0020677` and `0.0020691` NEAR respectively and refunded most of each deposit.
+
+Seat 1's old brief reference was restored in `5a7HuX7TowVLLhhpJ3ffg977PBgvYjGC7aLsCY2o39Zz` and after the retry in `HK9UwDRGX1e6o4NPp2bEhbqnjCk1zJkY3peKndFtkuT4`. The final `get_brief` read shows hash `648ecae07ec5dd816c22e3571242859871a2dcc4f70ed1b3954dba6f6d63435d`, account `seatfunder-1793834028.testnet`, profile `brief`. No brief text is recorded.
