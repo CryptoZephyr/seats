@@ -282,6 +282,10 @@ export async function runTick(options: TickOptions): Promise<RunnerState> {
     log({ action: "get_proposals", status: "error", error: String(error) });
     return state;
   }
+  const seenNewestId = Math.max(
+    state.cursor,
+    ...proposals.map((proposal) => proposalId(proposal.id)),
+  );
 
   const resultsByVoter = new Map<string, ResultsView>();
   const unavailableVoters = new Set<string>();
@@ -613,7 +617,7 @@ export async function runTick(options: TickOptions): Promise<RunnerState> {
   }
 
   if (firstIncompleteId === null) {
-    state.cursor = Math.max(state.cursor, newestId);
+    state.cursor = Math.max(state.cursor, Math.min(newestId, seenNewestId));
   } else {
     state.cursor = Math.max(state.cursor, firstIncompleteId - 1);
   }
