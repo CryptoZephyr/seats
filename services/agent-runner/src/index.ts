@@ -163,10 +163,25 @@ export function readState(stateFile: string): RunnerState | null {
     if (typeof inFlight !== "object" || Array.isArray(inFlight)) {
       throw new Error("Invalid runner state");
     }
+    const requestBackoffByVoter = state.requestBackoffByVoter;
+    if (
+      requestBackoffByVoter !== undefined
+      && (
+        typeof requestBackoffByVoter !== "object"
+        || requestBackoffByVoter === null
+        || Array.isArray(requestBackoffByVoter)
+        || Object.values(requestBackoffByVoter).some(
+          (untilMs) => !Number.isSafeInteger(untilMs) || (untilMs as number) < 0,
+        )
+      )
+    ) {
+      throw new Error("Invalid runner state");
+    }
     return {
       cursor: state.cursor as number,
       pendingByVoter: state.pendingByVoter,
       inFlight,
+      ...(requestBackoffByVoter ? { requestBackoffByVoter } : {}),
     };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
@@ -312,7 +327,7 @@ async function main(): Promise<void> {
       await runTick({
         rpc,
         daoId: config.daoId,
-        voters: voterSources.map(({ voterId }) => ({ voterId })),
+        voters: voterSources.map(({ voterId, source }) => ({ voterId, source })),
         state,
         nowNanoseconds: BigInt(started) * 1_000_000n,
         nowMilliseconds: started,

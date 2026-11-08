@@ -12,6 +12,7 @@ import {
 
 export interface Voter {
   voterId: string;
+  source?: "file" | "discovered";
 }
 
 export interface AgentRunnerRpc {
@@ -28,6 +29,7 @@ export interface RunnerState {
   cursor: number;
   pendingByVoter: Record<string, number[]>;
   inFlight: Record<string, Record<string, number>>;
+  requestBackoffByVoter?: Record<string, number>;
 }
 
 export function initialRunnerState(
@@ -75,6 +77,7 @@ interface TickOptions {
 
 const PROPOSAL_PAGE_SIZE = 100;
 const PROPOSAL_PERIOD_MARGIN_SECONDS = 300;
+const DISCOVERED_VOTER_BACKOFF_MS = 60 * 60 * 1000;
 
 export function isProposalPeriodTooShort(proposalPeriodNs: bigint, windowSeconds: number): boolean {
   return proposalPeriodNs < BigInt(windowSeconds + PROPOSAL_PERIOD_MARGIN_SECONDS) * 1_000_000_000n;
@@ -113,6 +116,22 @@ function clearInFlight(state: RunnerState, voterId: string, id: number): boolean
   delete requests[String(id)];
   if (Object.keys(requests).length === 0) {
     delete state.inFlight[voterId];
+  }
+  return true;
+}
+
+function setRequestBackoff(state: RunnerState, voterId: string, untilMs: number): void {
+  state.requestBackoffByVoter ??= {};
+  state.requestBackoffByVoter[voterId] = untilMs;
+}
+
+function clearRequestBackoff(state: RunnerState, voterId: string): boolean {
+  if (!state.requestBackoffByVoter || !Object.hasOwn(state.requestBackoffByVoter, voterId)) {
+    return false;
+  }
+  delete state.requestBackoffByVoter[voterId];
+  if (Object.keys(state.requestBackoffByVoter).length === 0) {
+    delete state.requestBackoffByVoter;
   }
   return true;
 }
@@ -293,6 +312,19 @@ export async function runTick(options: TickOptions): Promise<RunnerState> {
         continue;
       }
 
+      const requestBackoffUntil = voter.source === "discovered"
+        ? state.requestBackoffByVoter?.[voter.voterId]
+        : undefined;
+      if (requestBackoffUntil !== undefined) {
+        if (requestBackoffUntil > options.nowMilliseconds) {
+          firstIncompleteId = firstIncompleteId === null ? id : Math.min(firstIncompleteId, id);
+          continue;
+        }
+        if (clearRequestBackoff(state, voter.voterId)) {
+          options.persistState(state);
+        }
+      }
+
       const requestedAtMs = getInFlight(state, voter.voterId, id);
       if (requestedAtMs !== undefined && options.nowMilliseconds - requestedAtMs < options.requestTtlMs) {
         firstIncompleteId = firstIncompleteId === null ? id : Math.min(firstIncompleteId, id);
@@ -349,10 +381,30 @@ export async function runTick(options: TickOptions): Promise<RunnerState> {
           continue;
         }
         firstIncompleteId = firstIncompleteId === null ? id : Math.min(firstIncompleteId, id);
+        const needsConfigurationBackoff = voter.source === "discovered"
+          && (message.includes("ERR_AGENT_WASM_NOT_PINNED") || message.includes("ERR_BRIEF_NOT_SET"));
+        if (needsConfigurationBackoff) {
+          setRequestBackoff(
+            state,
+            voter.voterId,
+            options.nowMilliseconds + DISCOVERED_VOTER_BACKOFF_MS,
+          );
+        }
         if (isDefiniteRequestPanic(error)) {
           clearInFlight(state, voter.voterId, id);
           removePending(state, voter.voterId, id);
           options.persistState(state);
+        }
+        if (needsConfigurationBackoff) {
+          log({
+            action: "request_vote",
+            status: "skipped",
+            voter_id: voter.voterId,
+            proposal_id: id,
+            reason: "discovered_voter_backoff_1h",
+            error: message,
+          });
+          continue;
         }
         log({
           action: "request_vote",

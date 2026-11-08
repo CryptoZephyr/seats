@@ -229,6 +229,66 @@ describe("runTick with mocked RPC", () => {
     expect(result.cursor).toBe(-1);
   });
 
+  it.each(["ERR_AGENT_WASM_NOT_PINNED", "ERR_BRIEF_NOT_SET"])(
+    "backs off discovered voters for an hour after %s",
+    async (errorCode) => {
+      const currentState = state();
+      const requestVote = vi.fn(async () => {
+        throw new Error(errorCode);
+      });
+      const rpc = createRpc({
+        getLastProposalId: vi.fn(async () => 1),
+        getProposals: vi.fn(async () => [{ id: 0, status: "InProgress" }]),
+        requestVote,
+      });
+      const logs: Array<{ reason?: string }> = [];
+      const options = {
+        rpc,
+        daoId: "club.testnet",
+        voters: [{ voterId: "voter.testnet", source: "discovered" as const }],
+        state: currentState,
+        nowNanoseconds: 0n,
+        requestTtlMs: 180_000,
+        persistState: () => undefined,
+        log: (entry: { reason?: string }) => logs.push(entry),
+      };
+
+      await runTick({ ...options, nowMilliseconds: 1_000 });
+      await runTick({ ...options, nowMilliseconds: 2_000 });
+
+      expect(requestVote).toHaveBeenCalledTimes(1);
+      expect(currentState.requestBackoffByVoter?.["voter.testnet"]).toBe(3_601_000);
+      expect(logs.filter(({ reason }) => reason === "discovered_voter_backoff_1h")).toHaveLength(1);
+    },
+  );
+
+  it("does not back off explicit file voters after a missing configuration error", async () => {
+    const requestVote = vi.fn(async () => {
+      throw new Error("ERR_AGENT_WASM_NOT_PINNED");
+    });
+    const rpc = createRpc({
+      getLastProposalId: vi.fn(async () => 1),
+      getProposals: vi.fn(async () => [{ id: 0, status: "InProgress" }]),
+      requestVote,
+    });
+    const options = {
+      rpc,
+      daoId: "club.testnet",
+      voters: [{ voterId: "voter.testnet", source: "file" as const }],
+      state: state(),
+      nowNanoseconds: 0n,
+      requestTtlMs: 180_000,
+      persistState: () => undefined,
+      log: () => undefined,
+    };
+
+    await runTick({ ...options, nowMilliseconds: 1_000 });
+    await runTick({ ...options, nowMilliseconds: 2_000 });
+
+    expect(requestVote).toHaveBeenCalledTimes(2);
+    expect(options.state.requestBackoffByVoter).toBeUndefined();
+  });
+
   it("skips pending and completed votes, then casts only an expired pending vote", async () => {
     const rpc = createRpc({
       getLastProposalId: vi.fn(async () => 0),
