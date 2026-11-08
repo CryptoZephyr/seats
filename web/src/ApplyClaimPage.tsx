@@ -3,7 +3,7 @@ import { chainConfig } from "./chain/config";
 import type { ProposalView } from "./chain/types";
 import { callView } from "./chain/rpc";
 import { useClubData } from "./chain/useClubData";
-import { useViewer } from "./chain/WalletProvider";
+import { useViewer, waitForOwnedSeats } from "./chain/WalletProvider";
 import {
   buildApplyRequest,
   buildClaimRequest,
@@ -21,14 +21,14 @@ import s from "./screens.module.css";
 type ApplyAction = "apply" | "claim";
 type ApplyResult = { hash: string; action: ApplyAction };
 
-export function recordSuccessfulAction(
+export async function recordSuccessfulAction(
   action: ApplyAction,
   hash: string,
   setResult: (result: ApplyResult) => void,
-  retryViewer: () => void,
-): void {
+  refreshClaimMembership: () => Promise<void>,
+): Promise<void> {
   setResult({ hash, action });
-  if (action === "claim") retryViewer();
+  if (action === "claim") await refreshClaimMembership();
 }
 
 export function findApplication(proposals: ProposalView[], accountId: string): ProposalView | undefined {
@@ -110,17 +110,22 @@ export function ApplyClaimPage() {
   const submit = async (action: "apply" | "claim") => {
     setError("");
     setResult(null);
-    if (!viewer.accountId) return;
+    const account = viewer.accountId;
+    if (!account) return;
+    const before = viewer.seatIds.length;
     const request = action === "apply"
-      ? buildApplyRequest(viewer.accountId, state.data.proposalBond)
+      ? buildApplyRequest(account, state.data.proposalBond)
       : buildClaimRequest(chainConfig.runnerAgentPublicKey);
     setBusy(true);
     try {
-      if (!await checkFunds(viewer.accountId, request)) {
+      if (!await checkFunds(account, request)) {
         throw new InsufficientFundsError(`This account needs ${near(request.deposit)} NEAR for the deposit and about ${gasEstimate ?? "the current"} testnet NEAR for the network fee. Get testnet NEAR from a NEAR testnet faucet.`);
       }
       const tx = await viewer.callContract(request);
-      recordSuccessfulAction(action, tx.hash, setResult, viewer.retry);
+      await recordSuccessfulAction(action, tx.hash, setResult, async () => {
+        await waitForOwnedSeats(account, (tokenIds) => tokenIds.length > before);
+        viewer.retry();
+      });
     } catch (cause) {
       if (!(cause instanceof InsufficientFundsError)) {
         state.retry();
@@ -169,7 +174,7 @@ export function ApplyClaimPage() {
       )}
       {approvalState === "error" && <ErrorStatus onRetry={() => setAttempt((value) => value + 1)}>Your application approval couldn't be read.</ErrorStatus>}
       {error && <ErrorStatus>{error}</ErrorStatus>}
-      {busy && <LoadingStatus>Waiting for your wallet…</LoadingStatus>}
+      {busy && !result && <LoadingStatus>Waiting for your wallet…</LoadingStatus>}
       {result && <SuccessStatus>
         {result.action === "apply" ? "Application submitted." : <>Seat claimed. <a href="#/brief">Save your delegate's brief so it can vote for you.</a></>}
         {" "}<TxLink hash={result.hash} />

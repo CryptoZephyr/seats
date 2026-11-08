@@ -77,6 +77,26 @@ async function ownedTokens(accountId: string): Promise<NftToken[]> {
   }
 }
 
+export async function waitForOwnedSeats(
+  accountId: string,
+  done: (tokenIds: string[]) => boolean,
+  { attempts = 12, intervalMs = 1_500 }: { attempts?: number; intervalMs?: number } = {},
+): Promise<boolean> {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    let tokenIds: string[] | undefined;
+    try {
+      tokenIds = (await ownedTokens(accountId)).map((token) => token.token_id);
+    } catch {
+      tokenIds = undefined;
+    }
+    if (tokenIds && done(tokenIds)) return true;
+    if (attempt + 1 < attempts) {
+      await new Promise<void>((resolve) => setTimeout(resolve, intervalMs));
+    }
+  }
+  return false;
+}
+
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [selectorAttempt, setSelectorAttempt] = useState(0);
   const [membershipAttempt, setMembershipAttempt] = useState(0);
