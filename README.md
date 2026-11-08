@@ -75,9 +75,11 @@ npm test
 npx tsc --noEmit
 ```
 
-Copy `voters.example.json` to the ignored `voters.json`, then set `NEAR_RPC_URL`, `DAO_ID`, `VOTERS` to that file path, `KEEPER_ACCOUNT_ID`, and `KEEPER_KEY_FILE`. The voter file contains `voter_id` and `agent_key_file` paths. `WINDOW_SECONDS` defaults to 120, `REQUEST_TTL_MS` defaults to 180000, and `LOOKBACK_PROPOSALS` defaults to 20. On fresh state, the runner checks the most recent proposals in that lookback window. `START_PROPOSAL_ID` overrides the initial proposal.
+Set `NEAR_RPC_URL`, `DAO_ID`, `KEEPER_ACCOUNT_ID`, and `KEEPER_KEY_FILE`. Voters can be configured with `VOTERS`, a JSON file containing `voter_id` and `agent_key_file` paths, or discovered by setting both `SEAT_NFT_ID` and `RUNNER_AGENT_KEY_FILE`. When both sources include a voter, its explicit `VOTERS` key file wins. Discovery runs at startup and no more than once every 60 seconds. It only includes seats with the shared request-vote key, a non-empty brief hash, and pinned agent WASM. `RUNNER_AGENT_KEY_FILE` is a secret file containing the shared key, never the public key.
 
-When `PORT` is set, the runner binds an HTTP health server on `0.0.0.0` and serves `/health`. It reports `starting` with no successful tick for up to 600 seconds, `ok` while the last successful tick is within `Math.max(3 * pollMs + 60000, 600000)` ms, and `stale` otherwise. `KEEPALIVE_URL` enables periodic requests. If it is unset and `RENDER_EXTERNAL_URL` is available, the runner uses `${RENDER_EXTERNAL_URL}/health`. `KEEPALIVE_MS` defaults to 600000 and must be between 60000 and 840000.
+`WINDOW_SECONDS` defaults to 120, `REQUEST_TTL_MS` defaults to 180000, and `LOOKBACK_PROPOSALS` defaults to 20. On fresh state, the runner checks the most recent proposals in that lookback window. `START_PROPOSAL_ID` overrides the initial proposal.
+
+When `PORT` is set, the runner binds an HTTP health server on `0.0.0.0` and serves `/health`. It reports voters with their `file` or `discovered` source, and includes `agent_public_key` when shared-key discovery is configured. Health reports `starting` with no successful tick for up to 600 seconds, `ok` while the last successful tick is within `Math.max(3 * pollMs + 60000, 600000)` ms, and `stale` otherwise. `KEEPALIVE_URL` enables periodic requests. If it is unset and `RENDER_EXTERNAL_URL` is available, the runner uses `${RENDER_EXTERNAL_URL}/health`. `KEEPALIVE_MS` defaults to 600000 and must be between 60000 and 840000.
 
 Run `npm run build && npm start` from `services/agent-runner`. The runner writes its non-secret proposal cursor, known pending IDs, and durable in-flight vote requests to the ignored `state.json`. A timed-out request isn't retried until its `REQUEST_TTL_MS` expires.
 
@@ -87,9 +89,12 @@ The root `render.yaml` defines a free web service with the runner health check. 
 
 - `/etc/secrets/keeper.json`
 - `/etc/secrets/voters.json`
+- `/etc/secrets/runner-agent.json`
 - Each agent key file referenced by `voters.json`, stored under `/etc/secrets/`
 
-Set `KEEPER_ACCOUNT_ID` to the keeper account. Keep each `agent_key_file` path in `voters.json` pointed at its secret file under `/etc/secrets/`. The free service has an ephemeral disk, so `state.json` is lost on restart or spin-down. The in-flight retry guard resets with it, and a restart during a request could cause one extra paid request.
+Set `KEEPER_ACCOUNT_ID` to the keeper account. Set `SEAT_NFT_ID` and `RUNNER_AGENT_KEY_FILE` together to enable seat discovery. `VOTERS` is optional when discovery is configured. Explicit entries keep their own key files and take precedence over discovered entries. Keep each `agent_key_file` path in `voters.json` pointed at its secret file under `/etc/secrets/`. The free service has an ephemeral disk, so `state.json` is lost on restart or spin-down. The in-flight retry guard resets with it, and a restart during a request could cause one extra paid request.
+
+Stage 3 testnet scripts live in `scripts/stage3-testnet.ts`. Build them with `npm run build --prefix services/agent-runner`, then use `services/agent-runner/dist/scripts/stage3-testnet.js`. `generate-runner-key` writes the shared key to `~/near-spike/secrets/runner-agent.json` and prints only its public key. The `propose-policy`, `propose-voter-defaults`, and `apply-visitor` commands need an external JSON config based on `scripts/stage3-testnet.example.json`. They refuse non-testnet accounts and check live DAO or account state before writing. `--drop-council-call-vote` is a pending owner decision and has no effect. The scripts have not been run as part of this code change.
 
 ## Testnet deployment
 

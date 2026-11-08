@@ -16,6 +16,10 @@ services:
         value: seats2-1793847972.sputnikv2.testnet
       - key: VOTERS
         value: /etc/secrets/voters.json
+      - key: SEAT_NFT_ID
+        value: seatsnft3-1793848334.testnet
+      - key: RUNNER_AGENT_KEY_FILE
+        value: /etc/secrets/runner-agent.json
       - key: KEEPER_KEY_FILE
         value: /etc/secrets/keeper.json
       - key: KEEPER_ACCOUNT_ID

@@ -10,7 +10,8 @@ import {
 function healthInput(overrides: Partial<HealthInput> = {}): HealthInput {
   return {
     daoId: "club.testnet",
-    voters: ["voter.testnet"],
+    voters: [{ voter_id: "voter.testnet", source: "file" }],
+    agentPublicKey: null,
     cursor: 7,
     startedAtMs: 1_000,
     nowMs: 2_000,
@@ -75,7 +76,8 @@ describe("health status", () => {
       expect(await getResponse.json()).toEqual({
         status: "ok",
         dao_id: "club.testnet",
-        voters: ["voter.testnet"],
+        voters: [{ voter_id: "voter.testnet", source: "file" }],
+        agent_public_key: null,
         cursor: 7,
         started_at: new Date(0).toISOString(),
         uptime_s: 30,

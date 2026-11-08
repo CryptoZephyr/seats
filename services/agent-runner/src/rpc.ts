@@ -8,6 +8,7 @@ import {
 } from "@near-js/transactions";
 import { baseDecode, baseEncode } from "@near-js/utils";
 import { sendWithNonceRetry } from "./nonce.js";
+import type { VoterDiscoveryRpc } from "./discovery.js";
 import type { AgentRunnerRpc } from "./runner.js";
 import type { PendingVote, Proposal, ResultsView } from "./logic.js";
 
@@ -58,7 +59,7 @@ function requireFile(filePath: string): string {
   return readFileSync(filePath, "utf8");
 }
 
-export class NearAgentRpc implements AgentRunnerRpc {
+export class NearAgentRpc implements AgentRunnerRpc, VoterDiscoveryRpc {
   private readonly provider: JsonRpcProvider;
   private readonly credentials: Map<string, Credential>;
   private readonly keeper: Credential;
@@ -68,6 +69,66 @@ export class NearAgentRpc implements AgentRunnerRpc {
     this.provider = new JsonRpcProvider({ url: rpcUrl }, { retries: 0 });
     this.keeper = keeper;
     this.credentials = new Map(voters.map((voter) => [voter.accountId, voter]));
+  }
+
+  addCredential(credential: KeyFileCredential): void {
+    this.credentials.set(credential.accountId, {
+      accountId: credential.accountId,
+      signer: credential.signer,
+    });
+  }
+
+  removeCredential(accountId: string): void {
+    this.credentials.delete(accountId);
+  }
+
+  async getSeatTokenPage(
+    seatNftId: string,
+    fromIndex: number,
+    limit: number,
+  ): Promise<Array<{ token_id: string }>> {
+    return this.view<Array<{ token_id: string }>>(seatNftId, "nft_tokens", {
+      from_index: String(fromIndex),
+      limit,
+    });
+  }
+
+  async getSeatVoterId(seatNftId: string, tokenId: string): Promise<string | null> {
+    const seat = await this.view<{ voter_id: string } | null>(
+      seatNftId,
+      "get_seat",
+      { token_id: tokenId },
+    );
+    return seat?.voter_id ?? null;
+  }
+
+  async hasRequestVoteAccessKey(voterId: string, publicKey: string): Promise<boolean> {
+    try {
+      const accessKey = await this.provider.viewAccessKey(voterId, publicKey, { finality: "final" });
+      const permission = accessKey.permission;
+      if (typeof permission !== "object" || permission === null || !("FunctionCall" in permission)) {
+        return false;
+      }
+      const functionCall = permission.FunctionCall;
+      return functionCall.receiver_id === voterId
+        && functionCall.method_names.includes("request_vote");
+    } catch (error) {
+      if (isMissingAccessKeyError(error)) return false;
+      throw error;
+    }
+  }
+
+  async getBriefHash(voterId: string): Promise<string> {
+    return this.view<string>(voterId, "get_brief_hash", {});
+  }
+
+  async getVoterConfiguration(voterId: string): Promise<{
+    model_signer_hex: string;
+    model: string;
+    agent_wasm_url: string;
+    agent_wasm_sha256: string;
+  }> {
+    return this.view(voterId, "get_voter_configuration", {});
   }
 
   async getLastProposalId(daoId: string): Promise<number> {
@@ -164,6 +225,20 @@ export class NearAgentRpc implements AgentRunnerRpc {
       },
     );
   }
+}
+
+function isMissingAccessKeyError(error: unknown): boolean {
+  const details = error && typeof error === "object"
+    ? error as { type?: unknown; name?: unknown; message?: unknown }
+    : undefined;
+  const message = [
+    details?.type,
+    details?.name,
+    details?.message,
+    error,
+  ].map(String).join(" ");
+  return /UNKNOWN_ACCESS_KEY|AccessKeyDoesNotExist|access key[^\n]*(?:not found|does not exist)/i
+    .test(message);
 }
 
 function transactionFailure(outcome: unknown): string | null {

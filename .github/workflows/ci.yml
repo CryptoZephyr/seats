@@ -36,7 +36,7 @@ jobs:
             echo "deploy-testnet runtime smoke test failed"
             exit 1
           fi
-          if [ "$runner_status" -ne 1 ] || ! printf '%s\n' "$runner_output" | grep -Fq 'Error: VOTERS is required'; then
+          if [ "$runner_status" -ne 1 ] || ! printf '%s\n' "$runner_output" | grep -Fq 'Error: Configure VOTERS or both SEAT_NFT_ID and RUNNER_AGENT_KEY_FILE'; then
             printf '%s\n' "$runner_output"
             echo "agent-runner runtime smoke test failed"
             exit 1
