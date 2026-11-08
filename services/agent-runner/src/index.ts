@@ -3,7 +3,9 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Server } from "node:http";
 import { SeatVoterDiscovery, mergeVoterSources, type VoterSource } from "./discovery.js";
-import { loadCredential, NearAgentRpc, type KeyFileCredential } from "./rpc.js";
+import { credentialFromPrivateKey, loadCredential, NearAgentRpc, type KeyFileCredential } from "./rpc.js";
+import { createBriefHandler } from "./briefRelay.js";
+import { encryptProfileSecrets, fetchOutlayerSecretsPubkey } from "./profileCrypto.js";
 import {
   parseKeepaliveConfig,
   startHealthServer,
@@ -41,6 +43,13 @@ interface Config {
   keepaliveUrl?: string;
   keepaliveMs: number;
   stateFile: string;
+  briefRelay?: {
+    ownerAccountId: string;
+    ownerPrivateKey: string;
+    apiKey: string;
+    recipient: string;
+    webOrigins: string;
+  };
 }
 
 let healthServer: Server | undefined;
@@ -136,6 +145,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new Error("PORT must be an integer between 0 and 65535");
   }
   const keepalive = parseKeepaliveConfig(env);
+  const briefValues = [
+    env.BRIEF_OWNER_ACCOUNT_ID?.trim(),
+    env.BRIEF_OWNER_PRIVATE_KEY?.trim(),
+    env.NEAR_AI_API_KEY?.trim(),
+  ];
+  const hasBriefConfig = briefValues.some(Boolean);
+  if (hasBriefConfig && briefValues.some((value) => !value)) {
+    throw new Error("BRIEF_OWNER_ACCOUNT_ID, BRIEF_OWNER_PRIVATE_KEY, and NEAR_AI_API_KEY must be set together");
+  }
+  if (briefValues[0]) assertTestnetAccountId(briefValues[0], "BRIEF_OWNER_ACCOUNT_ID");
   return {
     rpcUrl,
     daoId,
@@ -153,6 +172,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     port,
     keepaliveUrl: keepalive.url,
     keepaliveMs: keepalive.intervalMs,
+    ...(hasBriefConfig ? {
+      briefRelay: {
+        ownerAccountId: briefValues[0] as string,
+        ownerPrivateKey: briefValues[1] as string,
+        apiKey: briefValues[2] as string,
+        recipient: env.BRIEF_SIGN_RECIPIENT?.trim() || "seats-agent-runner",
+        webOrigins: env.WEB_ORIGINS?.trim() || "http://127.0.0.1:5199,http://localhost:5199",
+      },
+    } : {}),
     stateFile: resolve(process.cwd(), "state.json"),
   };
 }
@@ -253,11 +281,38 @@ async function main(): Promise<void> {
   const sharedCredential: KeyFileCredential | undefined = config.runnerAgentKeyFile
     ? loadCredential(config.runnerAgentKeyFile, "runner-agent.testnet", false)
     : undefined;
+  const briefOwnerCredential = config.briefRelay
+    ? credentialFromPrivateKey(config.briefRelay.ownerAccountId, config.briefRelay.ownerPrivateKey)
+    : undefined;
   const rpc = new NearAgentRpc(
     config.rpcUrl,
     { ...keeper, accountId: config.keeperAccountId },
-    voters.map((voter) => voter.credential),
+    [...voters.map((voter) => voter.credential), ...(briefOwnerCredential ? [briefOwnerCredential] : [])],
   );
+  const briefHandler = config.briefRelay && config.seatNftId
+    ? createBriefHandler({
+      ownerAccountId: config.briefRelay.ownerAccountId,
+      apiKey: config.briefRelay.apiKey,
+      recipient: config.briefRelay.recipient,
+      webOrigins: config.briefRelay.webOrigins,
+      rpc: {
+        isFullAccessKey: rpc.isFullAccessKey.bind(rpc),
+        getTokenOwner: (tokenId) => rpc.getTokenOwner(config.seatNftId as string, tokenId),
+        getSeatVoterId: (tokenId) => rpc.getSeatVoterId(config.seatNftId as string, tokenId),
+        getVoterController: rpc.getVoterController.bind(rpc),
+        getAccountBalance: rpc.getAccountBalance.bind(rpc),
+        storeProfile: async (profile, secretsJson) => {
+          const pubkey = await fetchOutlayerSecretsPubkey(
+            config.briefRelay!.ownerAccountId,
+            profile,
+            secretsJson,
+          );
+          const encrypted = encryptProfileSecrets(pubkey, secretsJson);
+          return rpc.storeProfile(config.briefRelay!.ownerAccountId, profile, encrypted);
+        },
+      },
+    })
+    : undefined;
   const fileVoterIds = voters.map((voter) => voter.voterId);
   let discoveredVoterIds: string[] = [];
   let voterSources: VoterSource[] = mergeVoterSources(fileVoterIds, discoveredVoterIds);
@@ -344,7 +399,7 @@ async function main(): Promise<void> {
       pollMs: config.pollMs,
       lastTickAtMs,
       lastTickOkAtMs,
-    }));
+    }), briefHandler);
   }
   keepaliveTimer = startKeepalive(config.keepaliveUrl, config.keepaliveMs, log);
   state = readState(config.stateFile);

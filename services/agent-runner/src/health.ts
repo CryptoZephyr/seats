@@ -117,8 +117,13 @@ export function startKeepalive(
 export function startHealthServer(
   port: number,
   getInput: () => HealthInput,
+  briefHandler?: (request: import("node:http").IncomingMessage, response: import("node:http").ServerResponse) => Promise<void>,
 ): Promise<Server> {
   const server = createServer((request, response) => {
+    if (request.url?.split("?")[0] === "/brief" && briefHandler) {
+      void briefHandler(request, response);
+      return;
+    }
     if ((request.method !== "GET" && request.method !== "HEAD")
       || request.url?.split("?")[0] !== "/health") {
       response.writeHead(404);
