@@ -764,6 +764,7 @@ export function DelegateBrief() {
             {selectedSeat?.briefHash ? <p>Current fingerprint: <HashValue value={selectedSeat.briefHash} label="brief fingerprint" /></p>
               : <p>Your delegate can't vote until you save a brief.</p>}
             <p className={s.note}>Your current brief isn't shown because it's stored privately. Saving replaces it.</p>
+            <p className={s.note}>Your brief is sent over HTTPS to the Seats runner, which doesn't keep it, and to OutLayer's keystore, which encrypts it. Only the fingerprint and a profile reference go on-chain.</p>
             <label className={s.fieldLabel}>Your delegate's brief
               <textarea className={s.briefInput} rows={8} maxLength={4000} value={brief} onChange={(event) => setBrief(event.target.value)} />
             </label>
