@@ -492,6 +492,17 @@ export function assertCouncilCanApproveVoterDefaults(policy: Policy): void {
   }
 }
 
+export async function checkVoterDefaultsProposalState(
+  current: VoterDefaults | null,
+  expected: VoterDefaults,
+  readPolicy: () => Promise<Policy>,
+): Promise<{ status: "already_set" } | { status: "write"; policy: Policy }> {
+  if (voterDefaultsMatch(current, expected)) return { status: "already_set" };
+  const policy = await readPolicy();
+  assertCouncilCanApproveVoterDefaults(policy);
+  return { status: "write", policy };
+}
+
 export function assertVisitorApplicationsReady(policy: Policy): void {
   if (hasPermission(councilRole(policy), "call:VoteApprove")) {
     throw new Error(
@@ -580,19 +591,23 @@ async function proposeVoterDefaults(
   config: Stage3Config,
 ): Promise<void> {
   const defaults = readVoterDefaultsFromDeployment(config);
-  const policy = await callView<Policy>(provider, config.dao_id, "get_policy", {});
-  assertCouncilCanApproveVoterDefaults(policy);
   const current = await callView<typeof defaults | null>(
     provider,
     config.seat_nft_id,
     "get_voter_defaults",
     {},
   );
-  if (voterDefaultsMatch(current, defaults)) {
+  const decision = await checkVoterDefaultsProposalState(
+    current,
+    defaults,
+    () => callView<Policy>(provider, config.dao_id, "get_policy", {}),
+  );
+  if (decision.status === "already_set") {
     process.stdout.write(`${JSON.stringify({ status: "already_set" })}\n`);
     return;
   }
 
+  const policy = decision.policy;
   const kind = createVoterDefaultsProposalKind(config.seat_nft_id, defaults);
   const proposal = await submitProposal(
     provider,

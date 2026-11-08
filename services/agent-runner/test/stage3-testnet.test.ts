@@ -6,6 +6,7 @@ import {
   assertCouncilCanApproveVoterDefaults,
   assertVoterDefaultsMatch,
   assertVisitorApplicationsReady,
+  checkVoterDefaultsProposalState,
   createApplicationProposalKind,
   createDesiredPolicy,
   createPolicyDiff,
@@ -98,6 +99,49 @@ describe("voter defaults proposal", () => {
     expect(() => assertVoterDefaultsMatch(live, expected, "seats.testnet")).not.toThrow();
     expect(() => assertVoterDefaultsMatch(null, expected, "seats.testnet"))
       .toThrow("must match deployments/testnet.json");
+  });
+
+  it("returns already_set without checking council votes when defaults match", async () => {
+    const expected = {
+      model_signer_hex: `0x${"a".repeat(40)}`,
+      model: "model-v1",
+      agent_wasm_url: "https://example.test/agent.wasm",
+      agent_wasm_sha256: "b".repeat(64),
+    };
+    const live = { ...expected, model_signer_hex: expected.model_signer_hex.toUpperCase() };
+    let policyReads = 0;
+    const decision = await checkVoterDefaultsProposalState(live, expected, async () => {
+      policyReads += 1;
+      throw new Error("policy should not be read when defaults are already set");
+    });
+
+    expect(decision).toEqual({ status: "already_set" });
+    expect(policyReads).toBe(0);
+  });
+
+  it("checks council call-vote permission only when a defaults write is needed", async () => {
+    const expected = {
+      model_signer_hex: `0x${"a".repeat(40)}`,
+      model: "model-v1",
+      agent_wasm_url: "https://example.test/agent.wasm",
+      agent_wasm_sha256: "b".repeat(64),
+    };
+    let policyReads = 0;
+    const decision = checkVoterDefaultsProposalState(null, expected, async () => {
+      policyReads += 1;
+      return {
+        roles: [{
+          name: "council",
+          kind: { Group: ["council.testnet"] },
+          permissions: ["policy:*"],
+          vote_policy: {},
+        }],
+        proposal_bond: "0",
+      };
+    });
+
+    await expect(decision).rejects.toThrow("Voter defaults must be set first");
+    expect(policyReads).toBe(1);
   });
 
   it("encodes the defaults under the named method argument", () => {
