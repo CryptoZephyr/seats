@@ -343,6 +343,19 @@ export function CastingStatus() {
   );
 }
 
+export function WindowClosedStatus() {
+  return (
+    <span className={styles.statusWindowClosed} role="status" aria-live="polite">
+      <span className={styles.loadingSeats} aria-hidden="true">
+        <i />
+        <i />
+        <i />
+      </span>
+      Window closed, sending vote soon
+    </span>
+  );
+}
+
 export function CastRetryStatus() {
   return (
     <span className={styles.statusCastRetry} role="status" aria-live="polite">
