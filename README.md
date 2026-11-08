@@ -144,3 +144,7 @@ Proposal 14 was submitted in `3kEGbgmkKGwqgkqKvNpVnWg5sBqBmx2JBbuuecVpv8SN`. Sea
 One request plus cast cost 0.004023539233024 NEAR net from Seat 1's balance, measured from 4.965246888031220 NEAR before the proposal 13 cycle to 4.961223348798196 NEAR after it. The 4.0000005 NEAR OutLayer deposit is paid by the voter account, not seatfunder. Of that payment, 0.0027431001 NEAR was charged and 3.9972573999 NEAR was refunded. The voter needs the full deposit liquid while the job runs.
 
 The final `/health` snapshot captured after the casts was `ok`, with s1 listed as `file`, s3 as `discovered`, cursor 14, and public key `ed25519:5xUyVeJwwZrWzMozcdW5GaLQ4xEdbmwbXMbBGsbMzKfX`. Its `last_tick_at` was 2026-11-08T11:42:54.641Z and `last_tick_ok_at` was 2026-11-08T11:42:55.231Z. Final balances were funder 0.655358897996756 NEAR, visitor 0.440663245872605 NEAR, keeper 2.993262325618428 NEAR, s3 4.545843526424313 NEAR, and faucet sponsor 5.799955363487500 NEAR.
+
+### Phase 3A Vault frontend proof
+
+The browser-only Vault request from Seat 1 holder `rb.seatsfund1-1793846395.testnet` succeeded in transaction `BqR6a2ajQMo8DHKwXhF8qCwv5yRSwcVVtqdmr4ZkY9Kj`. The live estimate was `0.0070001` NEAR, so the request attached `0.0070001000005` NEAR including the 500,000,000,000 yocto buffer. The holder's measured net balance decrease was `0.0024259193923695` NEAR, and the result decrypted successfully. The vault text is not recorded.

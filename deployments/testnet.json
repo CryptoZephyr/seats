@@ -106,6 +106,18 @@
       }
     }
   },
+  "phase3a_vault_frontend_proof": {
+    "network": "testnet",
+    "signer": "rb.seatsfund1-1793846395.testnet",
+    "tx_hash": "BqR6a2ajQMo8DHKwXhF8qCwv5yRSwcVVtqdmr4ZkY9Kj",
+    "estimate_yocto": "7000100000000000000000",
+    "deposit_yocto": "7000100000500000000000",
+    "deposit_near": "0.0070001000005",
+    "net_balance_decrease_yocto": "2425919392369500000000",
+    "net_cost_near": "0.0024259193923695",
+    "decrypted_ok": true,
+    "vault_text_recorded": false
+  },
   "status": "deployed",
   "accounts": {
     "verifier": "tdxv-1793838446.testnet",

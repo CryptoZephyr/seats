@@ -7,11 +7,11 @@ commit: 886500f
 
 ## What you see
 
-The vault screen shows the seat number and an open button. The page says the club vault opens only for current seat holders.
+The vault screen checks your testnet seat and shows the current maximum execution deposit and expected charge before signing.
 
 ## What you do
 
-Choose open the vault. The check runs inside secure hardware.
+Choose Open vault. Your browser generates an X25519 key pair in memory and signs a request to the OutLayer testnet contract. The private key is discarded when the page closes.
 
 ## What Seats does
 
@@ -19,7 +19,7 @@ The vault job checks that your account holds a seat. If it does, it returns the 
 
 ## How you know it worked
 
-The content appears after the check. The receipt shows the seat check and the encrypted return.
+The contract estimate plus a 500,000,000,000 yoctoNEAR buffer is attached. The expected charge is about 0.002 testnet NEAR, with most of the deposit returned. The browser decrypts the job result locally.
 
 ## If you are not a holder
 
