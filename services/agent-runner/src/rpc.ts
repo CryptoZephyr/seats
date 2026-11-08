@@ -122,15 +122,6 @@ export class NearAgentRpc implements AgentRunnerRpc, VoterDiscoveryRpc {
     return this.view<string>(voterId, "get_brief_hash", {});
   }
 
-  async getVoterConfiguration(voterId: string): Promise<{
-    model_signer_hex: string;
-    model: string;
-    agent_wasm_url: string;
-    agent_wasm_sha256: string;
-  }> {
-    return this.view(voterId, "get_voter_configuration", {});
-  }
-
   async getLastProposalId(daoId: string): Promise<number> {
     const value = await this.view<number | string>(daoId, "get_last_proposal_id", {});
     const nextId = Number(value);

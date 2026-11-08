@@ -4,19 +4,11 @@ export interface SeatToken {
   token_id: string;
 }
 
-export interface VoterConfiguration {
-  model_signer_hex: string;
-  model: string;
-  agent_wasm_url: string;
-  agent_wasm_sha256: string;
-}
-
 export interface VoterDiscoveryRpc {
   getSeatTokenPage(seatNftId: string, fromIndex: number, limit: number): Promise<SeatToken[]>;
   getSeatVoterId(seatNftId: string, tokenId: string): Promise<string | null>;
   hasRequestVoteAccessKey(voterId: string, publicKey: string): Promise<boolean>;
   getBriefHash(voterId: string): Promise<string>;
-  getVoterConfiguration(voterId: string): Promise<VoterConfiguration>;
 }
 
 export interface VoterSource {
@@ -86,31 +78,56 @@ async function scanSeatVoters(
   while (true) {
     const tokens = await rpc.getSeatTokenPage(seatNftId, fromIndex, TOKEN_PAGE_SIZE);
     for (const token of tokens) {
-      const voterId = await rpc.getSeatVoterId(seatNftId, token.token_id);
+      let voterId: string | null;
+      try {
+        voterId = await rpc.getSeatVoterId(seatNftId, token.token_id);
+      } catch (error) {
+        logSkippedVoter(
+          loggedSkippedVoters,
+          `token:${token.token_id}`,
+          log,
+          { reason: "get_seat_failed", error: String(error) },
+        );
+        continue;
+      }
       if (!voterId || seenVoters.has(voterId)) continue;
       seenVoters.add(voterId);
-      if (!await rpc.hasRequestVoteAccessKey(voterId, publicKey)) continue;
+      let hasAccessKey: boolean;
+      try {
+        hasAccessKey = await rpc.hasRequestVoteAccessKey(voterId, publicKey);
+      } catch (error) {
+        logSkippedVoter(
+          loggedSkippedVoters,
+          `voter:${voterId}`,
+          log,
+          { voter_id: voterId, reason: "access_key_view_failed", error: String(error) },
+        );
+        continue;
+      }
+      if (!hasAccessKey) continue;
 
-      const [briefHash, configuration] = await Promise.all([
-        rpc.getBriefHash(voterId),
-        rpc.getVoterConfiguration(voterId),
-      ]);
-      const skipReason = !briefHash.trim()
-        ? "brief_not_set"
-        : !configuration.agent_wasm_url.trim()
-          || !/^[a-f0-9]{64}$/.test(configuration.agent_wasm_sha256)
-          ? "agent_wasm_not_pinned"
-          : null;
-      if (skipReason) {
-        if (!loggedSkippedVoters.has(voterId)) {
-          loggedSkippedVoters.add(voterId);
-          log({
-            action: "discover_voters",
-            status: "skipped",
-            voter_id: voterId,
-            reason: skipReason,
-          });
+      let briefHash: string;
+      try {
+        briefHash = await rpc.getBriefHash(voterId);
+        if (typeof briefHash !== "string") {
+          throw new Error("Invalid get_brief_hash result");
         }
+      } catch (error) {
+        logSkippedVoter(
+          loggedSkippedVoters,
+          `voter:${voterId}`,
+          log,
+          { voter_id: voterId, reason: "brief_view_failed", error: String(error) },
+        );
+        continue;
+      }
+      if (!briefHash.trim()) {
+        logSkippedVoter(
+          loggedSkippedVoters,
+          `voter:${voterId}`,
+          log,
+          { voter_id: voterId, reason: "brief_not_set" },
+        );
         continue;
       }
       voters.push(voterId);
@@ -121,4 +138,15 @@ async function scanSeatVoters(
   }
 
   return voters;
+}
+
+function logSkippedVoter(
+  loggedSkippedVoters: Set<string>,
+  key: string,
+  log: (entry: ActionLog) => void,
+  details: Pick<ActionLog, "voter_id" | "reason" | "error">,
+): void {
+  if (loggedSkippedVoters.has(key)) return;
+  loggedSkippedVoters.add(key);
+  log({ action: "discover_voters", status: "skipped", ...details });
 }

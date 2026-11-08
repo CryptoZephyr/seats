@@ -15,33 +15,30 @@ function createRpc(overrides: Partial<VoterDiscoveryRpc> = {}): VoterDiscoveryRp
       { token_id: "2" },
       { token_id: "3" },
       { token_id: "4" },
+      { token_id: "5" },
     ]),
     getSeatVoterId: vi.fn(async (_seatNftId: string, tokenId: string) => `voter-${tokenId}.testnet`),
     hasRequestVoteAccessKey: vi.fn(async () => true),
     getBriefHash: vi.fn(async () => "a".repeat(64)),
-    getVoterConfiguration: vi.fn(async () => ({
-      model_signer_hex: `0x${"b".repeat(40)}`,
-      model: "model-v1",
-      agent_wasm_url: "https://example.test/agent.wasm",
-      agent_wasm_sha256: "c".repeat(64),
-    })),
     ...overrides,
   };
 }
 
 describe("seat voter discovery", () => {
-  it("adds configured voters with the runner key and skips unauthorized or unready seats", async () => {
+  it("adds voters with the runner key and a brief, skipping unauthorized or unready seats", async () => {
     const requestVote = vi.fn();
     const rpc = createRpc({
+      getSeatVoterId: vi.fn(async (_seatNftId: string, tokenId: string) => {
+        if (tokenId === "5") throw new Error("get_seat failed");
+        return `voter-${tokenId}.testnet`;
+      }),
       hasRequestVoteAccessKey: vi.fn(async (voterId) => voterId !== "voter-4.testnet"),
       getBriefHash: vi.fn(async (voterId) =>
-        voterId === "voter-2.testnet" ? "" : "a".repeat(64)),
-      getVoterConfiguration: vi.fn(async (voterId) => ({
-        model_signer_hex: `0x${"b".repeat(40)}`,
-        model: "model-v1",
-        agent_wasm_url: voterId === "voter-3.testnet" ? "" : "https://example.test/agent.wasm",
-        agent_wasm_sha256: voterId === "voter-3.testnet" ? "" : "c".repeat(64),
-      })),
+        voterId === "voter-2.testnet"
+          ? ""
+          : voterId === "voter-3.testnet"
+            ? Promise.reject(new Error("brief view failed"))
+            : "a".repeat(64)),
     }) as VoterDiscoveryRpc & { requestVote: typeof requestVote };
     rpc.requestVote = requestVote;
     const log = vi.fn();
@@ -61,7 +58,13 @@ describe("seat voter discovery", () => {
     expect(log).toHaveBeenCalledWith(expect.objectContaining({
       voter_id: "voter-3.testnet",
       status: "skipped",
-      reason: "agent_wasm_not_pinned",
+      reason: "brief_view_failed",
+      error: "Error: brief view failed",
+    }));
+    expect(log).toHaveBeenCalledWith(expect.objectContaining({
+      status: "skipped",
+      reason: "get_seat_failed",
+      error: "Error: get_seat failed",
     }));
   });
 

@@ -75,7 +75,7 @@ npm test
 npx tsc --noEmit
 ```
 
-Set `NEAR_RPC_URL`, `DAO_ID`, `KEEPER_ACCOUNT_ID`, and `KEEPER_KEY_FILE`. Voters can be configured with `VOTERS`, a JSON file containing `voter_id` and `agent_key_file` paths, or discovered by setting both `SEAT_NFT_ID` and `RUNNER_AGENT_KEY_FILE`. When both sources include a voter, its explicit `VOTERS` key file wins. Discovery runs at startup and no more than once every 60 seconds. It only includes seats with the shared request-vote key, a non-empty brief hash, and pinned agent WASM. `RUNNER_AGENT_KEY_FILE` is a secret file containing the shared key, never the public key.
+Set `NEAR_RPC_URL`, `DAO_ID`, `KEEPER_ACCOUNT_ID`, and `KEEPER_KEY_FILE`. Voters can be configured with `VOTERS`, a JSON file containing `voter_id` and `agent_key_file` paths, or discovered by setting both `SEAT_NFT_ID` and `RUNNER_AGENT_KEY_FILE`. When both sources include a voter, its explicit `VOTERS` key file wins. Discovery runs at startup and no more than once every 60 seconds. It only includes seats with the shared request-vote key and a non-empty brief hash. `RUNNER_AGENT_KEY_FILE` is a secret file containing the shared key, never the public key.
 
 `WINDOW_SECONDS` defaults to 120, `REQUEST_TTL_MS` defaults to 180000, and `LOOKBACK_PROPOSALS` defaults to 20. On fresh state, the runner checks the most recent proposals in that lookback window. `START_PROPOSAL_ID` overrides the initial proposal.
 
