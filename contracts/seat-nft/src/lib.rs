@@ -390,7 +390,10 @@ impl SeatNft {
                 let pin_agent = ext_voter::ext(voter_id)
                     .with_static_gas(VOTER_DEFAULT_CONFIG_GAS)
                     .pin_agent_wasm(defaults.agent_wasm_url, defaults.agent_wasm_sha256);
-                PromiseOrValue::Promise(registration.and(set_signer).and(pin_agent))
+                // NEAR rejects a joint promise as a function-call return value.
+                set_signer.detach();
+                pin_agent.detach();
+                PromiseOrValue::Promise(registration)
             }
             None => PromiseOrValue::Promise(registration),
         }
@@ -860,6 +863,22 @@ mod tests {
             .collect()
     }
 
+    fn scheduled_receipt_count(receiver_id: &str, method_name: &str) -> usize {
+        get_created_receipts()
+            .iter()
+            .filter(|receipt| {
+                receipt.receiver_id.to_string() == receiver_id
+                    && receipt.actions.iter().any(|action| {
+                        matches!(
+                            action,
+                            MockAction::FunctionCallWeight { method_name: method, .. }
+                                if method.as_slice() == method_name.as_bytes()
+                        )
+                    })
+            })
+            .count()
+    }
+
     fn scheduled_transfers() -> Vec<(String, u128)> {
         get_created_receipts()
             .into_iter()
@@ -1117,6 +1136,24 @@ mod tests {
         assert!(calls
             .iter()
             .any(|(receiver, method, _)| receiver == DAO && method == "register_delegation"));
+        assert_eq!(scheduled_receipt_count(DAO, "register_delegation"), 1);
+        assert_eq!(scheduled_receipt_count(VOTER, "set_model_signer"), 1);
+        assert_eq!(scheduled_receipt_count(VOTER, "pin_agent_wasm"), 1);
+        let config_receipts = get_created_receipts()
+            .iter()
+            .filter(|receipt| receipt.receiver_id.to_string() == VOTER)
+            .filter(|receipt| {
+                receipt.actions.iter().any(|action| {
+                    matches!(
+                        action,
+                        MockAction::FunctionCallWeight { method_name, .. }
+                            if method_name.as_slice() == b"set_model_signer"
+                                || method_name.as_slice() == b"pin_agent_wasm"
+                    )
+                })
+            })
+            .count();
+        assert_eq!(config_receipts, 2);
     }
 
     #[test]
