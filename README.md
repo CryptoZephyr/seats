@@ -1,6 +1,8 @@
 # Seats
 
-Club memberships you can sell, with an AI that votes for you while you're away.
+Club DAOs lose votes from members who aren't around, and they can't let members sell out without losing control of who gets in. Proposals close on a deadline, so a member who's travelling, busy or asleep loses their say, and handing the vote to someone else means trusting them with it. A membership that's a plain token can be bought by anyone, and one that can't be sold leaves a departing member with nothing and the vote with someone who's gone.
+
+Seats is club memberships you can sell, with an AI that votes for you while you're away. It's live on NEAR testnet at https://seats-web-ne6k.onrender.com.
 
 Seats is for clubs and communities that run on a NEAR Sputnik DAO. Each membership is a seat, an NFT that carries one vote in the club's DAO and opens the club's private vault. A member can sell their seat, but only to a buyer the club approves, and the club keeps a 5% levy on every sale.
 
@@ -10,7 +12,7 @@ Example: Ada's brief says "back community events, reject any spend over 50 NEAR"
 
 Seats runs on NEAR testnet only. Don't deploy these contracts to mainnet.
 
-Seat voting weight sits with the voter account, not the member's wallet. Members submit proposals through the council or the voter account, rather than directly from their wallet.
+Seat voting weight sits with the voter account, not the member's wallet. Anyone can submit a function-call proposal from their own wallet with a 0.1 NEAR bond, which is how visitors apply to join and holders offer a seat for sale.
 
 ## Components
 
