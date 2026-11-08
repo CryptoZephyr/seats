@@ -839,6 +839,11 @@ function ProposalVoteMember({
               </TextButton>
             </p>
           )}
+          {viewer.accountId && seat.controller !== viewer.accountId && (
+            <p className={s.muted}>
+              This seat is controlled by <span className="mono">{seat.controller}</span>.
+            </p>
+          )}
           {overrideChange && (
             <p className={s.muted}>
               <OverriddenStatus byMember={seat.controller !== viewer.accountId} />{" "}
@@ -924,11 +929,6 @@ function ProposalVoteMember({
                 </p>
               ) : (
                 <p className={s.reason}>{voteState.pending.reason}</p>
-              )}
-              {viewer.accountId && seat.controller !== viewer.accountId && (
-                <p className={s.muted}>
-                  This seat is controlled by <span className="mono">{seat.controller}</span>.
-                </p>
               )}
               {controlsVisible && (
                 <div className={s.actions}>
