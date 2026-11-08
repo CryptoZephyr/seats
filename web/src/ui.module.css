@@ -253,6 +253,11 @@
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+.textButton:disabled {
+  color: var(--color-ink-soft);
+  cursor: default;
+  text-decoration: none;
+}
 
 .ruled {
   border-top: 1px solid var(--color-line);

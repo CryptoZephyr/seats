@@ -1,0 +1,33 @@
+{
+  "accountTransaction": {
+    "transaction_hash": "8UJ9FTgsQauPy6rZK8LhMp4ihXy4BWyLkwsx344tTypR",
+    "tx_block_timestamp": "1793861465477208362",
+    "is_success": true
+  },
+  "transactions": [
+    {
+      "transaction": {
+        "signer_id": "rb.seatsfund1-1793846395.testnet",
+        "receiver_id": "s1.seatsnft3-1793848334.testnet",
+        "actions": [
+          {
+            "FunctionCall": {
+              "method_name": "override_vote",
+              "args": "eyJwcm9wb3NhbF9pZCI6Niwidm90ZSI6IlJlamVjdCJ9",
+              "gas": 30000000000000,
+              "deposit": "0"
+            }
+          }
+        ],
+        "hash": "8UJ9FTgsQauPy6rZK8LhMp4ihXy4BWyLkwsx344tTypR"
+      },
+      "execution_outcome": {
+        "outcome": {
+          "status": {
+            "SuccessReceiptId": "qxFPcbqJjA7i9noGaHFHecU5ZUhqLjKjqkxCrQcbqoL"
+          }
+        }
+      }
+    }
+  ]
+}

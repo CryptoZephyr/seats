@@ -11,6 +11,10 @@ export function useClubData() {
   const [state, setState] = useState<State>({ status: "loading" });
 
   const retry = useCallback(() => setAttempt((value) => value + 1), []);
+  const refresh = useCallback(async () => {
+    const data = await loadClubSnapshot();
+    setState({ status: "ready", data });
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -32,5 +36,5 @@ export function useClubData() {
     };
   }, [attempt]);
 
-  return { ...state, retry };
+  return { ...state, retry, refresh };
 }

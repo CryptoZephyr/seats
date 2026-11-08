@@ -1,26 +1,30 @@
 ---
 title: Review a vote
-summary: Read your delegate's vote and its reason, then approve it or override it before the window closes.
-lastVerified: 2026-11-06
-commit: 886500f
+summary: Read your delegate's vote and reason, then change or cancel it before the window closes.
+lastVerified: 2026-11-08
+commit: 241724d
 ---
 
 ## What you see
 
-The vote screen shows the proposal, the delegate's choice, its one-line reason, and a window bar draining to the deadline. The deadline appears as a clock time and a countdown.
+The vote screen shows the proposal, your delegate's choice, its one-line reason, and a window bar draining to the deadline. The deadline appears as a clock time and a countdown. If you changed the vote, the screen marks it as overridden and labels the reason as your delegate's reasoning for the original choice.
 
 ## What you do
 
-If you agree, do nothing. The vote is cast at the deadline. If you disagree, choose the other option inside the window.
+If you agree, do nothing. Your delegate's vote is cast at the deadline. If you disagree, choose the other vote inside the window.
+
+You can also cancel the pending vote. Confirming cancellation means your seat won't vote on this proposal. The cancellation is recorded, and the vote runner skips it.
 
 ## What Seats does
 
-The contract accepts the override until the deadline. After that it refuses changes, and the vote is cast under your seat's voter account.
+The contract accepts an override or cancellation only from the seat's controller and before the override deadline. These actions don't require a deposit. After the deadline, the contract refuses changes and your delegate's vote is cast under your seat's voter account.
 
 ## How you know it worked
+
+After an override or cancellation, the screen shows a success status and a testnet transaction link when its hash is available. The screen also reads testnet transaction history to show an override or cancellation after you reload.
 
 After the window closes, the screen shows the vote as cast, with the result from the DAO and the receipt.
 
 ## If nothing changes
 
-If the window has closed, the vote can't be changed. Read the receipt for what was cast. See [what happens at the deadline](/docs/concepts/what-happens-at-the-deadline).
+If the window has closed, the vote can't be changed. Read the receipt for what was cast. See [what happens at the deadline](/docs/concepts/what-happens-at-the-deadline) and [troubleshooting](/docs/help/troubleshooting).
