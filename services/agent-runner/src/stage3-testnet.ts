@@ -432,17 +432,7 @@ async function proposeVoterDefaults(
     return;
   }
 
-  const kind = {
-    FunctionCall: {
-      receiver_id: config.seat_nft_id,
-      actions: [{
-        method_name: "set_voter_defaults",
-        args: Buffer.from(JSON.stringify(defaults)).toString("base64"),
-        deposit: "0",
-        gas: String(50n * TGAS),
-      }],
-    },
-  };
+  const kind = createVoterDefaultsProposalKind(config.seat_nft_id, defaults);
   const policy = await callView<Policy>(provider, config.dao_id, "get_policy", {});
   const proposal = await submitProposal(
     provider,
@@ -453,6 +443,23 @@ async function proposeVoterDefaults(
     policyProposalBond(policy),
   );
   process.stdout.write(`${JSON.stringify({ proposal_id: proposal.proposalId, status: proposal.status })}\n`);
+}
+
+export function createVoterDefaultsProposalKind(
+  seatNftId: string,
+  defaults: Omit<DeploymentAgentConfiguration, "voter_id">,
+): object {
+  return {
+    FunctionCall: {
+      receiver_id: seatNftId,
+      actions: [{
+        method_name: "set_voter_defaults",
+        args: Buffer.from(JSON.stringify({ defaults })).toString("base64"),
+        deposit: "0",
+        gas: String(50n * TGAS),
+      }],
+    },
+  };
 }
 
 function keyIsPresent(error: unknown): boolean {

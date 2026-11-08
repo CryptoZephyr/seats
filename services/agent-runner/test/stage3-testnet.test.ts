@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createApplicationProposalKind,
+  createVoterDefaultsProposalKind,
   readDeploymentAgentConfiguration,
 } from "../src/stage3-testnet.js";
 
@@ -68,6 +69,39 @@ describe("visitor application proposal", () => {
     expect(JSON.parse(Buffer.from(action.args, "base64").toString("utf8"))).toEqual({
       applicant: "visitor.testnet",
       expires_in_ns: 604_800_000_000_000,
+    });
+  });
+});
+
+describe("voter defaults proposal", () => {
+  it("encodes the defaults under the named method argument", () => {
+    const defaults = {
+      model_signer_hex: "0x" + "a".repeat(40),
+      model: "model-v1",
+      agent_wasm_url: "https://example.test/agent.wasm",
+      agent_wasm_sha256: "b".repeat(64),
+    };
+    const kind = createVoterDefaultsProposalKind("seats.testnet", defaults) as {
+      FunctionCall: {
+        receiver_id: string;
+        actions: Array<{
+          method_name: string;
+          args: string;
+          deposit: string;
+          gas: string;
+        }>;
+      };
+    };
+    const [action] = kind.FunctionCall.actions;
+
+    expect(kind.FunctionCall.receiver_id).toBe("seats.testnet");
+    expect(action).toMatchObject({
+      method_name: "set_voter_defaults",
+      deposit: "0",
+      gas: "50000000000000",
+    });
+    expect(JSON.parse(Buffer.from(action.args, "base64").toString("utf8"))).toEqual({
+      defaults,
     });
   });
 });
