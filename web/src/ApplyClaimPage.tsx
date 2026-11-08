@@ -15,7 +15,17 @@ import {
 import { formatProposalDate } from "./proposalDate";
 import { isProposalVotingClosed } from "./proposals";
 import { ErrorStatus, Fact, GraphicButton, LoadingStatus, PendingStatus, ResultStamp, RuledSection, SuccessStatus } from "./ui";
-import { checkFunds, friendly, InsufficientFundsError, near, PageHead, TxLink, useGasEstimate } from "./flowCommon";
+import {
+  checkFunds,
+  FaucetLink,
+  friendly,
+  InsufficientFundsError,
+  isInsufficientFundsError,
+  near,
+  PageHead,
+  TxLink,
+  useGasEstimate,
+} from "./flowCommon";
 import s from "./screens.module.css";
 
 type ApplyAction = "apply" | "claim";
@@ -70,6 +80,7 @@ export function ApplyClaimPage() {
   const [approvalState, setApprovalState] = useState<"loading" | "ready" | "error">("loading");
   const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState("");
+  const [needsFaucet, setNeedsFaucet] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ApplyResult | null>(null);
   const claimWindowOpen = expiry !== null && BigInt(Date.now()) * 1_000_000n < BigInt(expiry);
@@ -109,6 +120,7 @@ export function ApplyClaimPage() {
 
   const submit = async (action: "apply" | "claim") => {
     setError("");
+    setNeedsFaucet(false);
     setResult(null);
     const account = viewer.accountId;
     if (!account) return;
@@ -119,7 +131,7 @@ export function ApplyClaimPage() {
     setBusy(true);
     try {
       if (!await checkFunds(account, request)) {
-        throw new InsufficientFundsError(`This account needs ${near(request.deposit)} NEAR for the deposit and about ${gasEstimate ?? "the current"} testnet NEAR for the network fee. Get testnet NEAR from a NEAR testnet faucet.`);
+        throw new InsufficientFundsError(`This account needs ${near(request.deposit)} NEAR for the deposit and about ${gasEstimate ?? "the current"} testnet NEAR for the network fee.`);
       }
       const tx = await viewer.callContract(request);
       await recordSuccessfulAction(action, tx.hash, setResult, async () => {
@@ -127,7 +139,9 @@ export function ApplyClaimPage() {
         viewer.retry();
       });
     } catch (cause) {
-      if (!(cause instanceof InsufficientFundsError)) {
+      const insufficientFunds = isInsufficientFundsError(cause);
+      setNeedsFaucet(insufficientFunds);
+      if (!insufficientFunds) {
         state.retry();
         viewer.retry();
       }
@@ -173,13 +187,13 @@ export function ApplyClaimPage() {
         </>
       )}
       {approvalState === "error" && <ErrorStatus onRetry={() => setAttempt((value) => value + 1)}>Your application approval couldn't be read.</ErrorStatus>}
-      {error && <ErrorStatus>{error}</ErrorStatus>}
+      {error && <ErrorStatus>{error}{needsFaucet && <> <FaucetLink /></>}</ErrorStatus>}
       {busy && !result && <LoadingStatus>Waiting for your wallet…</LoadingStatus>}
       {result && <SuccessStatus>
         {result.action === "apply" ? "Application submitted." : <>Seat claimed. <a href="#/brief">Save your delegate's brief so it can vote for you.</a></>}
         {" "}<TxLink hash={result.hash} />
       </SuccessStatus>}
-      {!viewer.accountId && <p className={s.note}>Use a testnet NEAR wallet and testnet NEAR from a NEAR testnet faucet.</p>}
+      {!viewer.accountId && <p className={s.note}>Use a testnet NEAR wallet. <FaucetLink />.</p>}
     </RuledSection>
   </main>;
 }

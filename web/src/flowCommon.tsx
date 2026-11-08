@@ -10,6 +10,12 @@ import s from "./screens.module.css";
 
 export class InsufficientFundsError extends Error {}
 
+export const TESTNET_FAUCET_URL = "https://near-faucet.io/";
+
+export function isInsufficientFundsError(error: unknown): error is InsufficientFundsError {
+  return error instanceof InsufficientFundsError;
+}
+
 export function near(value: bigint): string {
   const whole = value / 10n ** 24n;
   const fraction = (value % 10n ** 24n).toString().padStart(24, "0").replace(/0+$/, "");
@@ -46,6 +52,10 @@ export function useGasEstimate(gas: bigint): string | null {
 
 export function TxLink({ hash }: { hash: string }) {
   return <a className={s.txLink} href={explorerTxUrl(hash)} target="_blank" rel="noreferrer">View transaction</a>;
+}
+
+export function FaucetLink() {
+  return <a className={s.txLink} href={TESTNET_FAUCET_URL} target="_blank" rel="noreferrer">Get testnet NEAR from the faucet</a>;
 }
 
 export function PageHead({ eyebrow, title, children }: { eyebrow: string; title: string; children?: ReactNode }) {

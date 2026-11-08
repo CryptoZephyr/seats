@@ -5,7 +5,17 @@ import { readSeatNftLevyBps } from "./chain/rpc";
 import { saleListings } from "./chain/sales";
 import { buildBuyRequest, BUY_SEAT_GAS, calculateSaleSplit } from "./chain/transactions";
 import { ErrorStatus, GraphicButton, LoadingStatus, RuledSection, SuccessStatus } from "./ui";
-import { checkFunds, friendly, InsufficientFundsError, near, PageHead, TxLink, useGasEstimate } from "./flowCommon";
+import {
+  checkFunds,
+  FaucetLink,
+  friendly,
+  InsufficientFundsError,
+  isInsufficientFundsError,
+  near,
+  PageHead,
+  TxLink,
+  useGasEstimate,
+} from "./flowCommon";
 import s from "./screens.module.css";
 
 function PurchaseSuccess({ hash }: { hash: string }) {
@@ -18,6 +28,7 @@ export function BuySeatFlow() {
   const [levy, setLevy] = useState<number | null>(null);
   const [busySeatId, setBusySeatId] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [needsFaucetByToken, setNeedsFaucetByToken] = useState<Record<string, boolean>>({});
   const [hashes, setHashes] = useState<Record<string, string>>({});
   const gasEstimate = useGasEstimate(BUY_SEAT_GAS);
   useEffect(() => { void readSeatNftLevyBps().then(setLevy).catch(() => setLevy(-1)); }, []);
@@ -41,12 +52,13 @@ export function BuySeatFlow() {
     const account = viewer.accountId;
     if (!account) return;
     setErrors((previous) => ({ ...previous, [tokenId]: "" }));
+    setNeedsFaucetByToken((previous) => ({ ...previous, [tokenId]: false }));
     setHashes((previous) => ({ ...previous, [tokenId]: "" }));
     setBusySeatId(tokenId);
     try {
       const request = buildBuyRequest(tokenId, price);
       if (!await checkFunds(account, request)) {
-        throw new InsufficientFundsError(`This account needs ${near(request.deposit)} NEAR for the deposit and about ${gasEstimate ?? "the current"} testnet NEAR for the network fee. Get testnet NEAR from a NEAR testnet faucet.`);
+        throw new InsufficientFundsError(`This account needs ${near(request.deposit)} NEAR for the deposit and about ${gasEstimate ?? "the current"} testnet NEAR for the network fee.`);
       }
       const tx = await viewer.callContract(request);
       setHashes((previous) => ({ ...previous, [tokenId]: tx.hash }));
@@ -56,6 +68,10 @@ export function BuySeatFlow() {
     } catch (cause) {
       state.retry();
       viewer.retry();
+      setNeedsFaucetByToken((previous) => ({
+        ...previous,
+        [tokenId]: isInsufficientFundsError(cause),
+      }));
       setErrors((previous) => ({ ...previous, [tokenId]: friendly(cause) }));
     } finally { setBusySeatId(null); }
   };
@@ -77,7 +93,10 @@ export function BuySeatFlow() {
             : namedBuyer && split ? <GraphicButton glyph="ticket" disabled={busySeatId !== null} onClick={() => void buy(seat.token.token_id, approval.price)}>Buy for {near(BigInt(approval.price))} NEAR</GraphicButton>
             : <p className={s.muted}>This seat is reserved for {approval.buyer}.</p>}
           {busySeatId === seat.token.token_id && !hashes[seat.token.token_id] && <LoadingStatus>Waiting for your wallet…</LoadingStatus>}
-          {errors[seat.token.token_id] && <ErrorStatus>{errors[seat.token.token_id]}</ErrorStatus>}
+          {errors[seat.token.token_id] && <ErrorStatus>
+            {errors[seat.token.token_id]}
+            {needsFaucetByToken[seat.token.token_id] && <> <FaucetLink /></>}
+          </ErrorStatus>}
         </RuledSection>;
       })}
     <RuledSection title="Awaiting club vote">

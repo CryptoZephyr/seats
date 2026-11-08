@@ -5,7 +5,17 @@ import { estimateVaultExecutionCost, getTransactionStatus } from "./chain/rpc";
 import { buildVaultRequest, contractErrorCode, VAULT_REQUEST_GAS } from "./chain/transactions";
 import { decryptVaultResponse, generateVaultKeyPair, type VaultCiphertext } from "./chain/vaultCrypto";
 import { ErrorStatus, GraphicButton, LoadingStatus, RefusedStamp, RuledSection } from "./ui";
-import { checkFunds, friendly, InsufficientFundsError, near, PageHead, TxLink, useGasEstimate } from "./flowCommon";
+import {
+  checkFunds,
+  FaucetLink,
+  friendly,
+  InsufficientFundsError,
+  isInsufficientFundsError,
+  near,
+  PageHead,
+  TxLink,
+  useGasEstimate,
+} from "./flowCommon";
 import s from "./screens.module.css";
 
 function payloadFromOutcome(outcome: unknown): VaultCiphertext | null {
@@ -26,6 +36,7 @@ export function VaultPageFlow() {
   const [cost, setCost] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [needsFaucet, setNeedsFaucet] = useState(false);
   const [notAllowed, setNotAllowed] = useState(false);
   const [text, setText] = useState("");
   const [hash, setHash] = useState("");
@@ -43,6 +54,7 @@ export function VaultPageFlow() {
 
   const openVault = async () => {
     setError("");
+    setNeedsFaucet(false);
     setNotAllowed(false);
     setText("");
     setHash("");
@@ -54,7 +66,7 @@ export function VaultPageFlow() {
       const requester = Array.from(keyPair.publicKey, (byte) => byte.toString(16).padStart(2, "0")).join("");
       const request = buildVaultRequest(requester, cost);
       if (!await checkFunds(viewer.accountId, request)) {
-        throw new InsufficientFundsError(`Your balance must cover the ${near(request.deposit)} NEAR deposit and about ${gasEstimate ?? "the current"} testnet NEAR for the network fee. Get testnet NEAR from a NEAR testnet faucet.`);
+        throw new InsufficientFundsError(`Your balance must cover the ${near(request.deposit)} NEAR deposit and about ${gasEstimate ?? "the current"} testnet NEAR for the network fee.`);
       }
       const tx = await viewer.callContract(request);
       setHash(tx.hash);
@@ -66,6 +78,7 @@ export function VaultPageFlow() {
     } catch (cause) {
       state.retry();
       viewer.retry();
+      setNeedsFaucet(isInsufficientFundsError(cause));
       const code = contractErrorCode(cause);
       const causeText = cause instanceof Error ? cause.message : "";
       if (code === "ERR_NO_SEAT" || causeText === "ERR_NO_SEAT") {
@@ -93,7 +106,7 @@ export function VaultPageFlow() {
       {cost === null && <LoadingStatus>Checking OutLayer's current execution estimate…</LoadingStatus>}
       {busy && <LoadingStatus>Waiting for your wallet and the vault job…</LoadingStatus>}
       {notAllowed && <p><RefusedStamp>Not allowed</RefusedStamp> The vault job refused this account.</p>}
-      {error && <ErrorStatus>{error}</ErrorStatus>}
+      {error && <ErrorStatus>{error}{needsFaucet && <> <FaucetLink /></>}</ErrorStatus>}
       {hash && <p><TxLink hash={hash} /></p>}
     </RuledSection>
   </main>;
