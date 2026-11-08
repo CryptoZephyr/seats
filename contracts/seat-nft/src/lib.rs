@@ -29,6 +29,7 @@ const VOTER_CREATED_CALLBACK_GAS: Gas = Gas::from_tgas(70);
 const REGISTRATION_CALLBACK_GAS: Gas = Gas::from_tgas(40);
 const BUY_CALLBACK_GAS: Gas = Gas::from_tgas(40);
 const MIN_VOTER_FUNDING: u128 = 10_000_000_000_000_000_000_000;
+const CLAIM_SEAT_MIN_DEPOSIT: u128 = 4_500_000_000_000_000_000_000_000;
 
 fn svg_data_url(svg: &str) -> String {
     format!(
@@ -181,6 +182,10 @@ impl SeatNft {
 
     #[payable]
     pub fn claim_seat(&mut self, agent_public_key: PublicKey) -> Promise {
+        assert!(
+            env::attached_deposit().as_yoctonear() >= CLAIM_SEAT_MIN_DEPOSIT,
+            "ERR_INSUFFICIENT_DEPOSIT"
+        );
         let applicant = env::predecessor_account_id();
         let expires_at = self
             .get_application_approval(applicant.clone())
@@ -741,6 +746,7 @@ mod tests {
     };
     use near_sdk::testing_env;
     use near_sdk::serde_json::{json, Value};
+    use std::panic::{catch_unwind, AssertUnwindSafe};
 
     const SEAT: &str = "seat.testnet";
     const DAO: &str = "dao.testnet";
@@ -930,7 +936,7 @@ mod tests {
     #[should_panic(expected = "ERR_NO_APPLICATION")]
     fn claim_without_an_application_is_rejected() {
         let mut contract = empty_contract();
-        set_context("visitor.testnet", 1_000, 50_000_000_000_000_000_000_000);
+        set_context("visitor.testnet", 1_000, CLAIM_SEAT_MIN_DEPOSIT);
 
         contract.claim_seat(test_agent_key());
     }
@@ -941,7 +947,7 @@ mod tests {
         let mut contract = empty_contract();
         set_context(DAO, 1_000, 0);
         contract.approve_application(account_id("visitor.testnet"), 10);
-        set_context("visitor.testnet", 1_010, 50_000_000_000_000_000_000_000);
+        set_context("visitor.testnet", 1_010, CLAIM_SEAT_MIN_DEPOSIT);
 
         contract.claim_seat(test_agent_key());
     }
@@ -952,9 +958,30 @@ mod tests {
         let mut contract = contract_with_seat();
         set_context(DAO, 1_000, 0);
         contract.approve_application(account_id(SELLER), 100);
-        set_context(SELLER, 1_001, 50_000_000_000_000_000_000_000);
+        set_context(SELLER, 1_001, CLAIM_SEAT_MIN_DEPOSIT);
 
         contract.claim_seat(test_agent_key());
+    }
+
+    #[test]
+    fn underfunded_claim_keeps_application_approval() {
+        let mut contract = empty_contract();
+        let applicant = account_id("visitor.testnet");
+        set_context(DAO, 1_000, 0);
+        contract.approve_application(applicant.clone(), 10_000);
+        set_context(
+            "visitor.testnet",
+            1_001,
+            CLAIM_SEAT_MIN_DEPOSIT - 10_000_000_000_000_000_000_000,
+        );
+
+        let result = catch_unwind(AssertUnwindSafe(|| contract.claim_seat(test_agent_key())));
+
+        assert!(result.is_err());
+        assert_eq!(
+            contract.get_application_approval(applicant),
+            Some(U64(11_000)),
+        );
     }
 
     #[test]
@@ -963,11 +990,15 @@ mod tests {
         let applicant = account_id("visitor.testnet");
         set_context(DAO, 1_000, 0);
         contract.approve_application(applicant.clone(), 10_000);
-        set_context("visitor.testnet", 1_001, 50_000_000_000_000_000_000_000);
+        let voter_funding =
+            CLAIM_SEAT_MIN_DEPOSIT - env::storage_byte_cost().as_yoctonear() * 16;
+        set_context("visitor.testnet", 1_001, CLAIM_SEAT_MIN_DEPOSIT);
 
         contract.claim_seat(test_agent_key());
 
         assert_eq!(contract.get_application_approval(applicant.clone()), None);
+        assert!(scheduled_transfers()
+            .contains(&("s1.seat.testnet".to_string(), voter_funding)));
         assert!(scheduled_calls().iter().any(|(receiver, method, args)| {
             receiver == "s1.seat.testnet"
                 && method == "new"
@@ -979,7 +1010,7 @@ mod tests {
     fn failed_claim_refunds_applicant_and_restores_original_approval() {
         let mut contract = empty_contract();
         let applicant = account_id("visitor.testnet");
-        let refund_amount = 50_000_000_000_000_000_000_000;
+        let refund_amount = CLAIM_SEAT_MIN_DEPOSIT;
         set_context(DAO, 1_000, 0);
         contract.approve_application(applicant.clone(), 5_000);
         set_context("visitor.testnet", 1_001, refund_amount);
@@ -1011,7 +1042,7 @@ mod tests {
         let defaults = voter_defaults();
         contract.set_voter_defaults(defaults.clone());
         contract.approve_application(applicant.clone(), 10_000);
-        set_context("visitor.testnet", 1_001, 50_000_000_000_000_000_000_000);
+        set_context("visitor.testnet", 1_001, CLAIM_SEAT_MIN_DEPOSIT);
         contract.claim_seat(test_agent_key());
 
         call_voter_created_for(
@@ -1019,7 +1050,7 @@ mod tests {
             "1".to_string(),
             applicant,
             account_id("s1.seat.testnet"),
-            U128(50_000_000_000_000_000_000_000),
+            U128(CLAIM_SEAT_MIN_DEPOSIT),
             Some(account_id("visitor.testnet")),
             Some(U64(11_000)),
             PromiseResult::Successful(Vec::new()),
