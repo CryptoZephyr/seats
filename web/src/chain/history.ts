@@ -20,6 +20,7 @@ export interface FastNearTransaction {
 
 export interface MemberChange {
   method: "override_vote" | "cancel";
+  signerId: string;
   vote?: string;
   txHash: string;
   timestampNs: string;
@@ -82,7 +83,6 @@ export function parseLatestMemberChange(
   accountTransactions: AccountTransactionSummary[],
   transactions: FastNearTransaction[],
   voterId: string,
-  controller: string,
   proposalId: number,
 ): MemberChangeHistory {
   const successfulByHash = new Map(
@@ -97,7 +97,6 @@ export function parseLatestMemberChange(
     const accountRecord = successfulByHash.get(transaction.hash);
     if (
       !accountRecord ||
-      transaction.signer_id !== controller ||
       transaction.receiver_id !== voterId
     ) {
       continue;
@@ -123,12 +122,14 @@ export function parseLatestMemberChange(
         call.method_name === "override_vote"
           ? {
               method: call.method_name,
+              signerId: transaction.signer_id,
               vote: typeof args?.vote === "string" ? args.vote : undefined,
               txHash: transaction.hash,
               timestampNs,
             }
           : {
               method: call.method_name,
+              signerId: transaction.signer_id,
               txHash: transaction.hash,
               timestampNs,
             },
@@ -160,7 +161,6 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
 
 export async function latestMemberChange(
   voterId: string,
-  controller: string,
   proposalId: number,
 ): Promise<MemberChangeHistory> {
   const accountTransactions: AccountTransactionSummary[] = [];
@@ -201,7 +201,6 @@ export async function latestMemberChange(
     accountTransactions,
     transactionBatches.flatMap((batch) => batch.transactions),
     voterId,
-    controller,
     proposalId,
   );
 }

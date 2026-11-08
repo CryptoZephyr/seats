@@ -317,11 +317,15 @@ export function PendingStatus({
   );
 }
 
-export function OverriddenStatus({ byMember = false }: { byMember?: boolean }) {
+export function OverriddenStatus({ by }: { by: "you" | "member" | "previous" }) {
   return (
     <span className={styles.statusOverridden}>
       <span className={styles.solidSquare} aria-hidden="true" />
-      {byMember ? "Overridden by the member" : "Overridden by you"}
+      {by === "you"
+        ? "Overridden by you"
+        : by === "member"
+          ? "Overridden by the member"
+          : "Overridden by a previous member"}
     </span>
   );
 }

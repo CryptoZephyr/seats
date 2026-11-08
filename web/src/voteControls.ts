@@ -12,3 +12,13 @@ export function canChangePendingVote(
     voteState.sublabel === undefined &&
     seatController === accountId;
 }
+
+export function changeAttribution(
+  signerId: string,
+  controller: string,
+  viewerId: string | null,
+): "you" | "member" | "previous" {
+  if (signerId === viewerId) return "you";
+  if (signerId === controller) return "member";
+  return "previous";
+}

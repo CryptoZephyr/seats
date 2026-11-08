@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canChangePendingVote } from "./voteControls";
+import { canChangePendingVote, changeAttribution } from "./voteControls";
 
 describe("canChangePendingVote", () => {
   it("allows the seat controller to change an open pending vote", () => {
@@ -24,5 +24,19 @@ describe("canChangePendingVote", () => {
 
   it("hides controls outside a pending state", () => {
     expect(canChangePendingVote({ kind: "cast" }, "member.testnet", "member.testnet")).toBe(false);
+  });
+});
+
+describe("changeAttribution", () => {
+  it("attributes the change to the viewer first", () => {
+    expect(changeAttribution("member.testnet", "member.testnet", "member.testnet")).toBe("you");
+  });
+
+  it("attributes the change to the current member when the viewer differs", () => {
+    expect(changeAttribution("controller.testnet", "controller.testnet", "viewer.testnet")).toBe("member");
+  });
+
+  it("attributes an earlier controller's change to a previous member", () => {
+    expect(changeAttribution("former-member.testnet", "current.testnet", null)).toBe("previous");
   });
 });

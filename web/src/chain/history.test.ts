@@ -31,6 +31,7 @@ function transaction(
   signerId = controller,
   hash = transactionHash,
   vote: "Approve" | "Reject" = "Reject",
+  receiverId = voterId,
 ): FastNearTransaction {
   const args = method === "override_vote"
     ? { proposal_id: proposalId, vote }
@@ -38,7 +39,7 @@ function transaction(
   return {
     transaction: {
       signer_id: signerId,
-      receiver_id: voterId,
+      receiver_id: receiverId,
       actions: [{
         FunctionCall: {
           method_name: method,
@@ -56,17 +57,18 @@ describe("parseLatestMemberChange", () => {
       [fixtureData.accountTransaction],
       fixtureData.transactions,
       voterId,
-      controller,
       6,
     )).toEqual({
       latest: {
         method: "override_vote",
+        signerId: controller,
         vote: "Reject",
         txHash: transactionHash,
         timestampNs,
       },
       firstOverride: {
         method: "override_vote",
+        signerId: controller,
         vote: "Reject",
         txHash: transactionHash,
         timestampNs,
@@ -76,14 +78,14 @@ describe("parseLatestMemberChange", () => {
 
   it("parses a cancel call without inventing a vote", () => {
     const hash = "cancel-hash";
+    const previousController = "former-member.testnet";
     expect(parseLatestMemberChange(
       [accountTransaction(hash)],
-      [transaction("cancel", 6, controller, hash)],
+      [transaction("cancel", 6, previousController, hash)],
       voterId,
-      controller,
       6,
     )).toEqual({
-      latest: { method: "cancel", txHash: hash, timestampNs },
+      latest: { method: "cancel", signerId: previousController, txHash: hash, timestampNs },
       firstOverride: null,
     });
   });
@@ -93,18 +95,41 @@ describe("parseLatestMemberChange", () => {
       [accountTransaction(transactionHash, false)],
       [transaction("override_vote")],
       voterId,
-      controller,
       6,
     )).toEqual({ latest: null, firstOverride: null });
   });
 
-  it("ignores calls from a different signer", () => {
-    const otherSigner = "someone.testnet";
+  it("includes successful calls from a previous controller with their signer", () => {
+    const previousController = "former-member.testnet";
     expect(parseLatestMemberChange(
       [accountTransaction()],
-      [transaction("override_vote", 6, otherSigner)],
+      [transaction("override_vote", 6, previousController)],
       voterId,
-      controller,
+      6,
+    )).toEqual({
+      latest: {
+        method: "override_vote",
+        signerId: previousController,
+        vote: "Reject",
+        txHash: transactionHash,
+        timestampNs,
+      },
+      firstOverride: {
+        method: "override_vote",
+        signerId: previousController,
+        vote: "Reject",
+        txHash: transactionHash,
+        timestampNs,
+      },
+    });
+  });
+
+  it("ignores calls received by a different account", () => {
+    const otherReceiver = "other-voter.testnet";
+    expect(parseLatestMemberChange(
+      [accountTransaction()],
+      [transaction("override_vote", 6, controller, transactionHash, "Reject", otherReceiver)],
+      voterId,
       6,
     )).toEqual({ latest: null, firstOverride: null });
   });
@@ -114,7 +139,6 @@ describe("parseLatestMemberChange", () => {
       [accountTransaction()],
       [transaction("override_vote", 5)],
       voterId,
-      controller,
       6,
     )).toEqual({ latest: null, firstOverride: null });
   });
@@ -133,7 +157,6 @@ describe("parseLatestMemberChange", () => {
       changes.map((change) => change.summary),
       changes.map((change) => change.transaction),
       voterId,
-      controller,
       6,
     );
 
@@ -157,7 +180,6 @@ describe("parseLatestMemberChange", () => {
       changes.map((change) => change.summary),
       changes.map((change) => change.transaction),
       voterId,
-      controller,
       6,
     );
 

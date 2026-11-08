@@ -15,7 +15,7 @@ import type { PendingView, ProposalView, VoteResult } from "./chain/types";
 import { formatProposalDate } from "./proposalDate";
 import { isProposalVotingClosed, newestFirst } from "./proposals";
 import { SeatPlan, VoteMark, type VoteKind } from "./seatplan";
-import { canChangePendingVote } from "./voteControls";
+import { canChangePendingVote, changeAttribution } from "./voteControls";
 import { useMockRun } from "./useMockRun";
 import {
   CastStatus,
@@ -731,11 +731,10 @@ function ProposalVoteMember({
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [refreshFailed, setRefreshFailed] = useState(false);
   const voterId = seat?.record.voter_id;
-  const controller = seat?.controller;
 
   useEffect(() => {
     let active = true;
-    if (!voterId || !controller) {
+    if (!voterId) {
       setHistoryState({ status: "ready", change: null });
       return () => {
         active = false;
@@ -743,7 +742,7 @@ function ProposalVoteMember({
     }
 
     setHistoryState({ status: "loading" });
-    latestMemberChange(voterId, controller, proposal.id)
+    latestMemberChange(voterId, proposal.id)
       .then((change) => {
         if (active) setHistoryState({ status: "ready", change });
       })
@@ -753,7 +752,7 @@ function ProposalVoteMember({
     return () => {
       active = false;
     };
-  }, [voterId, controller, proposal.id, historyAttempt]);
+  }, [voterId, proposal.id, historyAttempt]);
 
   useEffect(() => {
     setActionState({ status: "idle" });
@@ -833,6 +832,9 @@ function ProposalVoteMember({
   const changeHistory = historyState.status === "ready" ? historyState.change : null;
   const latestChange = changeHistory?.latest ?? null;
   const cancelChange = latestChange?.method === "cancel" ? latestChange : null;
+  const cancelAttribution = cancelChange && seat
+    ? changeAttribution(cancelChange.signerId, seat.controller, viewer.accountId)
+    : null;
   const currentVote = voteState?.kind === "pending"
     ? voteState.pending.vote
     : voteState?.kind === "cast"
@@ -877,9 +879,11 @@ function ProposalVoteMember({
               This seat is controlled by <span className="mono">{seat.controller}</span>.
             </p>
           )}
-          {isOverridden && latestChange && (
+          {isOverridden && latestChange?.method === "override_vote" && (
             <p className={s.muted}>
-              <OverriddenStatus byMember={seat.controller !== viewer.accountId} />{" "}
+              <OverriddenStatus
+                by={changeAttribution(latestChange.signerId, seat.controller, viewer.accountId)}
+              />{" "}
               <TextButton href={explorerTxUrl(latestChange.txHash)}>View transaction</TextButton>
             </p>
           )}
@@ -937,9 +941,13 @@ function ProposalVoteMember({
                 <Fact label="Voter status"><RefusedStamp>Canceled</RefusedStamp></Fact>
               </dl>
               <p className={s.muted}>
-                {seat.controller === viewer.accountId
+                {cancelAttribution === "you"
                   ? "You canceled this vote"
-                  : "Canceled by the member"}
+                  : cancelAttribution === "member"
+                    ? "Canceled by the member"
+                    : cancelAttribution === "previous"
+                      ? "Canceled by a previous member"
+                      : "This vote was canceled"}
               </p>
               {cancelChange && (
                 <TextButton href={explorerTxUrl(cancelChange.txHash)}>View transaction</TextButton>
@@ -1511,7 +1519,7 @@ function StatusDemo({ kind }: { kind: "loading" | "success" | "error" }) {
 
 const STATE_EXAMPLES: { name: string; render: () => JSX.Element }[] = [
   { name: "Pending, window open", render: () => <PendingStatus deadline="14:32" countdown="1:42" /> },
-  { name: "Overridden", render: () => <OverriddenStatus /> },
+  { name: "Overridden", render: () => <OverriddenStatus by="you" /> },
   { name: "Cast", render: () => <CastStatus /> },
   { name: "Approved", render: () => <ResultStamp result="Approved" /> },
   { name: "Rejected", render: () => <ResultStamp result="Rejected" /> },
