@@ -539,6 +539,11 @@ export function MySeat() {
             </div>
           ))}
         </dl>
+        <div className={s.actions}>
+          <TextButton href="#/sell">Sell this seat</TextButton>
+          <TextButton href="#/vault">Open the club vault</TextButton>
+          <TextButton href="#/brief">Edit your delegate's brief</TextButton>
+        </div>
       </RuledSection>
 
       <RuledSection title="Open proposals">
