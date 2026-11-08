@@ -7,11 +7,11 @@ commit: 886500f
 
 ## What you see
 
-A listing shows the seat number, the price, the seat's history, and what the seat gives. The split between the seller and the club appears before you buy.
+A listing shows the seat number, named buyer, price, expiry, and 95% seller / 5% club split. Only the named buyer can sign the purchase.
 
 ## What you do
 
-Choose buy with club approval and confirm the price in your wallet. Your payment is escrowed.
+Sign the exact approved price plus gas. The transaction attaches the approved price as its deposit.
 
 ## What the club does
 
@@ -19,8 +19,8 @@ The club votes on the offer. While it waits, the screen shows the tally and the 
 
 ## How you know it worked
 
-On approval the seat moves to you, the seller is paid, the club's levy goes to the treasury, and your vote weight starts at 1. The receipt lists each step.
+After success the page refreshes your seats. The testnet explorer link shows the transaction.
 
 ## If nothing changes
 
-If the club declines or the offer expires, your payment is refunded in full. The receipt shows the refund.
+If the approval expires before you buy, the contract refuses the purchase. The seller must submit a new offer.
