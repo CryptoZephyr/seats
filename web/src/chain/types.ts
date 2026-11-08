@@ -134,6 +134,7 @@ export interface ViewArgs {
   };
   nft_metadata: Record<string, never>;
   get_seat: { token_id: string };
+  get_application_approval: { applicant: string };
   get_pending: { proposal_id: number };
   get_results: Record<string, never>;
   get_brief_hash: Record<string, never>;
@@ -150,6 +151,7 @@ export interface ViewResults {
   nft_tokens_for_owner: NftToken[];
   nft_metadata: NftMetadata;
   get_seat: SeatView | null;
+  get_application_approval: string | null;
   get_pending: PendingView | null;
   get_results: ResultsView;
   get_brief_hash: string;

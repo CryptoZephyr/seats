@@ -106,6 +106,105 @@
       }
     }
   },
+  "phase3a_vault_frontend_proof": {
+    "network": "testnet",
+    "signer": "rb.seatsfund1-1793846395.testnet",
+    "tx_hash": "BqR6a2ajQMo8DHKwXhF8qCwv5yRSwcVVtqdmr4ZkY9Kj",
+    "estimate_yocto": "7000100000000000000000",
+    "deposit_yocto": "7000100000500000000000",
+    "deposit_near": "0.0070001000005",
+    "net_balance_decrease_yocto": "2425919392369500000000",
+    "net_cost_near": "0.0024259193923695",
+    "decrypted_ok": true,
+    "vault_text_recorded": false
+  },
+  "phase3_brief_proof_recovery": {
+    "network": "testnet",
+    "owner_account_id": "seatsbriefs-1794146327.testnet",
+    "profile": "s1-ad583f34b7478b80",
+    "brief_hash": "ad583f34b7478b80d0ae695cde784eb45db19c3778d9e934c2079413df16d6af",
+    "profile_store": {
+      "tx_hash": "GHd7E8z1rUszdKKQnYMuQjjYbahAdWBXSTetBxx8KyEF",
+      "measured_net_cost_near": "0.0130519366507306"
+    },
+    "set_brief_transactions": [
+      {
+        "tx_hash": "64C3JF3uLM3rWpbFndG1bXvpp2YD1SZovCf9a8c583e5",
+        "measured_cost_near": "0.0001804620261747"
+      },
+      {
+        "tx_hash": "2CioBQ4xx2BmtiNp8vZMm1nFHUXeKyboAXStWYSis4y9",
+        "measured_cost_near": "0.0001804620261747"
+      },
+      {
+        "tx_hash": "7bRVjFAhx929q5jwtjE4JSSwgxTnnpLF5whtQ2HfDwX1",
+        "measured_cost_near": "0.0001804620261747"
+      }
+    ],
+    "proposal_15_explanation": "Both earlier requests used proposal_id 15, the next ID returned by get_last_proposal_id. get_proposal(15) panicked with ERR_NO_PROPOSAL, surfaced by rpc_view as rpc result. The job reads get_brief_hash before get_proposal, so both requests passed the brief-hash check.",
+    "outlayer_requests": [
+      {
+        "tx_hash": "Btk1qzMkhDsYpDyyDnt2KPzRTjttZ2Lgbw9S8fLmWpdW",
+        "proposal_id": 15,
+        "result": "inconclusive",
+        "error": "rpc result",
+        "decision": null,
+        "payment_charged_near": "0.0020677",
+        "payment_refunded_near": "0.004932400005",
+        "measured_net_cost_near": "0.0027790853721591"
+      },
+      {
+        "tx_hash": "CpkqryemnTmBETmPA8xm2ducX1QzV9Kwj29d28jHer66",
+        "proposal_id": 15,
+        "result": "inconclusive",
+        "error": "rpc result",
+        "decision": null,
+        "payment_charged_near": "0.0020691",
+        "payment_refunded_near": "0.004931000005",
+        "measured_net_cost_near": "0.00278031289895"
+      }
+    ],
+    "failed_restore_attempt": {
+      "tx_hash": "HkagyYRyrtHuXR2SAudeVDHoapev3Pisk5Cer1GeKB3c",
+      "result": "AccountDoesNotExist",
+      "cost_near": "0.0001204555420681"
+    },
+    "restore_transactions": [
+      {
+        "tx_hash": "5a7HuX7TowVLLhhpJ3ffg977PBgvYjGC7aLsCY2o39Zz",
+        "cost_near": "0.0001803914777433"
+      },
+      {
+        "tx_hash": "HK9UwDRGX1e6o4NPp2bEhbqnjCk1zJkY3peKndFtkuT4",
+        "cost_near": "0.0001803914777433"
+      }
+    ],
+    "proposal_14_proof": {
+      "tx_hash": "ARy9myExdEZ3M5TLrGVGzm3chxTuo63y1PXhdZqmkMWB",
+      "status": "FINAL",
+      "payer_account_id": "s3faucet-1794137860.testnet",
+      "proposal_id": 14,
+      "decision": "Reject",
+      "receipt_outcomes_examined": 7,
+      "estimate_yocto": "7000100000000000000000",
+      "deposit_yocto": "7000100000500000000000",
+      "payment_charged_near": "0.0024224001",
+      "payment_refunded_near": "0.0045776999005",
+      "measured_net_cost_near": "0.0031428328907213"
+    },
+    "previous_restored_get_brief": {
+      "voter_id": "s1.seatsnft3-1793848334.testnet",
+      "brief_hash": "648ecae07ec5dd816c22e3571242859871a2dcc4f70ed1b3954dba6f6d63435d",
+      "secrets_account_id": "seatfunder-1793834028.testnet",
+      "secrets_profile": "brief"
+    },
+    "final_get_brief": {
+      "voter_id": "s1.seatsnft3-1793848334.testnet",
+      "brief_hash": "ad583f34b7478b80d0ae695cde784eb45db19c3778d9e934c2079413df16d6af",
+      "secrets_account_id": "seatsbriefs-1794146327.testnet",
+      "secrets_profile": "s1-ad583f34b7478b80"
+    }
+  },
   "status": "deployed",
   "accounts": {
     "verifier": "tdxv-1793838446.testnet",

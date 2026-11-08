@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { contractErrorCode, explorerTxUrl, friendlyVoteError } from "./transactions";
+import {
+  contractErrorCode,
+  explorerTxUrl,
+  friendlyContractError,
+  friendlyVoteError,
+} from "./transactions";
 
 describe("contractErrorCode", () => {
   it("extracts a code from a realistic Wallet Selector error message", () => {
@@ -53,4 +58,11 @@ describe("explorerTxUrl", () => {
   it("links to the NEAR testnet explorer", () => {
     expect(explorerTxUrl("tx-hash")).toBe("https://testnet.nearblocks.io/txns/tx-hash");
   });
+});
+
+describe("friendlyContractError", () => {
+  it.each(["ERR_WRONG_BUYER", "ERR_APPROVAL_EXPIRED", "ERR_BUY_IN_PROGRESS", "ERR_WRONG_DEPOSIT"])(
+    "maps %s",
+    (code) => expect(friendlyContractError(code)).not.toContain("Error code"),
+  );
 });

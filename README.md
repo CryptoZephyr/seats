@@ -144,3 +144,17 @@ Proposal 14 was submitted in `3kEGbgmkKGwqgkqKvNpVnWg5sBqBmx2JBbuuecVpv8SN`. Sea
 One request plus cast cost 0.004023539233024 NEAR net from Seat 1's balance, measured from 4.965246888031220 NEAR before the proposal 13 cycle to 4.961223348798196 NEAR after it. The 4.0000005 NEAR OutLayer deposit is paid by the voter account, not seatfunder. Of that payment, 0.0027431001 NEAR was charged and 3.9972573999 NEAR was refunded. The voter needs the full deposit liquid while the job runs.
 
 The final `/health` snapshot captured after the casts was `ok`, with s1 listed as `file`, s3 as `discovered`, cursor 14, and public key `ed25519:5xUyVeJwwZrWzMozcdW5GaLQ4xEdbmwbXMbBGsbMzKfX`. Its `last_tick_at` was 2026-11-08T11:42:54.641Z and `last_tick_ok_at` was 2026-11-08T11:42:55.231Z. Final balances were funder 0.655358897996756 NEAR, visitor 0.440663245872605 NEAR, keeper 2.993262325618428 NEAR, s3 4.545843526424313 NEAR, and faucet sponsor 5.799955363487500 NEAR.
+
+### Phase 3A Vault frontend proof
+
+The browser-only Vault request from Seat 1 holder `rb.seatsfund1-1793846395.testnet` succeeded in transaction `BqR6a2ajQMo8DHKwXhF8qCwv5yRSwcVVtqdmr4ZkY9Kj`. The live estimate was `0.0070001` NEAR, so the request attached `0.0070001000005` NEAR including the 500,000,000,000 yocto buffer. The holder's measured net balance decrease was `0.0024259193923695` NEAR, and the result decrypted successfully. The vault text is not recorded.
+
+### Seat 1 brief proof recovery
+
+The brief profile was stored under `seatsbriefs-1794146327.testnet`, profile `s1-ad583f34b7478b80`, in `GHd7E8z1rUszdKKQnYMuQjjYbahAdWBXSTetBxx8KyEF`. The measured owner balance decrease was `0.0130519366507306` NEAR. Seat 1's new profile reference was set in `64C3JF3uLM3rWpbFndG1bXvpp2YD1SZovCf9a8c583e5` and again in `2CioBQ4xx2BmtiNp8vZMm1nFHUXeKyboAXStWYSis4y9`.
+
+The recovered OutLayer request `Btk1qzMkhDsYpDyyDnt2KPzRTjttZ2Lgbw9S8fLmWpdW` and the single retry `CpkqryemnTmBETmPA8xm2ducX1QzV9Kwj29d28jHer66` both used proposal ID 15. `get_last_proposal_id` returns the next ID, so `get_proposal(15)` panicked with `ERR_NO_PROPOSAL`, surfaced by `rpc_view` as `rpc result`. The agent reads `get_brief_hash` before `get_proposal`, so both requests passed the brief-hash check. Neither produced a vote decision. Their measured net costs were `0.0027790853721591` NEAR and `0.00278031289895` NEAR. OutLayer charged `0.0020677` and `0.0020691` NEAR respectively and refunded most of each deposit.
+
+After those attempts, Seat 1's old brief reference was restored in `5a7HuX7TowVLLhhpJ3ffg977PBgvYjGC7aLsCY2o39Zz` and again in `HK9UwDRGX1e6o4NPp2bEhbqnjCk1zJkY3peKndFtkuT4`. For the proposal 14 proof, rb set the new profile in `7bRVjFAhx929q5jwtjE4JSSwgxTnnpLF5whtQ2HfDwX1`, costing `0.0001804620261747` NEAR.
+
+The proposal 14 request `ARy9myExdEZ3M5TLrGVGzm3chxTuo63y1PXhdZqmkMWB` from `s3faucet-1794137860.testnet` reached `FINAL`. All seven receipt outcomes were examined. It returned the decision `Reject`. The estimate was `0.0070001` NEAR and the deposit was `0.0070001000005` NEAR. OutLayer charged `0.0024224001` NEAR and refunded `0.0045776999005` NEAR. The measured payer balance decrease was `0.0031428328907213` NEAR. The final `get_brief` read confirms Seat 1 now uses hash `ad583f34b7478b80d0ae695cde784eb45db19c3778d9e934c2079413df16d6af`, account `seatsbriefs-1794146327.testnet`, profile `s1-ad583f34b7478b80`. No brief text is recorded.

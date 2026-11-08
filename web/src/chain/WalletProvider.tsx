@@ -6,13 +6,20 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { setupWalletSelector, type WalletSelector } from "@near-wallet-selector/core";
+import { setupWalletSelector, type SignedMessage, type WalletSelector } from "@near-wallet-selector/core";
 import { setupIntearWallet } from "@near-wallet-selector/intear-wallet";
 import { setupModal, type WalletSelectorModal } from "@near-wallet-selector/modal-ui";
 import { loadClubSnapshot } from "./club";
 import { chainConfig } from "./config";
 import { callView } from "./rpc";
-import { voterCall, type VoterArgs, type VoterMethod } from "./transactions";
+import {
+  sendFunctionCall,
+  voterCall,
+  type FunctionCallRequest,
+  type FunctionCallResult,
+  type VoterArgs,
+  type VoterMethod,
+} from "./transactions";
 import type { NftToken } from "./types";
 
 interface Membership {
@@ -38,6 +45,8 @@ interface ViewerValue {
     method: Method,
     args: VoterArgs<Method>,
   ) => Promise<string>;
+  callContract: (request: FunctionCallRequest) => Promise<FunctionCallResult>;
+  signMessage: (message: string, nonce: Uint8Array, recipient: string) => Promise<SignedMessage>;
 }
 
 const ViewerContext = createContext<ViewerValue | null>(null);
@@ -197,6 +206,23 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     },
     [accountId, selector],
   );
+  const callContract = useCallback(
+    async (request: FunctionCallRequest) => {
+      if (!accountId) throw new Error("Sign in to continue.");
+      if (!selector) throw new Error("Wallet isn't ready. Try again.");
+      const wallet = await selector.wallet();
+      return sendFunctionCall(wallet, accountId, request);
+    },
+    [accountId, selector],
+  );
+  const signMessage = useCallback(async (message: string, nonce: Uint8Array, recipient: string) => {
+    if (!accountId) throw new Error("Sign in to save your delegate's brief.");
+    if (!selector) throw new Error("Wallet isn't ready. Try again.");
+    const wallet = await selector.wallet();
+    const signed = await wallet.signMessage({ message, nonce: nonce as Buffer, recipient });
+    if (!signed || signed.accountId !== accountId) throw new Error("The wallet didn't sign for the connected account.");
+    return signed;
+  }, [accountId, selector]);
 
   const value: ViewerValue = {
     accountId,
@@ -210,6 +236,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     signOut,
     retry,
     callVoter,
+    callContract,
+    signMessage,
   };
 
   return <ViewerContext.Provider value={value}>{children}</ViewerContext.Provider>;

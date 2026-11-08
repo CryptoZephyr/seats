@@ -7,13 +7,22 @@ import {
   type MemberChangeHistory,
 } from "./chain/history";
 import type { SeatSnapshot } from "./chain/club";
-import { callView } from "./chain/rpc";
-import { contractErrorCode, explorerTxUrl, friendlyVoteError } from "./chain/transactions";
+import { callView, readSeatNftLevyBps } from "./chain/rpc";
+import {
+  calculateSaleSplit,
+  contractErrorCode,
+  explorerTxUrl,
+  friendlyVoteError,
+} from "./chain/transactions";
 import { useClubData } from "./chain/useClubData";
 import { useViewer } from "./chain/WalletProvider";
 import type { PendingView, ProposalView, VoteResult } from "./chain/types";
 import { formatProposalDate } from "./proposalDate";
 import { isProposalVotingClosed, newestFirst } from "./proposals";
+import { saleListings } from "./chain/sales";
+import { buildBriefMessage, buildBriefRequestBody, hashBrief, randomBriefSalt } from "./chain/brief";
+import { buildSetBriefRequest, SET_BRIEF_GAS } from "./chain/transactions";
+import { friendly, useGasEstimate } from "./flowCommon";
 import { SeatPlan, VoteMark, type VoteKind } from "./seatplan";
 import { canChangePendingVote, changeAttribution } from "./voteControls";
 import { useMockRun } from "./useMockRun";
@@ -29,13 +38,13 @@ import {
   SuccessStatus,
   Fact,
   GraphicButton,
-  Icon,
   OverriddenStatus,
   PendingStatus,
   ReceiptSteps,
   RefusedStamp,
   ResultStamp,
   RuledSection,
+  StepStatus,
   TextButton,
   VotingClosedStatus,
   WindowClosedStatus,
@@ -189,40 +198,6 @@ function voteSourceLabel(source: string): string {
   return source;
 }
 
-function saleArgs(args: string): { seatId: string | null; buyerId: string | null; price: string | null } {
-  try {
-    const bytes = Uint8Array.from(atob(args), (character) => character.charCodeAt(0));
-    const value = JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>;
-    return {
-      seatId: typeof value.token_id === "string" ? value.token_id : null,
-      buyerId: typeof value.buyer === "string" ? value.buyer : null,
-      price: typeof value.price === "string" && /^\d+$/.test(value.price) ? value.price : null,
-    };
-  } catch {
-    return { seatId: null, buyerId: null, price: null };
-  }
-}
-
-function saleListings(proposals: ProposalView[]) {
-  return proposals.flatMap((proposal) => {
-    if (
-      proposal.status !== "InProgress" ||
-      typeof proposal.kind !== "object" ||
-      proposal.kind === null ||
-      !("FunctionCall" in proposal.kind)
-    ) {
-      return [];
-    }
-    const functionCall = proposal.kind.FunctionCall;
-    if (functionCall.receiver_id !== chainConfig.seatNftAccountId) return [];
-    return functionCall.actions
-      .filter((action) => action.method_name === "approve_sale")
-      .map((action) => ({ proposal, ...saleArgs(action.args) }));
-  });
-}
-
-const SALE_LEVY_BPS = 500n;
-
 function activeSaleApprovals(seats: SeatSnapshot[], nowNs: bigint) {
   return seats.flatMap((seat) => {
     const approval = seat.record.approval;
@@ -235,12 +210,6 @@ function activeSaleApprovals(seats: SeatSnapshot[], nowNs: bigint) {
       expiresAt: String(approval.expires_at),
     }];
   });
-}
-
-function saleSplit(price: string) {
-  const amount = BigInt(price);
-  const levy = amount * SALE_LEVY_BPS / 10_000n;
-  return { seller: amount - levy, levy };
 }
 
 function useCurrentTimeNs() {
@@ -260,16 +229,30 @@ function SaleApprovalDetails({
 }: {
   listing: ReturnType<typeof activeSaleApprovals>[number];
 }) {
-  const split = saleSplit(listing.price);
+  const [levyBps, setLevyBps] = useState<number | null>(null);
+  useEffect(() => {
+    let active = true;
+    void readSeatNftLevyBps().then(
+      (value) => { if (active) setLevyBps(value); },
+      () => { if (active) setLevyBps(-1); },
+    );
+    return () => { active = false; };
+  }, []);
+  let split: { seller: bigint; club: bigint } | null = null;
+  try {
+    if (levyBps === 500) split = calculateSaleSplit(listing.price, levyBps);
+  } catch {
+    split = null;
+  }
   return (
     <dl className={s.facts}>
       <Fact label="Buyer"><span className="mono">{listing.buyerId}</span></Fact>
       <Fact label="Price and split">
-        <MoneySplit
+        {split ? <MoneySplit
           price={nearAmount(listing.price)}
           sellerPct={nearAmount(split.seller.toString())}
-          levyPct={nearAmount(split.levy.toString())}
-        />
+          levyPct={nearAmount(split.club.toString())}
+        /> : <span className={s.muted}>Sale split unavailable until the live levy is verified.</span>}
       </Fact>
       <Fact label="Approval expires">
         <ProposalDate timestampNs={listing.expiresAt} />
@@ -317,6 +300,7 @@ export function ClubPage() {
           Each seat carries one vote in the club's DAO and opens the club vault. Seats move only
           through a club-approved sale.
         </p>
+        <p><TextButton href="#/apply">Apply for a seat</TextButton></p>
       </header>
 
       <RuledSection
@@ -643,11 +627,108 @@ export function MySeat() {
 export function DelegateBrief() {
   const state = useClubData();
   const viewer = useViewer();
+  const gasEstimate = useGasEstimate(SET_BRIEF_GAS);
+  const [brief, setBrief] = useState("");
+  const [selectedSeatId, setSelectedSeatId] = useState("");
+  const [profile, setProfile] = useState<{ secrets_account_id: string; profile: string; brief_hash: string; tx_hash: string } | null>(null);
+  const [step, setStep] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [txHash, setTxHash] = useState("");
+  useEffect(() => {
+    setBrief("");
+    setProfile(null);
+    setStep(0);
+    setError("");
+    setTxHash("");
+  }, [viewer.accountId]);
   const pageState = ReadPageState({ state, retry: state.retry });
   if (pageState) return pageState;
   if (state.status !== "ready") return null;
 
   const seats = state.data.seats.filter((seat) => viewer.seatIds.includes(seat.token.token_id));
+  const selectedSeat = seats.find((seat) => seat.token.token_id === selectedSeatId) ?? seats[0];
+  const postBrief = async () => {
+    if (!viewer.accountId || !selectedSeat) return;
+    setError("");
+    setTxHash("");
+    setBusy(true);
+    setStep(1);
+    let profileStored = false;
+    try {
+      const nonce = crypto.getRandomValues(new Uint8Array(32));
+      const salt = randomBriefSalt();
+      const hash = await hashBrief(salt, brief);
+      const message = buildBriefMessage(selectedSeat.token.token_id, hash, Date.now());
+      const signed = await viewer.signMessage(message, nonce, "seats-agent-runner");
+      setStep(2);
+      const response = await fetch(`${chainConfig.runnerUrl}/brief`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(buildBriefRequestBody(
+          signed.accountId,
+          signed.publicKey,
+          signed.signature,
+          nonce,
+          message,
+          brief,
+          salt,
+        )),
+      });
+      const result = await response.json() as {
+        secrets_account_id?: string;
+        profile?: string;
+        brief_hash?: string;
+        tx_hash?: string;
+        error?: string;
+      };
+      if (!response.ok || !result.secrets_account_id || !result.profile || !result.brief_hash || !result.tx_hash) {
+        throw new Error(result.error ? briefRelayError(result.error) : "The private brief couldn't be stored.");
+      }
+      profileStored = true;
+      setProfile({
+        secrets_account_id: result.secrets_account_id,
+        profile: result.profile,
+        brief_hash: result.brief_hash,
+        tx_hash: result.tx_hash,
+      });
+      setStep(5);
+      await saveFingerprint(result.secrets_account_id, result.profile, result.brief_hash);
+    } catch (cause) {
+      setError(friendly(cause));
+      if (!profileStored) setStep(0);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const saveFingerprint = async (accountId: string, name: string, hash: string) => {
+    if (!selectedSeat) return;
+    setBusy(true);
+    setStep(5);
+    try {
+      const request = buildSetBriefRequest(selectedSeat.record.voter_id, hash, accountId, name);
+      const tx = await viewer.callContract(request);
+      setTxHash(tx.hash);
+      state.retry();
+      viewer.retry();
+      setStep(4);
+      setError("");
+    } catch (cause) {
+      state.retry();
+      viewer.retry();
+      setError(friendly(cause));
+      setStep(3);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const resetBrief = () => {
+    setBrief("");
+    setProfile(null);
+    setStep(0);
+    setError("");
+    setTxHash("");
+  };
 
   return (
     <main className={s.page}>
@@ -662,25 +743,51 @@ export function DelegateBrief() {
 
       <RuledSection title="The brief">
         {!viewer.accountId ? (
-          <p className={s.muted}>Sign in to see fingerprints for seats held by this account.</p>
+          <p className={s.muted}>Sign in with the wallet that holds your seat to save a private brief.</p>
         ) : viewer.isLoading ? (
           <LoadingStatus>Checking this account's seats…</LoadingStatus>
         ) : viewer.error ? (
           <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>
         ) : seats.length > 0 ? (
-          <dl className={s.facts}>
-            {seats.map((seat) => (
-              <Fact key={seat.token.token_id} label={`Seat ${seat.token.token_id} fingerprint`}>
-                {seat.briefHash ? (
-                  <HashValue value={seat.briefHash} label="brief fingerprint" />
-                ) : "No fingerprint stored"}
-              </Fact>
-            ))}
-          </dl>
+          <>
+            {seats.length > 1 && <label className={s.fieldLabel}>Seat
+              <select className={s.priceInput} value={selectedSeat?.token.token_id ?? ""} onChange={(event) => {
+                setSelectedSeatId(event.target.value);
+                setBrief("");
+                setProfile(null);
+                setStep(0);
+                setError("");
+              }}>
+                {seats.map((seat) => <option key={seat.token.token_id} value={seat.token.token_id}>Seat {seat.token.token_id}</option>)}
+              </select>
+            </label>}
+            {selectedSeat?.briefHash ? <p>Current fingerprint: <HashValue value={selectedSeat.briefHash} label="brief fingerprint" /></p>
+              : <p>Your delegate can't vote until you save a brief.</p>}
+            <p className={s.note}>Your current brief isn't shown because it's stored privately. Saving replaces it.</p>
+            <p className={s.note}>Your brief is sent over HTTPS to the Seats runner, which doesn't keep it, and to OutLayer's keystore, which encrypts it. Only the fingerprint and a profile reference go on-chain.</p>
+            <label className={s.fieldLabel}>Your delegate's brief
+              <textarea className={s.briefInput} rows={8} maxLength={4000} value={brief} onChange={(event) => setBrief(event.target.value)} />
+            </label>
+            <p className={s.note}>{brief.length}/4000 characters</p>
+            <ol className={s.gives}>
+              <li>1. Confirm in your wallet that you hold this seat (no fee) <StepStatus status={step === 1 ? "Pending" : step > 1 ? "Complete" : "Waiting"} /></li>
+              <li>2. Storing your brief privately <StepStatus status={step === 2 ? "Pending" : step === 3 || step >= 4 ? "Complete" : "Waiting"} /> <span className={s.muted}>can take up to a minute if the service was asleep</span></li>
+              <li>3. Save the fingerprint on-chain <StepStatus status={step === 5 ? "Pending" : step === 4 ? "Complete" : step === 3 ? "Retry" : "Waiting"} /> <span className={s.muted}>Network fee about {gasEstimate ? `${gasEstimate} testnet NEAR` : "checking testnet network fee"}. No deposit.</span></li>
+            </ol>
+            {!profile ? <GraphicButton glyph="keys" onClick={() => void postBrief()} disabled={busy || !brief.trim() || brief.length > 4000}>
+              Save private brief
+            </GraphicButton> : step === 3 ? <GraphicButton glyph="keys" onClick={() => void saveFingerprint(profile.secrets_account_id, profile.profile, profile.brief_hash)} disabled={busy}>
+              Retry on-chain save
+            </GraphicButton> : step === 4 ? <GraphicButton glyph="keys" onClick={resetBrief} disabled={busy}>
+              Write a new brief
+            </GraphicButton> : null}
+            {busy && <LoadingStatus>{step <= 1 ? "Waiting for your wallet…" : step === 2 ? "Storing your brief privately…" : "Saving the fingerprint on-chain…"}</LoadingStatus>}
+            {error && <ErrorStatus>{error}</ErrorStatus>}
+            {step === 4 && <SuccessStatus>Your delegate uses this brief from the next proposal. <a href={explorerTxUrl(txHash)} target="_blank" rel="noreferrer">View transaction</a></SuccessStatus>}
+          </>
         ) : (
-          <p className={s.muted}>This account does not hold a seat with a public brief fingerprint.</p>
+          <p className={s.muted}>This account doesn't hold a seat.</p>
         )}
-        <p className={s.note}>Brief text is private and isn't included in public testnet reads.</p>
       </RuledSection>
 
       <RuledSection title="What the delegate can and cannot do">
@@ -692,6 +799,33 @@ export function DelegateBrief() {
       </RuledSection>
     </main>
   );
+}
+
+function briefRelayError(code: string): string {
+  switch (code) {
+    case "FULL_ACCESS_REQUIRED":
+      return "Use a full-access key for this NEAR testnet account.";
+    case "INVALID_SIGNATURE":
+      return "The wallet signature couldn't be verified. Try saving again.";
+    case "MESSAGE_EXPIRED":
+    case "NONCE_REUSED":
+      return "The wallet confirmation expired. Try saving again.";
+    case "NOT_TOKEN_OWNER":
+      return "This wallet no longer owns the selected seat.";
+    case "NOT_VOTER_CONTROLLER":
+      return "This wallet no longer controls the selected seat's delegate.";
+    case "INVALID_SALT":
+    case "INVALID_BRIEF":
+    case "BRIEF_HASH_MISMATCH":
+      return "The brief couldn't be verified. Review it and try again.";
+    case "RATE_LIMITED":
+      return "Too many brief saves were requested. Wait before trying again.";
+    case "BRIEF_OWNER_LOW_BALANCE":
+    case "PROFILE_STORE_FAILED":
+      return "Private storage is temporarily unavailable. Try again later.";
+    default:
+      return "The private brief couldn't be stored. Try again.";
+  }
 }
 
 type VoteChange =
@@ -724,6 +858,7 @@ function ProposalVoteMember({
   voteState?: SeatVoteState;
   tokenId?: string;
 }) {
+  const networkFee = useGasEstimate(SET_BRIEF_GAS);
   const [historyAttempt, setHistoryAttempt] = useState(0);
   const [historyState, setHistoryState] = useState<ChangeHistoryState>({ status: "loading" });
   const [actionState, setActionState] = useState<VoteActionState>({ status: "idle" });
@@ -999,6 +1134,7 @@ function ProposalVoteMember({
               )}
               {controlsVisible && (
                 <div className={s.actions}>
+                  <p className={s.note}>Network fee about {networkFee ? `${networkFee} testnet NEAR` : "checking testnet network fee"}. No deposit.</p>
                   {confirmCancel ? (
                     <>
                       <p className={s.muted}>Your seat won't vote on this proposal.</p>
@@ -1266,182 +1402,6 @@ export function AIReceiptPage() {
   );
 }
 
-export function VaultPage() {
-  const viewer = useViewer();
-  return (
-    <main className={s.page}>
-      <header className={s.pageHead}>
-        <p className={s.eyebrow}>{viewer.seatIds.length === 1 ? `Seat ${viewer.seatIds[0]}` : "Your seat"}</p>
-        <h1>Club vault</h1>
-      </header>
-
-      <RuledSection inset>
-        <div className={s.vaultBox}>
-          <p className={s.vaultIcon} aria-hidden="true">
-            <Icon name="vault" size={40} />
-          </p>
-          {viewer.error ? (
-            <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>
-          ) : viewer.isLoading ? (
-            <LoadingStatus>Checking the connected account's seats on testnet…</LoadingStatus>
-          ) : !viewer.accountId ? (
-            <p className={s.muted}>
-              Sign in with the wallet that holds your seat to check your vault access.
-            </p>
-          ) : viewer.isSeatHolder ? (
-            <p className={s.muted}>
-              Your seat opens the vault. Opening it from this site isn't available yet.
-            </p>
-          ) : (
-            <p>
-              <RefusedStamp>Not allowed</RefusedStamp>{" "}
-              <span className={s.muted}>Only current seat holders can open the vault.</span>
-            </p>
-          )}
-        </div>
-      </RuledSection>
-
-    </main>
-  );
-}
-
-export function SellSeat() {
-  const state = useClubData();
-  const viewer = useViewer();
-  const nowNs = useCurrentTimeNs();
-  const pageState = ReadPageState({ state, retry: state.retry });
-  if (pageState) return pageState;
-  if (state.status !== "ready") return null;
-
-  const approvals = activeSaleApprovals(state.data.seats, nowNs);
-  const listings = saleListings(state.data.proposals);
-  const ownedSeats = state.data.seats.filter((seat) => viewer.seatIds.includes(seat.token.token_id));
-
-  return (
-    <main className={s.page}>
-      <header className={s.pageHead}>
-        <p className={s.eyebrow}>Your seats</p>
-        <h1>Sell your seat</h1>
-        <p className={s.lede}>
-          This page shows active sale approvals and proposals waiting for the club.
-        </p>
-      </header>
-
-      {viewer.error ? (
-        <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>
-      ) : viewer.accountId && viewer.isLoading ? (
-        <LoadingStatus>Checking this account's seats…</LoadingStatus>
-      ) : !viewer.accountId ? (
-        <RuledSection title="Your seat">
-          <p className={s.muted}>Sign in with an account that holds a seat to review its sale proposals.</p>
-        </RuledSection>
-      ) : ownedSeats.length === 0 ? (
-        <RuledSection title="Your seat">
-          <p className={s.muted}>This account does not hold a seat.</p>
-        </RuledSection>
-      ) : (
-        ownedSeats.map((seat) => {
-          const approval = approvals.find((item) => item.seatId === seat.token.token_id);
-          const listing = listings.find((item) => item.seatId === seat.token.token_id);
-          return (
-            <RuledSection key={seat.token.token_id} title={`Seat ${seat.token.token_id}`}>
-              <p className={s.eyebrow}>For sale</p>
-              {approval ? (
-                <SaleApprovalDetails listing={approval} />
-              ) : (
-                <p className={s.muted}>No active sale approval for this seat.</p>
-              )}
-              <p className={s.eyebrow}>Awaiting club vote</p>
-              {listing ? (
-                <dl className={s.facts}>
-                  <Fact label="Proposal">#{listing.proposal.id}</Fact>
-                  <Fact label="Status">
-                    <ProposalStatus proposal={listing.proposal} periodNs={state.data.proposalPeriodNs} />
-                  </Fact>
-                  {listing.buyerId && <Fact label="Buyer"><span className="mono">{listing.buyerId}</span></Fact>}
-                  {listing.price && <Fact label="Price">{nearAmount(listing.price)} NEAR</Fact>}
-                </dl>
-              ) : (
-                <p className={s.muted}>No sale proposal is waiting for the club for this seat.</p>
-              )}
-              <p className={s.note}>Creating or canceling a sale is not available in this phase.</p>
-            </RuledSection>
-          );
-        })
-      )}
-    </main>
-  );
-}
-
-export function BuySeat() {
-  const state = useClubData();
-  const nowNs = useCurrentTimeNs();
-  const pageState = ReadPageState({ state, retry: state.retry });
-  if (pageState) return pageState;
-  if (state.status !== "ready") return null;
-
-  const approvals = activeSaleApprovals(state.data.seats, nowNs);
-  const listings = saleListings(state.data.proposals);
-
-  return (
-    <main className={s.page}>
-      <header className={s.pageHead}>
-        <p className={s.eyebrow}>Seat for sale</p>
-        <h1>Seats for sale</h1>
-      </header>
-
-      <RuledSection title="For sale">
-        {approvals.length === 0 ? (
-          <p className={s.muted}>No seats are for sale right now.</p>
-        ) : (
-          approvals.map((listing) => (
-            <div key={listing.seatId} className={s.listing}>
-              <div>
-                <strong>Seat {listing.seatId}</strong>
-                <span className={s.muted}> · held by <span className="mono">{listing.sellerId}</span></span>
-              </div>
-              <SaleApprovalDetails listing={listing} />
-            </div>
-          ))
-        )}
-        <p className={s.note}>Buying a seat is not available in this phase.</p>
-      </RuledSection>
-
-      <RuledSection title="Awaiting club vote">
-        {listings.length === 0 ? (
-          <p className={s.muted}>No seat sales are waiting for a club vote.</p>
-        ) : (
-          listings.map((listing) => {
-            const holder = state.data.tokens.find((token) => token.token_id === listing.seatId)?.owner_id;
-            return (
-              <div key={listing.proposal.id} className={s.listing}>
-                <div>
-                  <strong>
-                    {listing.seatId ? `Seat ${listing.seatId}` : `Proposal ${listing.proposal.id}`}
-                  </strong>
-                  {holder && (
-                    <span className={s.muted}> · held by <span className="mono">{holder}</span></span>
-                  )}
-                </div>
-                <dl className={s.facts}>
-                  <Fact label="Proposal">#{listing.proposal.id}: {listing.proposal.description}</Fact>
-                  <Fact label="Status">
-                    <ProposalStatus proposal={listing.proposal} periodNs={state.data.proposalPeriodNs} />
-                  </Fact>
-                  {listing.buyerId && (
-                    <Fact label="Buyer"><span className="mono">{listing.buyerId}</span></Fact>
-                  )}
-                  {listing.price && <Fact label="Price">{nearAmount(listing.price)} NEAR</Fact>}
-                </dl>
-              </div>
-            );
-          })
-        )}
-      </RuledSection>
-    </main>
-  );
-}
-
 export function ReceiptPage({ kind }: { kind: "vote" | "sale" | "buy" | "vault" }) {
   const state = useClubData();
   const viewer = useViewer();
@@ -1573,13 +1533,13 @@ export function StatesPage() {
         <ul className={s.stateList}>
           <li className={s.stateRow}>
             <span className={s.stateName}>No seat yet</span>
-            <span className={s.muted}>Applications are not available in this phase.</span>
+            <span className={s.muted}>Visitors can apply from the club page.</span>
           </li>
           <li className={s.stateRow}>
             <span className={s.stateName}>Seat held, no brief</span>
             <span className={s.edgeDemo}>
               <span className={s.muted}>Your seat is held. Your delegate can't vote until you write a brief.</span>
-              <span className={s.muted}>Brief editing is not available in this phase.</span>
+              <span className={s.muted}>This fixture represents a seat with no saved brief.</span>
             </span>
           </li>
           <li className={s.stateRow}>

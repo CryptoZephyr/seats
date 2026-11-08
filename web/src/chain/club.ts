@@ -30,6 +30,7 @@ export interface ClubSnapshot {
     metadata: string;
   };
   proposalPeriodNs: string;
+  proposalBond: string;
 }
 
 async function allTokens(): Promise<NftToken[]> {
@@ -129,5 +130,6 @@ export async function loadClubSnapshot(): Promise<ClubSnapshot> {
     seats,
     proposals,
     proposalPeriodNs: policy.proposal_period,
+    proposalBond: policy.proposal_bond,
   };
 }

@@ -55,6 +55,15 @@ export function loadCredential(
   return { accountId, signer, publicKey: keyPair.getPublicKey() };
 }
 
+export function credentialFromPrivateKey(accountId: string, secretKey: string): KeyFileCredential {
+  const keyPair = KeyPair.fromString(secretKey as KeyPairString);
+  return {
+    accountId,
+    signer: KeyPairSigner.fromSecretKey(secretKey as KeyPairString),
+    publicKey: keyPair.getPublicKey(),
+  };
+}
+
 function requireFile(filePath: string): string {
   return readFileSync(filePath, "utf8");
 }
@@ -100,6 +109,52 @@ export class NearAgentRpc implements AgentRunnerRpc, VoterDiscoveryRpc {
       { token_id: tokenId },
     );
     return seat?.voter_id ?? null;
+  }
+
+  async isFullAccessKey(accountId: string, publicKey: string): Promise<boolean> {
+    try {
+      const accessKey = await this.provider.viewAccessKey(accountId, publicKey, { finality: "final" });
+      return accessKey.permission === "FullAccess";
+    } catch {
+      return false;
+    }
+  }
+
+  async getTokenOwner(seatNftId: string, tokenId: string): Promise<string | null> {
+    const token = await this.view<{ owner_id: string } | null>(
+      seatNftId,
+      "nft_token",
+      { token_id: tokenId },
+    );
+    return token?.owner_id ?? null;
+  }
+
+  async getVoterController(voterId: string): Promise<string | null> {
+    return this.view<string | null>(voterId, "get_controller", {});
+  }
+
+  async getAccountBalance(accountId: string): Promise<string> {
+    const account = await this.provider.viewAccount(accountId, { finality: "final" });
+    return account.amount.toString();
+  }
+
+  async storeProfile(ownerId: string, profile: string, encryptedSecretsBase64: string): Promise<string> {
+    const credential = this.credentials.get(ownerId);
+    if (!credential) throw new Error("No profile owner credential configured");
+    return this.call(
+      credential,
+      "outlayer.testnet",
+      "store_secrets",
+      {
+        accessor: { WasmHash: { hash: "a2db80036766e04aab58c50b09387c033f0617a7cb3580d82482ca8756b6519d" } },
+        profile,
+        encrypted_secrets_base64: encryptedSecretsBase64,
+        access: "AllowAll",
+        vault_id: null,
+      },
+      50n,
+      100_000_000_000_000_000_000_000n,
+    );
   }
 
   async hasRequestVoteAccessKey(voterId: string, publicKey: string): Promise<boolean> {
@@ -192,6 +247,7 @@ export class NearAgentRpc implements AgentRunnerRpc, VoterDiscoveryRpc {
     methodName: string,
     args: object,
     gasTgas: bigint,
+    deposit = 0n,
   ): Promise<string> {
     const publicKey = await credential.signer.getPublicKey();
     return sendWithNonceRetry(
@@ -210,7 +266,7 @@ export class NearAgentRpc implements AgentRunnerRpc, VoterDiscoveryRpc {
             methodName,
             args,
             gasTgas * 1_000_000_000_000n,
-            0n,
+            deposit,
           )],
           baseDecode(block.header.hash),
         );
