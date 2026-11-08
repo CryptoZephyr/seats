@@ -60,7 +60,7 @@ pub struct SeatView {
 }
 
 #[near(serializers = [borsh, json])]
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct VoterDefaults {
     pub model_signer_hex: String,
     pub model: String,
@@ -651,7 +651,7 @@ impl NonFungibleTokenApproval for SeatNft {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use near_sdk::environment::mock::MockAction;
+    use near_sdk::mock::MockAction;
     use near_sdk::test_utils::{
         get_created_receipts, testing_env_with_promise_results, VMContextBuilder,
     };
