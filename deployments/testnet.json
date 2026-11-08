@@ -408,6 +408,306 @@
       "note": "The v0.1.0 WASM hardcoded the old spike NFT, reversing the expected outputs. These results are superseded by the v0.2.0 runs above."
     }
   },
+  "stage3_recovery": {
+    "observed_at": "2026-11-08",
+    "accounts": {
+      "funder": "seatsfund1-1793846395.testnet",
+      "dao": "seats2-1793847972.sputnikv2.testnet",
+      "seat_nft": "seatsnft3-1793848334.testnet",
+      "visitor": "visitor.seatsfund1-1793846395.testnet",
+      "keeper": "keeper.seatsfund1-1793846395.testnet",
+      "s1": "s1.seatsnft3-1793848334.testnet",
+      "orphan_s2": "s2.seatsnft3-1793848334.testnet",
+      "s3": "s3.seatsnft3-1793848334.testnet",
+      "faucet_sponsor": "s3faucet-1794137860.testnet"
+    },
+    "seat_nft_upgrade": {
+      "account_id": "seatsnft3-1793848334.testnet",
+      "source_commit": "f6a4f3c7cf192270158c86153d24bab8c2406c2d",
+      "tx_hash": "3kHRo9qyf6ZprKo3ttKFordjjggwidzguT5FYtAGoZnW",
+      "receipt_hash": "wKTyyzaZX63Axo5Ly2LQ4k8tYByyZrgMKCFjryqXo4S",
+      "code_hash": "B64N7rjVL2yxsTGvUiRoyu2v8aW1oGAhtv87QjSdALDF",
+      "verification": {
+        "seat_1_owner": "rb.seatsfund1-1793846395.testnet",
+        "seat_1_record_unchanged": true,
+        "next_seat": 3,
+        "voter_defaults": "matches deployments/testnet.json"
+      }
+    },
+    "orphaned_s2": {
+      "account_id": "s2.seatsnft3-1793848334.testnet",
+      "failed_claim_tx": "9vsqAGcS9RXP26h7pKok6EQbSYgpiNPZwkWwUsrRfYhK",
+      "state": "account exists with the restricted shared runner key, but no NFT or seat record",
+      "discovery": "The runner discovers voters from nft_tokens, so it does not discover this orphan.",
+      "next_claim": "The next_seat value is 3, so the successful recovery claim minted token 3 for s3."
+    },
+    "faucet_funding": {
+      "account_id": "s3faucet-1794137860.testnet",
+      "credential_path": "~/near-spike/secrets/.near-credentials/testnet/s3faucet-1794137860.testnet.json",
+      "creation_tx": "6N8zcxvydQyg3Rn7Gkr3frysKcUQH8Vgz7zVNa5VpnSC",
+      "creation_receipts": [
+        "EGLjLRZ188iW7kXpLk8LSnkStxd34GTDyo9n6D9qvgyH",
+        "7XWtcC3t91zFzRZBjfD4vHKkJQ5W5mLnWq8btfNRdBVf"
+      ],
+      "creation_grant_near": "10",
+      "transfer_tx": "BpiS9C5UPn9zz7tcxRoa8su27fqhc5KJWeS9LGqBsvzb",
+      "transfer_near": "4.2",
+      "transfer_receipts": [
+        "AmzERXYYekQzKh8s2mN5mc8ax38iWCLYVZPwkia2pG9J",
+        "GjDTZzGzdoTGLUZcWb4KwnRQgA9zh1znUkJ138YbYbBw"
+      ],
+      "s3_balance_after_transfer_near": "4.549604963848036"
+    },
+    "proposals": {
+      "9": {
+        "purpose": "Set voter defaults",
+        "submission_tx": "5vtf6Hch5d4fveoVit4nqjVykBhd5k6YjnbmYbZPS6gA",
+        "approval_tx": "Hh2o3jKjMrGTpehTLSAuJKhW25crM7HZ5NyJ1XNQhTzj"
+      },
+      "10": {
+        "purpose": "Apply the voter policy",
+        "submission_tx": "HEVs9bamPfZqWD6SiKsEWke9eWGhHk2YqbuzF7CpVcBq",
+        "approval_tx": "B99sDF2X9mXLxYZ97umz9yCjwSebMFsFoHAQhXRbXdPk"
+      },
+      "11": {
+        "purpose": "Visitor application",
+        "submission_tx": "Heh7vwZzDxa4qeFHC4pGZwvzE2AqTTu6yG5jFZn6K77j",
+        "s1_request_tx": "SzWbvZVDzEDow1YkQqHrVUMcu3BtXCo7yWh3Rapun6a",
+        "s1_pending_receipt_hash": "3f8787c0341cca7df1c83a1b10ab2b8c835b5a12a6500b7169e7212ccef45d9b",
+        "s1_cast_tx": "MxbX3cimwDVRDXVhhx1gwqpzHTyCbBSy2A5tm6jYR2y",
+        "result": "Approved, no override, full 0.1 NEAR bond returned"
+      },
+      "12": {
+        "purpose": "Visitor reauthorization after the failed claim",
+        "submission_tx": "5D2HND41dGFXeLepAQDdww9BQBdMm1ujxSjZYfUFSJNR",
+        "initial_s1_request_tx": "88dnPLm1SdXhQK8Q1mgb6uPi2eHRpYWmr4pwHEAm2THT",
+        "initial_request_result": "Landed despite the runner timeout; OutLayer returned ERR_AGENT_OUTPUT after charging 0.0027181001 NEAR and refunding 3.9972823999 NEAR.",
+        "ttl_retry_tx": "Eb4WwZo6uuBFKuZuk2PwAKW563gqucvM2uVALqsqsFye",
+        "pending_receipt_hash": "e9c8b55cc9fc7a003dd2a77564f1c12a258e43c94f6ab036e9de7066cd29f497",
+        "keeper_cast_tx": "Ef3yMwttpTmWmsEFNi7CsnL8ZSn86RLb8bQed64MApH5",
+        "result": "Approved, full 0.1 NEAR bond returned"
+      },
+      "13": {
+        "purpose": "Harmless get_voter_defaults call, zero deposit, 5 Tgas",
+        "submission_tx": "6VWXmfX6oPWdcrkpMZZb32tCeLBFC9v6D8oSZW8YqfD7",
+        "submission_receipt": "C3AX6PVMonTszrQ84UEqCiVaP5TDNcqVg4CNBvDmVEfs",
+        "s1_request_tx": "F2ZAgQK6M9zzAMe1VjBFN4k49F1EBqw5m81rNntsPiQ2",
+        "s1_request_receipts": [
+          "3Rn6BFp1kwcThgVP2RHNt2kcjgGstZgUnttLVa3jCmNt",
+          "9ijp2c7SJs1aTrokudkFzYRR5MR385HorRr4ckMbA2Kg",
+          "8wSYqiwVFMwfnHxFdT95Fe8gUm1rPKbf68suW5hwLCBd",
+          "8VTfQBFspnJ8dT64NLt6YgpvrwP3VNTisVLX7iyN1YwP"
+        ],
+        "s1_pending_receipt_hash": "21d4c39b3edfa256a085d4c17eb163934f5dda97b799b2568920e061b6e1904a",
+        "s1_cast_tx": "G5rTEx92DgMqruALR6sPPbHPY6sYDqz2vAyBQ4oR9UCA",
+        "s1_cast_receipts": [
+          "Gvrx56YUuMvahAGvZRF9kELh1ANNbdKtz3h6qYuFxVoS",
+          "Bhy6zhBGXH8tMWszBzqdSCBW2zaF7GyRUyiCfPFgstw9",
+          "Ci6Z5VxQ4xnK1BSpUtz3QMwZi5ZeRwYo8WdgtBkWbPrB"
+        ],
+        "s3_funder_transfer_tx": "6wE5XyG8u5TUqFfb52pzFBwB74H1ZUMms3R5Kp4NmFTy",
+        "s3_failed_request_tx": "93nBHE2y1PwUZ2FsXyNos36a9KjYoP7G1o7SxSbBJomT",
+        "s3_failed_request_result": "Exceeded the account balance; the request failed on chain and produced no pending vote.",
+        "s3_failed_request_receipt": "6oMnBvWLbP3UHXVqwmEGDBLxKAMWSC9uPBugzCXu5J2u",
+        "s3_failed_request_refund": "A69tFyTbY2NVYyVrTWQrTNF4syd4roW97LAZDuYShV3h",
+        "finalize_tx": "7gCa2JfVP3XCfHLG4JGsuNaKhB6JMMWY4dfYDsAqNHUJ",
+        "finalize_receipt": "GrseK8pKw9gP9m72WapEJQk5MRBm5J73fQpdQ384BfsR",
+        "bond_return_receipt": "AM6ajP3BZFPNF3Goth15w4A6153Wk5yE65RSW5rfb3dw",
+        "bond_return_near": "0.1",
+        "final_status": "Expired"
+      },
+      "14": {
+        "purpose": "Seat 3 voting proof, get_voter_defaults, zero deposit, 5 Tgas",
+        "submission_tx": "3kEGbgmkKGwqgkqKvNpVnWg5sBqBmx2JBbuuecVpv8SN",
+        "submission_receipt": "GZQYeX9haPHLCZoXki3tbcZWjuPdLW99toUydc43qcpq",
+        "submission_time_ns": "1794137974721994004",
+        "s1": {
+          "vote": "Approve",
+          "request_tx": "816D2MSXirVRNqyUNMmptfZvm9w71zWaK2xWbun5hXZN",
+          "runner_note": "The 11:40:01 request logged a timeout but landed successfully. No manual retry was sent.",
+          "request_receipts": [
+            "HvQGFtJUBwtjVhvqhBwhsUZQaMPAbE8BM7rXAyjta6jV",
+            "7dJgtTtZowjHXYVNiQEw1pL4yMzYPVWHzVojnziVghWr",
+            "ET7oqVh2Y36tDrxGDUH7Jm3LU5nJVuNaw2MDUckGMbEt",
+            "5d5QKJiXkGRyrLLV5cVet3JDJDYdY2gbvyuKBZFyMivq",
+            "5q7A1TgdJNyASQSNBtzzgmUfess82MkRVZiJnVCWRtKP",
+            "69tgTPnxzDyGwVawC2HJQLRSHZzr3xyugiFvLmxsFvsy",
+            "H7Eac8wnerbYaCd6Kdcrwcb1pAK9xFy98Uhv5bnnJXXr",
+            "7riY6FckXS9YnCKgTsxHhiKAcyd2m4cCpL5PZEmrgctN",
+            "GkRxDEaaRpFuD6aQNHkjBfefG3h5Y7ZFhJAFPLvqUgcV",
+            "AwuHmjNYczHwygYPeJ6C5P5PtddbJ8oeARGhAEDQZ3TD"
+          ],
+          "pending_receipt_hash": "ac5bbd295afa7bf54173444eacb7c447b103e65fea62857a68c1d36f6da5fee1",
+          "cast_tx": "Dho47ZAfdWvB9deSxJx6shZVs2TNLkr4DaXTQFSx5Hi8",
+          "cast_receipts": [
+            "6XUf88VgGC2uqYWjWwDXhz6LK3V9YQMeLQcNDsWxcbP",
+            "GiM445JnaU45jLkyqzCSLgxztpPRwMHWzsrZqJFzEJ4o",
+            "BW2ZGQ3K9f8UNd129A6QpnDX1C2Ka5s3NVetpNDgHZgE",
+            "EgsevztaeHaPxoWE8cx4Y2v2NSp5TxKE941MrF6QP78",
+            "8coJGoc5aW5eQfyUnMQaQ2nfiXh2WrGUboqJCoMyujdq",
+            "2uKYTCXDJyDuJB7PZL56jcEGH2VRYkScHsE1egJKUnnE"
+          ]
+        },
+        "s3": {
+          "vote": "Reject",
+          "reason": "This is an internal voting-proof item, not a community event, so it falls outside the member brief.",
+          "request_tx": "52FF7LHVG91p5qqaR5RhoiEfkeatq8LitD329KYDCrjk",
+          "runner_status": "ok",
+          "request_receipts": [
+            "DS2tQWVRULoVrdhYhvo1LEtajsWZrrMo7S3iQfBDDKnm",
+            "7mcixMdyTUtqSciWghVuqB1jyA46Pzf1kyppYibYVbBy",
+            "FpYxv1BPZLMDdwDFDMpgYc4wX3iZBAoZ1Agy2cEV7DZa",
+            "97WkSMB2hQTdZo93ZVFf6UUZy4YS4fU5gWCf6t1WtCe5",
+            "F7jSJixvTwmrAdVFUFoQ8Xndf3QsEGjsN95LwTFkovMw",
+            "BYoK5nGTDuNiFoTHURZisAcY6zvqsWrYAj9rXkSieEyL",
+            "HitfjkVa1SGVoW3Njfw7PaCw7M4G2ePQ1i422s7tdorB",
+            "G6rr4N1RczjLncSCgLfsfBy4pGYWZ2wagALvjpa2FZwL",
+            "3k67WFHX3dg8BxiP92X4MDnvkAamc7mSXWyotXAA3EFe",
+            "FLUoDtmxybywPkyWjkdepwoMyKh2AibyyJuptn1WZsJs"
+          ],
+          "outlayer_payment_near": "4.0000005",
+          "pending_receipt_hash": "10cbdb42b7fba3264f6a3180a629839984d23c9fba191168d73df913794c2058",
+          "cast_tx": "EfgJTVnrDUj4reywjG5bnnbrxZynJJc2BAJFFQD6MMP8",
+          "cast_receipts": [
+            "3soi8BuALnyWjsxqBVy4cU64chyc41H6ekJBEpzLUx72",
+            "DYq9YQhteGruRtbzpDdEDxoXpwZVuaWyVkxnBoBHcYoH",
+            "EDtZ84H5bgrkoXgua3P1gkMJqYSmqbSQu5KUfA1Rk1Mq",
+            "88H3vswP3xyt2go3ekLbWEWfuSUoeAxpgVpj9XVthgwK",
+            "FukukxzoB9LMhrzqFkjucb7ivkNUJzcSQDP9pjq8ic73",
+            "527pao8SEqVL7rarykM3UXVfcHKR4F2qExKQkTEQgEEH"
+          ]
+        },
+        "status_at_capture": "InProgress",
+        "vote_counts": {
+          "members_approve_reject_abstain": [
+            1,
+            1,
+            0
+          ]
+        },
+        "bond_near_still_held": "0.1"
+      }
+    },
+    "seat_3_claim": {
+      "claim_tx": "DBPfPVQiqeSQxCRWwDTTkoJ6pcpgFTduDf6drFWHpDXJ",
+      "receipts": [
+        "f9ERZrgBZmgoaRcvCZePUnWm6cFRsHVXcgA1pTdMnQT",
+        "86cxdNU8bPRhFHTZgBezqvL54dzMYmizfB7ob98DYqN2",
+        "5PrVJ8ygshwXhD8Zva43A6hxsEQsuZU9XBd35xftppEu",
+        "FLMSBLGv7CnrY3g2KkW4M8VUQ5c3JnsAC5gmACRKWsbn",
+        "As5fYQZ94bXfcnHHmJRwJXsEor24D15VDuzoG6PvhY1X",
+        "6qyeNkwKhZXgVsFo1wSzfUj1z4LfJmxP7uufqJBVf4X1",
+        "4Q8oz3ZsPiJXNVa8rerYCkBMEK3f8fLBnicsWYNG1ZfZ"
+      ],
+      "token_id": "3",
+      "owner": "visitor.seatsfund1-1793846395.testnet",
+      "voter_id": "s3.seatsnft3-1793848334.testnet",
+      "controller": "visitor.seatsfund1-1793846395.testnet",
+      "shared_runner_key_restriction": "request_vote only",
+      "model_signer_and_pinned_wasm": "match deployed defaults",
+      "dao_delegation_total": 2
+    },
+    "seat_3_brief": {
+      "tx_hash": "4cLyN1TaPh3bbz1D25cJnRfmXfaJr78YH8LrYmztBCap",
+      "receipt_hash": "6Wuiht5rnqcHY9UBKvCF2R6PPYvw5E7Ci4EXp5xhntnZ",
+      "reused_brief_hash": "648ecae07ec5dd816c22e3571242859871a2dcc4f70ed1b3954dba6f6d63435d",
+      "profile": "brief",
+      "secrets_account": "seatfunder-1793834028.testnet"
+    },
+    "runner": {
+      "service_id": "srv-dbm7iubbc2fs738hta7g",
+      "url": "https://seats-agent-runner.onrender.com",
+      "deployment_id": "dep-dbo54irrjlhs73aeldkg",
+      "health_snapshot": {
+        "snapshot_note": "Captured after both proposal 14 keeper casts.",
+        "status": "ok",
+        "dao_id": "seats2-1793847972.sputnikv2.testnet",
+        "voters": [
+          {
+            "voter_id": "s1.seatsnft3-1793848334.testnet",
+            "source": "file"
+          },
+          {
+            "voter_id": "s3.seatsnft3-1793848334.testnet",
+            "source": "discovered"
+          }
+        ],
+        "agent_public_key": "ed25519:5xUyVeJwwZrWzMozcdW5GaLQ4xEdbmwbXMbBGsbMzKfX",
+        "cursor": 14,
+        "started_at": "2026-11-08T10:43:58.320Z",
+        "uptime_s": 3540,
+        "last_tick_at": "2026-11-08T11:42:54.641Z",
+        "last_tick_ok_at": "2026-11-08T11:42:55.231Z"
+      }
+    },
+    "vote_cost_measurement": {
+      "voter_account": "s1.seatsnft3-1793848334.testnet",
+      "cycle_proposal_id": 13,
+      "balance_before_near": "4.965246888031220",
+      "balance_after_request_and_cast_near": "4.961223348798196",
+      "net_decrease_near": "0.004023539233024",
+      "outlayer_deposit_near": "4.0000005",
+      "outlayer_charged_near": "0.0027431001",
+      "outlayer_refunded_near": "3.9972573999",
+      "payment_source": "the voter account, not seatfunder",
+      "cast_payment_source": "keeper account",
+      "additional_cycle_proposal_14": {
+        "s1_net_decrease_near": "0.003743050952279",
+        "s3_balance_after_faucet_transfer_near": "4.549604963848036",
+        "s3_balance_after_request_and_cast_near": "4.545843526424313",
+        "s3_net_decrease_near": "0.003761437423723"
+      }
+    },
+    "final_balances_near": {
+      "funder": "0.655358897996756",
+      "visitor": "0.440663245872605",
+      "keeper": "2.993262325618428",
+      "s1": "4.957480297845917",
+      "s3": "4.545843526424313",
+      "faucet_sponsor": "5.799955363487500"
+    },
+    "other_stage_transactions": [
+      {
+        "label": "early_seat_nft_upgrade",
+        "tx_hash": "2Bau3d7vF2chvcBbMgxFrXxtV6ty4gAqMb9amWfDKVYo"
+      },
+      {
+        "label": "initial_visitor_creation_and_0_2_near_funding",
+        "tx_hash": "5z5HR3SXwoXr3X6V93VRDSBVcDHdnZ8StCdd9SzBxoW"
+      },
+      {
+        "label": "visitor_topup_to_0_5_near",
+        "tx_hash": "2PQLHpAqTnAYWFGTdU1XYJUAM27JDV6p4B4uNq7aucpN"
+      },
+      {
+        "label": "failed_apply_attempt_before_proposal_11",
+        "tx_hash": "41J6U53vKvRA66hsociA7hdgCoE8ZPT7AXwzHMNVGgwo",
+        "result": "No proposal or approval appeared; proposal list remained at 10, but the transaction-status query timed out."
+      },
+      {
+        "label": "orphaned_s2_claim_attempt",
+        "tx_hash": "9vsqAGcS9RXP26h7pKok6EQbSYgpiNPZwkWwUsrRfYhK"
+      },
+      {
+        "label": "visitor_topup_before_proposal_12",
+        "tx_hash": "D73yuqzx1VzcpUqQaUpzFp7tAm8VDfGFzqmAyNXKNhjZ",
+        "receipts": [
+          "BQjCqF5w42MzcpyFriEzAuPjwJBTsuBEiTtZXvPFQNVz",
+          "2Q51mhqhjMoYm9EwD6RYvfFehjmTWkwbFkwMXe8rE2NX"
+        ],
+        "amount_near": "0.0582948671265055"
+      }
+    ],
+    "funder_transferred_to_s3_before_faucet": {
+      "tx_hash": "6wE5XyG8u5TUqFfb52pzFBwB74H1ZUMms3R5Kp4NmFTy",
+      "amount_near": "0.3",
+      "receipts": [
+        "Baohz3VptbPnVsNWr9qQLobbMghRH3QVjKkaT9HT2Ebv",
+        "AGDxKb6dkAEfqWNmL5EfaEwmDJrSUUJHYxSbSqL7tLNi"
+      ],
+      "note": "This transfer was authorized in the earlier run. It did not cover the OutLayer liquidity reservation."
+    }
+  },
   "hosted_runner": {
     "service_id": "srv-dbm7iubbc2fs738hta7g",
     "public_url": "https://seats-agent-runner.onrender.com",
