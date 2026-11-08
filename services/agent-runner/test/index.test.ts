@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { loadConfig } from "../src/index.js";
+import { findNewlyDiscoveredVoterIds, loadConfig } from "../src/index.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -16,6 +16,18 @@ afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+describe("discovered voter cursor handling", () => {
+  it("does not treat a voter kept after a view failure as new", () => {
+    const previousDiscoveredVoterIds = new Set(["known.testnet"]);
+
+    expect(findNewlyDiscoveredVoterIds(
+      ["known.testnet"],
+      previousDiscoveredVoterIds,
+      [],
+    )).toEqual([]);
+  });
 });
 
 function baseEnvironment(): NodeJS.ProcessEnv {

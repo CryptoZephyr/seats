@@ -55,6 +55,17 @@ interface Config {
 let healthServer: Server | undefined;
 let keepaliveTimer: NodeJS.Timeout | undefined;
 
+export function findNewlyDiscoveredVoterIds(
+  nextDiscoveredVoterIds: string[],
+  previousDiscoveredVoterIds: ReadonlySet<string>,
+  fileVoterIds: string[],
+): string[] {
+  const fileVoterSet = new Set(fileVoterIds);
+  return nextDiscoveredVoterIds.filter(
+    (voterId) => !previousDiscoveredVoterIds.has(voterId) && !fileVoterSet.has(voterId),
+  );
+}
+
 function required(name: string, env: NodeJS.ProcessEnv): string {
   const value = env[name]?.trim();
   if (!value) {
@@ -323,10 +334,12 @@ async function main(): Promise<void> {
       return;
     }
     nextDiscoveryAtMs = nowMs + 60_000;
+    const previousDiscoveredSet = new Set(discoveredVoterIds);
     if (!await discovery.refresh(
       rpc,
       config.seatNftId,
       sharedCredential.publicKey.toString(),
+      previousDiscoveredSet,
       log,
     )) {
       return;
@@ -334,9 +347,10 @@ async function main(): Promise<void> {
     const nextDiscoveredVoterIds = discovery.voters;
     const fileVoterSet = new Set(fileVoterIds);
     const nextDiscoveredSet = new Set(nextDiscoveredVoterIds);
-    const previousDiscoveredSet = new Set(discoveredVoterIds);
-    const newlyDiscoveredVoterIds = nextDiscoveredVoterIds.filter(
-      (voterId) => !previousDiscoveredSet.has(voterId) && !fileVoterSet.has(voterId),
+    const newlyDiscoveredVoterIds = findNewlyDiscoveredVoterIds(
+      nextDiscoveredVoterIds,
+      previousDiscoveredSet,
+      fileVoterIds,
     );
     if (newlyDiscoveredVoterIds.length > 0) {
       const currentState = state;
