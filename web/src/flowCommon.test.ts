@@ -7,7 +7,31 @@ const rpc = vi.hoisted(() => ({
 
 vi.mock("./chain/rpc", () => rpc);
 
-import { checkFunds } from "./flowCommon";
+import { checkFunds, friendly, InsufficientFundsError } from "./flowCommon";
+
+describe("friendly", () => {
+  const walletConfirmMessage = "The wallet didn't confirm the result. Check the transaction before trying again.";
+
+  it("preserves insufficient-funds messages that mention the network fee", () => {
+    const message = "This account needs 4.5 NEAR for the deposit and about 0.01 testnet NEAR for the network fee.";
+    expect(friendly(new InsufficientFundsError(message))).toBe(message);
+  });
+
+  it("doesn't treat ordinary network wording as a wallet error", () => {
+    expect(friendly(new Error("This needs a network fee"))).toBe("This needs a network fee");
+  });
+
+  it("uses the wallet confirmation message for timeouts and failed fetches", () => {
+    expect(friendly(new Error("Request timed out"))).toBe(walletConfirmMessage);
+    expect(friendly(new TypeError("Failed to fetch"))).toBe(walletConfirmMessage);
+  });
+
+  it("prefers a contract error code to the network error message", () => {
+    expect(friendly(new Error("network error: ERR_NO_SEAT"))).toBe(
+      "This account no longer holds the required seat.",
+    );
+  });
+});
 
 describe("checkFunds", () => {
   beforeEach(() => {
