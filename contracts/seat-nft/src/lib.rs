@@ -199,8 +199,9 @@ impl SeatNft {
             )
     }
 
-    pub fn set_voter_defaults(&mut self, defaults: VoterDefaults) {
+    pub fn set_voter_defaults(&mut self, mut defaults: VoterDefaults) {
         self.assert_dao();
+        defaults.model_signer_hex = defaults.model_signer_hex.to_ascii_lowercase();
         assert!(
             is_model_signer_hex(&defaults.model_signer_hex),
             "ERR_BAD_SIGNER_ADDRESS"
@@ -768,6 +769,21 @@ mod tests {
     }
 
     #[test]
+    fn voter_default_signer_hex_is_normalized_before_storage() {
+        let mut contract = empty_contract();
+        set_context(DAO, 1_001, 0);
+        let mut defaults = voter_defaults();
+        defaults.model_signer_hex = format!("0x{}", "A".repeat(40));
+
+        contract.set_voter_defaults(defaults);
+
+        assert_eq!(
+            contract.get_voter_defaults().unwrap().model_signer_hex,
+            format!("0x{}", "a".repeat(40)),
+        );
+    }
+
+    #[test]
     #[should_panic(expected = "ERR_NOT_DAO")]
     fn setting_voter_defaults_is_dao_only() {
         let mut contract = empty_contract();
@@ -780,7 +796,7 @@ mod tests {
     fn voter_defaults_reject_an_invalid_signer_address() {
         let mut contract = empty_contract();
         let mut defaults = voter_defaults();
-        defaults.model_signer_hex = format!("0X{}", "a".repeat(40));
+        defaults.model_signer_hex = format!("0xg{}", "a".repeat(39));
         contract.set_voter_defaults(defaults);
     }
 
