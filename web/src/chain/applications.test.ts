@@ -34,13 +34,26 @@ describe("application proposal matching", () => {
 });
 
 describe("claim success", () => {
-  it("refreshes viewer membership after recording the claim result", () => {
-    const setResult = vi.fn();
-    const retryViewer = vi.fn();
+  it("records the claim result before awaiting a membership refresh", async () => {
+    const events: string[] = [];
+    const setResult = vi.fn(() => events.push("result"));
+    let finishRefresh: () => void = () => undefined;
+    const refreshMembership = vi.fn(() => {
+      events.push("refresh");
+      return new Promise<void>((resolve) => { finishRefresh = resolve; });
+    });
 
-    recordSuccessfulAction("claim", "claim-transaction", setResult, retryViewer);
+    const completion = recordSuccessfulAction("claim", "claim-transaction", setResult, refreshMembership);
 
+    expect(events).toEqual(["result", "refresh"]);
     expect(setResult).toHaveBeenCalledWith({ hash: "claim-transaction", action: "claim" });
-    expect(retryViewer).toHaveBeenCalledOnce();
+    expect(refreshMembership).toHaveBeenCalledOnce();
+    let finished = false;
+    void completion.then(() => { finished = true; });
+    await Promise.resolve();
+    expect(finished).toBe(false);
+    finishRefresh();
+    await completion;
+    expect(finished).toBe(true);
   });
 });

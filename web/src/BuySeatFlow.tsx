@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useClubData } from "./chain/useClubData";
-import { useViewer } from "./chain/WalletProvider";
+import { useViewer, waitForOwnedSeats } from "./chain/WalletProvider";
 import { readSeatNftLevyBps } from "./chain/rpc";
 import { saleListings } from "./chain/sales";
 import { buildBuyRequest, BUY_SEAT_GAS, calculateSaleSplit } from "./chain/transactions";
@@ -21,11 +21,15 @@ export function BuySeatFlow() {
   const [hashes, setHashes] = useState<Record<string, string>>({});
   const gasEstimate = useGasEstimate(BUY_SEAT_GAS);
   useEffect(() => { void readSeatNftLevyBps().then(setLevy).catch(() => setLevy(-1)); }, []);
+  const completedPurchases = Object.entries(hashes).filter(([, hash]) => hash);
+  const purchaseSection = completedPurchases.length > 0 && (
+    <RuledSection title="Your purchase">
+      {completedPurchases.map(([tokenId, hash]) => <PurchaseSuccess key={tokenId} hash={hash} />)}
+    </RuledSection>
+  );
   if (state.status === "loading") return <main className={s.page}>
+    {purchaseSection}
     <LoadingStatus>Reading active sale approvals…</LoadingStatus>
-    {Object.entries(hashes).map(([tokenId, hash]) => hash ? (
-      <RuledSection key={tokenId} title={`Seat ${tokenId}`}><PurchaseSuccess hash={hash} /></RuledSection>
-    ) : null)}
   </main>;
   if (state.status === "error") return <main className={s.page}><ErrorStatus onRetry={state.retry}>{state.error.message}</ErrorStatus></main>;
   const now = BigInt(Date.now()) * 1_000_000n;
@@ -34,17 +38,19 @@ export function BuySeatFlow() {
     return approval && now < BigInt(approval.expires_at) ? [{ seat, approval }] : [];
   });
   const buy = async (tokenId: string, price: string) => {
-    if (!viewer.accountId) return;
+    const account = viewer.accountId;
+    if (!account) return;
     setErrors((previous) => ({ ...previous, [tokenId]: "" }));
     setHashes((previous) => ({ ...previous, [tokenId]: "" }));
     setBusySeatId(tokenId);
     try {
       const request = buildBuyRequest(tokenId, price);
-      if (!await checkFunds(viewer.accountId, request)) {
+      if (!await checkFunds(account, request)) {
         throw new InsufficientFundsError(`This account needs ${near(request.deposit)} NEAR for the deposit and about ${gasEstimate ?? "the current"} testnet NEAR for the network fee. Get testnet NEAR from a NEAR testnet faucet.`);
       }
       const tx = await viewer.callContract(request);
       setHashes((previous) => ({ ...previous, [tokenId]: tx.hash }));
+      await waitForOwnedSeats(account, (tokenIds) => tokenIds.includes(tokenId));
       viewer.retry();
       state.retry();
     } catch (cause) {
@@ -55,6 +61,7 @@ export function BuySeatFlow() {
   };
   return <main className={s.page}>
     <PageHead eyebrow="Seat for sale" title="Seats for sale" />
+    {purchaseSection}
     {listings.length === 0 ? <RuledSection title="For sale"><p className={s.muted}>No active sale approvals right now.</p></RuledSection>
       : listings.map(({ seat, approval }) => {
         let split: ReturnType<typeof calculateSaleSplit> | null = null;
@@ -69,9 +76,8 @@ export function BuySeatFlow() {
           {!viewer.accountId ? <p className={s.muted}>Sign in as the named buyer to purchase this seat.</p>
             : namedBuyer && split ? <GraphicButton glyph="ticket" disabled={busySeatId !== null} onClick={() => void buy(seat.token.token_id, approval.price)}>Buy for {near(BigInt(approval.price))} NEAR</GraphicButton>
             : <p className={s.muted}>This seat is reserved for {approval.buyer}.</p>}
-          {busySeatId === seat.token.token_id && <LoadingStatus>Waiting for your wallet…</LoadingStatus>}
+          {busySeatId === seat.token.token_id && !hashes[seat.token.token_id] && <LoadingStatus>Waiting for your wallet…</LoadingStatus>}
           {errors[seat.token.token_id] && <ErrorStatus>{errors[seat.token.token_id]}</ErrorStatus>}
-          {hashes[seat.token.token_id] && <PurchaseSuccess hash={hashes[seat.token.token_id]} />}
         </RuledSection>;
       })}
     <RuledSection title="Awaiting club vote">
