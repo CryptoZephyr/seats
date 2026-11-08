@@ -1,6 +1,10 @@
 import { generateKeyPairSync } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { decryptProfileSecretsFixture, encryptProfileSecrets } from "../src/profileCrypto.js";
+import {
+  decryptProfileSecretsFixture,
+  encryptProfileSecrets,
+  fetchOutlayerSecretsPubkey,
+} from "../src/profileCrypto.js";
 
 describe("OutLayer ECIES profile encryption", () => {
   it("round-trips the CLI ECIES v1 format", () => {
@@ -16,5 +20,21 @@ describe("OutLayer ECIES profile encryption", () => {
     expect(bytes[0]).toBe(1);
     expect(bytes.length).toBeGreaterThan(61);
     expect(decryptProfileSecretsFixture(privateKey, encrypted)).toBe(plaintext);
+  });
+
+  it("uses the current agent hash for the OutLayer pubkey request", async () => {
+    const agentWasmSha256 = "a".repeat(64);
+    let requestBody = "";
+    await fetchOutlayerSecretsPubkey("owner.testnet", "seat-1", "{}", agentWasmSha256, async (_input, init) => {
+      requestBody = String(init?.body);
+      return new Response(JSON.stringify({ pubkey: "b".repeat(64) }), { status: 200 });
+    });
+
+    expect(JSON.parse(requestBody)).toMatchObject({
+      accessor: { type: "WasmHash", hash: agentWasmSha256 },
+      owner: "owner.testnet",
+      profile: "seat-1",
+      secrets_json: "{}",
+    });
   });
 });

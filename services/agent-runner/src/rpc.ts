@@ -80,6 +80,7 @@ export class NearAgentRpc implements AgentRunnerRpc, VoterDiscoveryRpc {
   private readonly credentials: Map<string, Credential>;
   private readonly keeper: Credential;
   private readonly nonceCache = new Map<string, bigint>();
+  private agentWasmSha256Cache: { seatNftId: string; hash: string; expiresAt: number } | undefined;
 
   constructor(rpcUrls: string[], keeper: KeyFileCredential, voters: KeyFileCredential[]) {
     if (rpcUrls.length === 0) throw new Error("At least one NEAR RPC URL is required");
@@ -148,7 +149,12 @@ export class NearAgentRpc implements AgentRunnerRpc, VoterDiscoveryRpc {
     return account.amount.toString();
   }
 
-  async storeProfile(ownerId: string, profile: string, encryptedSecretsBase64: string): Promise<string> {
+  async storeProfile(
+    ownerId: string,
+    profile: string,
+    encryptedSecretsBase64: string,
+    agentWasmSha256: string,
+  ): Promise<string> {
     const credential = this.credentials.get(ownerId);
     if (!credential) throw new Error("No profile owner credential configured");
     return this.call(
@@ -156,7 +162,7 @@ export class NearAgentRpc implements AgentRunnerRpc, VoterDiscoveryRpc {
       "outlayer.testnet",
       "store_secrets",
       {
-        accessor: { WasmHash: { hash: "a2db80036766e04aab58c50b09387c033f0617a7cb3580d82482ca8756b6519d" } },
+        accessor: { WasmHash: { hash: agentWasmSha256 } },
         profile,
         encrypted_secrets_base64: encryptedSecretsBase64,
         access: "AllowAll",
@@ -186,6 +192,27 @@ export class NearAgentRpc implements AgentRunnerRpc, VoterDiscoveryRpc {
 
   async getBriefHash(voterId: string): Promise<string> {
     return this.view<string>(voterId, "get_brief_hash", {});
+  }
+
+  async getAgentWasmSha256(seatNftId: string): Promise<string> {
+    const now = Date.now();
+    if (
+      this.agentWasmSha256Cache?.seatNftId === seatNftId
+      && this.agentWasmSha256Cache.expiresAt > now
+    ) {
+      return this.agentWasmSha256Cache.hash;
+    }
+    const defaults = await this.view<{ agent_wasm_sha256?: unknown } | null>(
+      seatNftId,
+      "get_voter_defaults",
+      {},
+    );
+    const hash = defaults?.agent_wasm_sha256;
+    if (typeof hash !== "string" || !/^[a-f0-9]{64}$/.test(hash)) {
+      throw new Error("Seat NFT returned an invalid agent WASM hash");
+    }
+    this.agentWasmSha256Cache = { seatNftId, hash, expiresAt: Date.now() + 60_000 };
+    return hash;
   }
 
   async getLastProposalId(daoId: string): Promise<number> {

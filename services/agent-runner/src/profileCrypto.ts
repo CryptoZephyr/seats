@@ -40,15 +40,19 @@ export async function fetchOutlayerSecretsPubkey(
   owner: string,
   profile: string,
   secretsJson: string,
+  agentWasmSha256: string,
   fetcher: typeof fetch = fetch,
 ): Promise<string> {
+  if (!/^[a-f0-9]{64}$/.test(agentWasmSha256)) {
+    throw new Error("Seat NFT returned an invalid agent WASM hash");
+  }
   const response = await fetcher("https://testnet-api.outlayer.ai/secrets/pubkey", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       accessor: {
         type: "WasmHash",
-        hash: "a2db80036766e04aab58c50b09387c033f0617a7cb3580d82482ca8756b6519d",
+        hash: agentWasmSha256,
       },
       owner,
       profile,

@@ -18,6 +18,7 @@ function rpc(overrides: Partial<BriefRelayRpc> = {}): BriefRelayRpc {
     getSeatVoterId: async (tokenId) => `voter-${tokenId}.testnet`,
     getVoterController: async (voterId) => `account-${voterId.slice("voter-".length).replace(".testnet", "")}.testnet`,
     getAccountInfo: async () => ({ amount: "1000000000000000000000000", storageUsage: 0 }),
+    getAgentWasmSha256: async () => "a".repeat(64),
     storeProfile: async () => "profile-store-tx",
     ...overrides,
   };
@@ -88,11 +89,13 @@ afterEach(async () => {
 describe("brief relay", () => {
   it("verifies NEP-413 and stores content-addressed secrets without returning or logging them", async () => {
     const stored: string[] = [];
+    const agentHashes: string[] = [];
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const url = await serve(createBriefHandler({
-      rpc: rpc({ storeProfile: async (profile, secrets) => {
+      rpc: rpc({ storeProfile: async (profile, secrets, agentWasmSha256) => {
         expect(profile).toBe(briefProfileName("1", briefHash("ab".repeat(32), brief)));
         stored.push(secrets);
+        agentHashes.push(agentWasmSha256);
         return "profile-store-tx";
       } }),
       apiKey,
@@ -109,6 +112,7 @@ describe("brief relay", () => {
       brief_hash: briefHash(signed.salt, signed.brief),
       tx_hash: "profile-store-tx",
     });
+    expect(agentHashes).toEqual(["a".repeat(64)]);
     expect(stored).toHaveLength(1);
     expect(JSON.parse(stored[0])).toEqual({
       BRIEF: brief,
@@ -118,6 +122,24 @@ describe("brief relay", () => {
     expect(JSON.stringify(json)).not.toContain(apiKey);
     expect(JSON.stringify(json)).not.toContain(brief);
     expect(log).not.toHaveBeenCalled();
+  });
+
+  it("returns the existing profile-store error when voter defaults cannot be read", async () => {
+    const storeProfile = vi.fn(async () => "profile-store-tx");
+    const url = await serve(createBriefHandler({
+      rpc: rpc({
+        getAgentWasmSha256: async () => { throw new Error("RPC unavailable"); },
+        storeProfile,
+      }),
+      apiKey,
+      ownerAccountId: ownerId,
+      now: () => nowValue,
+    }));
+    const { response, json } = await post(url, await signedBody());
+
+    expect(response.status).toBe(500);
+    expect(json.error).toBe("PROFILE_STORE_FAILED");
+    expect(storeProfile).not.toHaveBeenCalled();
   });
 
   it("rejects a non-FullAccess key", async () => {

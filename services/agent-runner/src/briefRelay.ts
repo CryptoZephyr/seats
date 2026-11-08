@@ -15,7 +15,8 @@ export interface BriefRelayRpc {
   getSeatVoterId(tokenId: string): Promise<string | null>;
   getVoterController(voterId: string): Promise<string | null>;
   getAccountInfo(accountId: string): Promise<{ amount: string; storageUsage: number }>;
-  storeProfile(profile: string, secretsJson: string): Promise<string>;
+  getAgentWasmSha256(): Promise<string>;
+  storeProfile(profile: string, secretsJson: string, agentWasmSha256: string): Promise<string>;
 }
 
 interface BriefRequest {
@@ -266,7 +267,8 @@ export function createBriefHandler(options: BriefRelayOptions) {
         SALT: body.salt,
         NEAR_AI_API_KEY: options.apiKey,
       });
-      const txHash = await options.rpc.storeProfile(profile, secretsJson);
+      const agentWasmSha256 = await options.rpc.getAgentWasmSha256();
+      const txHash = await options.rpc.storeProfile(profile, secretsJson, agentWasmSha256);
       sendJson(response, 200, {
         secrets_account_id: options.ownerAccountId,
         profile,
