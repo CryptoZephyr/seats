@@ -137,7 +137,7 @@ type TransactionResult = {
 
 class TransactionSubmissionError extends Error {
   constructor(message: string, readonly txHash: string, options?: ErrorOptions) {
-    super(message, options);
+    super(`${message} (tx_hash: ${txHash})`, options);
   }
 }
 
@@ -984,7 +984,11 @@ async function claimSeatAsVisitor(
       config.visitor_account_id,
     );
     if (landedSeat) {
-      process.stdout.write(`${JSON.stringify({ status: "claimed", ...landedSeat })}\n`);
+      process.stdout.write(`${JSON.stringify({
+        status: "claimed",
+        ...landedSeat,
+        ...(error instanceof TransactionSubmissionError ? { tx_hash: error.txHash } : {}),
+      })}\n`);
       return;
     }
     throw new Error(
