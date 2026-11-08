@@ -729,6 +729,7 @@ function ProposalVoteMember({
   const [actionState, setActionState] = useState<VoteActionState>({ status: "idle" });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [refreshFailed, setRefreshFailed] = useState(false);
   const voterId = seat?.record.voter_id;
   const controller = seat?.controller;
 
@@ -757,13 +758,34 @@ function ProposalVoteMember({
   useEffect(() => {
     setActionState({ status: "idle" });
     setConfirmCancel(false);
+    setRefreshFailed(false);
   }, [proposal.id, seat?.token.token_id]);
+
+  async function refreshAfterChange() {
+    try {
+      await state.refresh();
+      setRefreshFailed(false);
+    } catch {
+      setRefreshFailed(true);
+    }
+    setHistoryAttempt((value) => value + 1);
+  }
+
+  async function retrySnapshotRefresh() {
+    try {
+      await state.refresh();
+      setRefreshFailed(false);
+    } catch {
+      setRefreshFailed(true);
+    }
+  }
 
   async function submitChange(change: VoteChange) {
     if (!seat) return;
     setIsSubmitting(true);
     setActionState({ status: "waiting" });
     setConfirmCancel(false);
+    setRefreshFailed(false);
 
     try {
       const txHash = change.method === "override_vote"
@@ -775,8 +797,7 @@ function ProposalVoteMember({
             proposal_id: proposal.id,
           });
       setActionState({ status: "success", change, txHash });
-      await state.refresh();
-      setHistoryAttempt((value) => value + 1);
+      await refreshAfterChange();
     } catch (error) {
       const code = contractErrorCode(error);
       if (!code) {
@@ -791,8 +812,7 @@ function ProposalVoteMember({
             : pending?.vote === change.vote;
           if (landed) {
             setActionState({ status: "success", change, txHash: null });
-            await state.refresh();
-            setHistoryAttempt((value) => value + 1);
+            await refreshAfterChange();
             return;
           }
         } catch {
@@ -867,16 +887,29 @@ function ProposalVoteMember({
             <LoadingStatus>Waiting for your wallet…</LoadingStatus>
           )}
           {actionState.status === "success" && (
-            <SuccessStatus>
-              {actionState.change.method === "cancel"
-                ? "Your seat won't vote on this proposal."
-                : `Your vote was changed to ${actionState.change.vote}.`}{" "}
-              {successHash ? (
-                <TextButton href={explorerTxUrl(successHash)}>View transaction</TextButton>
-              ) : (
-                "The transaction hash isn't available yet."
+            <>
+              <SuccessStatus>
+                {actionState.change.method === "cancel"
+                  ? "Your seat won't vote on this proposal."
+                  : `Your vote was changed to ${actionState.change.vote}.`}{" "}
+                {successHash ? (
+                  <TextButton href={explorerTxUrl(successHash)}>View transaction</TextButton>
+                ) : (
+                  "The transaction hash isn't available yet."
+                )}
+              </SuccessStatus>
+              {refreshFailed && (
+                <p className={s.muted}>
+                  Your change went through, but the page couldn't refresh.{" "}
+                  <TextButton
+                    disabled={isSubmitting}
+                    onClick={() => void retrySnapshotRefresh()}
+                  >
+                    Retry
+                  </TextButton>
+                </p>
               )}
-            </SuccessStatus>
+            </>
           )}
           {actionState.status === "error" && <ErrorStatus>{actionState.message}</ErrorStatus>}
 

@@ -12,15 +12,8 @@ export function useClubData() {
 
   const retry = useCallback(() => setAttempt((value) => value + 1), []);
   const refresh = useCallback(async () => {
-    try {
-      const data = await loadClubSnapshot();
-      setState({ status: "ready", data });
-    } catch (error: unknown) {
-      setState({
-        status: "error",
-        error: error instanceof Error ? error : new Error("Testnet views could not be loaded."),
-      });
-    }
+    const data = await loadClubSnapshot();
+    setState({ status: "ready", data });
   }, []);
 
   useEffect(() => {
