@@ -3,7 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  assertCouncilCanApproveVoterDefaults,
+  assertVisitorApplicationsReady,
   createApplicationProposalKind,
+  createDesiredPolicy,
+  createPolicyDiff,
   createVoterDefaultsProposalKind,
   readDeploymentAgentConfiguration,
 } from "../src/stage3-testnet.js";
@@ -103,5 +107,140 @@ describe("voter defaults proposal", () => {
     expect(JSON.parse(Buffer.from(action.args, "base64").toString("utf8"))).toEqual({
       defaults,
     });
+  });
+});
+
+describe("combined DAO policy proposal", () => {
+  const governanceLabels = [
+    "config",
+    "policy",
+    "add_member_to_role",
+    "remove_member_from_role",
+    "upgrade_self",
+    "upgrade_remote",
+    "set_vote_token",
+    "factory_info_update",
+    "policy_add_or_update_role",
+    "policy_remove_role",
+    "policy_update_default_vote_policy",
+    "policy_update_parameters",
+  ];
+
+  function policyFixture() {
+    return {
+      roles: [
+        {
+          name: "council",
+          kind: { Group: ["council.testnet"] },
+          permissions: ["*:*"],
+          vote_policy: {
+            call: { weight_kind: "RoleWeight", quorum: "0", threshold: [1, 2] },
+          },
+        },
+        {
+          name: "members",
+          kind: { Member: "1" },
+          permissions: ["call:VoteApprove", "transfer:VoteApprove"],
+          vote_policy: {
+            call: { weight_kind: "TokenWeight", quorum: "0", threshold: [1, 2] },
+          },
+        },
+        {
+          name: "visitors",
+          kind: "Group",
+          permissions: ["call:VoteApprove"],
+          vote_policy: {},
+        },
+        {
+          name: "visitors",
+          kind: "Group",
+          permissions: ["transfer:VoteApprove"],
+          vote_policy: {},
+        },
+      ],
+      default_vote_policy: {
+        weight_kind: "TokenWeight",
+        quorum: "0",
+        threshold: [1, 2],
+      },
+      proposal_bond: "0",
+      proposal_period: "600000000000",
+      bounty_bond: "7",
+      bounty_forgiveness_period: "11",
+    };
+  }
+
+  it("sets the council governance policy and preserves members and unrelated parameters", () => {
+    const current = policyFixture();
+    const membersBytes = JSON.stringify(current.roles.find((role) => role.name === "members"));
+    const desired = createDesiredPolicy(current);
+    const council = desired.roles.find((role) => role.name === "council");
+    const votePolicy = Object.fromEntries(governanceLabels.map((label) => [
+      label,
+      { weight_kind: "RoleWeight", quorum: "0", threshold: [1, 2] },
+    ]));
+
+    expect(council?.kind).toEqual(current.roles[0].kind);
+    expect(council?.permissions).toEqual([
+      "*:AddProposal",
+      "*:Finalize",
+      ...governanceLabels.map((label) => `${label}:*`),
+    ]);
+    expect(council?.vote_policy).toEqual(votePolicy);
+    expect(Object.keys(council?.vote_policy ?? {})).not.toContain("call");
+    expect(Object.keys(council?.vote_policy ?? {})).not.toContain("transfer");
+    expect(Object.keys(council?.vote_policy ?? {})).not.toContain("*");
+    expect(council?.permissions.some((permission) => /^(call|transfer):Vote/.test(permission)))
+      .toBe(false);
+    expect(council?.permissions).not.toContain("*:*");
+    expect(JSON.stringify(desired.roles.find((role) => role.name === "members"))).toBe(membersBytes);
+    expect(desired.proposal_bond).toBe("100000000000000000000000");
+    expect(desired.proposal_period).toBe(current.proposal_period);
+    expect(desired.bounty_bond).toBe(current.bounty_bond);
+    expect(desired.bounty_forgiveness_period).toBe(current.bounty_forgiveness_period);
+    expect(desired.default_vote_policy).toBe(current.default_vote_policy);
+  });
+
+  it("adds or replaces exactly one visitor role and is idempotent", () => {
+    const current = policyFixture();
+    const desired = createDesiredPolicy(current);
+    const visitors = desired.roles.filter((role) => role.name === "visitors");
+    const expected = {
+      name: "visitors",
+      kind: "Everyone",
+      permissions: ["call:AddProposal"],
+      vote_policy: {},
+    };
+
+    expect(visitors).toEqual([expected]);
+    expect(createDesiredPolicy(desired)).toEqual(desired);
+
+    const withoutVisitors = {
+      ...current,
+      roles: current.roles.filter((role) => role.name !== "visitors"),
+    };
+    expect(createDesiredPolicy(withoutVisitors).roles.filter((role) => role.name === "visitors"))
+      .toEqual([expected]);
+  });
+
+  it("shows the policy diff and refuses defaults or visitor apply at the wrong stage", () => {
+    const current = policyFixture();
+    const desired = createDesiredPolicy(current);
+    const diff = createPolicyDiff(current, desired) as {
+      proposal_bond: { before: string; after: string };
+      roles: Record<string, unknown>;
+    };
+
+    expect(diff.proposal_bond).toEqual({
+      before: "0",
+      after: "100000000000000000000000",
+    });
+    expect(Object.keys(diff.roles)).toEqual(["council", "visitors"]);
+    expect(() => assertCouncilCanApproveVoterDefaults(current)).not.toThrow();
+    expect(() => assertCouncilCanApproveVoterDefaults(desired))
+      .toThrow("Voter defaults must be set first");
+    expect(() => assertVisitorApplicationsReady(current))
+      .toThrow("council call:VoteApprove");
+    expect(() => assertVisitorApplicationsReady(desired)).not.toThrow();
   });
 });

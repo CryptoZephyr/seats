@@ -27,6 +27,20 @@ const VISITOR_MINIMUM_BALANCE = PROPOSAL_BOND + VISITOR_CLAIM_DEPOSIT + VISITOR_
 const CLAIM_SEAT_GAS = 300n * TGAS;
 const APPLICATION_DURATION_NS = 7 * 24 * 60 * 60 * 1_000_000_000;
 const APPLICATION_PROPOSAL_ACTION_GAS = 10n * TGAS;
+const COUNCIL_GOVERNANCE_LABELS = [
+  "config",
+  "policy",
+  "add_member_to_role",
+  "remove_member_from_role",
+  "upgrade_self",
+  "upgrade_remote",
+  "set_vote_token",
+  "factory_info_update",
+  "policy_add_or_update_role",
+  "policy_remove_role",
+  "policy_update_default_vote_policy",
+  "policy_update_parameters",
+] as const;
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
 
 interface Stage3Config {
@@ -70,7 +84,9 @@ type Policy = {
     kind: unknown;
     permissions: string[];
     vote_policy: Record<string, unknown>;
+    [key: string]: unknown;
   }>;
+  [key: string]: unknown;
 };
 
 type ProposalStatus = {
@@ -348,53 +364,148 @@ const visitorRole = {
   vote_policy: {},
 };
 
+function makeCouncilVotePolicy(): Record<string, unknown> {
+  return Object.fromEntries(COUNCIL_GOVERNANCE_LABELS.map((label) => [
+    label,
+    {
+      weight_kind: "RoleWeight",
+      quorum: "0",
+      threshold: [1, 2],
+    },
+  ]));
+}
+
+export function createDesiredPolicy(current: Policy): Policy {
+  const councilRoles = current.roles.filter((role) => role.name === "council");
+  if (councilRoles.length !== 1) {
+    throw new Error(`Expected one council role, found ${councilRoles.length}`);
+  }
+
+  const permissions = [
+    "*:AddProposal",
+    "*:Finalize",
+    ...COUNCIL_GOVERNANCE_LABELS.map((label) => `${label}:*`),
+  ];
+  let visitorsAdded = false;
+  const roles = current.roles.flatMap((role) => {
+    if (role.name === "council") {
+      return [{
+        ...role,
+        permissions,
+        vote_policy: makeCouncilVotePolicy(),
+      }];
+    }
+    if (role.name === "visitors") {
+      if (visitorsAdded) return [];
+      visitorsAdded = true;
+      return [visitorRole];
+    }
+    return [role];
+  });
+  if (!visitorsAdded) roles.push(visitorRole);
+
+  return {
+    ...current,
+    roles,
+    proposal_bond: PROPOSAL_BOND.toString(),
+  };
+}
+
+function councilRole(policy: Policy): Policy["roles"][number] {
+  const role = policy.roles.find((candidate) => candidate.name === "council");
+  if (!role) throw new Error("DAO policy has no council role");
+  return role;
+}
+
+function hasPermission(role: Policy["roles"][number], requested: string): boolean {
+  const [requestedLabel, requestedAction] = requested.split(":");
+  return role.permissions.some((permission) => {
+    const [grantedLabel, grantedAction, extra] = permission.split(":");
+    return extra === undefined
+      && (grantedLabel === "*" || grantedLabel === requestedLabel)
+      && (grantedAction === "*" || grantedAction === requestedAction);
+  });
+}
+
+export function assertCouncilCanApproveVoterDefaults(policy: Policy): void {
+  if (!hasPermission(councilRole(policy), "call:VoteApprove")) {
+    throw new Error(
+      "Voter defaults must be set first, before the council loses call:VoteApprove",
+    );
+  }
+}
+
+export function assertVisitorApplicationsReady(policy: Policy): void {
+  if (hasPermission(councilRole(policy), "call:VoteApprove")) {
+    throw new Error(
+      "DAO policy still gives the council call:VoteApprove. Approve the policy change before visitor apply",
+    );
+  }
+}
+
+export function createPolicyDiff(current: Policy, desired: Policy): object {
+  const changedRoles: Record<string, { before: unknown[]; after: unknown[] }> = {};
+  const roleNames = new Set([
+    ...current.roles.map((role) => role.name),
+    ...desired.roles.map((role) => role.name),
+  ]);
+  for (const name of roleNames) {
+    const before = current.roles.filter((role) => role.name === name);
+    const after = desired.roles.filter((role) => role.name === name);
+    if (!sameJsonValue(before, after)) changedRoles[name] = { before, after };
+  }
+  return {
+    ...(sameJsonValue(current.proposal_bond, desired.proposal_bond)
+      ? {}
+      : { proposal_bond: { before: current.proposal_bond, after: desired.proposal_bond } }),
+    roles: changedRoles,
+  };
+}
+
 async function proposePolicyChanges(
   provider: JsonRpcProvider,
   credential: Credential,
   daoId: string,
-  dropCouncilCallVote: boolean,
 ): Promise<void> {
-  if (dropCouncilCallVote) {
-    process.stderr.write(
-      "--drop-council-call-vote is a pending owner decision and has no effect.\n",
-    );
-  }
-  const policy = await callView<Policy>(provider, daoId, "get_policy", {});
-  const currentVisitorsRole = policy.roles.find((role) => role.name === "visitors");
-  if (!sameJsonValue(currentVisitorsRole, visitorRole)) {
-    const roleKind = { ChangePolicyAddOrUpdateRole: { role: visitorRole } };
-    const proposal = await submitProposal(
-      provider,
-      credential,
-      daoId,
-      roleKind,
-      "Allow visitors to add proposals",
-      policyProposalBond(policy),
-    );
-    process.stdout.write(`${JSON.stringify({ role_proposal_id: proposal.proposalId, status: proposal.status })}\n`);
+  const current = await callView<Policy>(provider, daoId, "get_policy", {});
+  const desired = createDesiredPolicy(current);
+  if (sameJsonValue(current, desired)) {
+    process.stdout.write(`${JSON.stringify({
+      status: "verified",
+      message: "Live DAO policy matches the desired policy",
+    })}\n`);
+    return;
   }
 
-  if (policyProposalBond(policy) !== PROPOSAL_BOND) {
-    const bondKind = {
-      ChangePolicyUpdateParameters: {
-        parameters: {
-          proposal_period: null,
-          proposal_bond: PROPOSAL_BOND.toString(),
-          bounty_bond: null,
-          bounty_forgiveness_period: null,
-        },
-      },
-    };
-    const proposal = await submitProposal(
-      provider,
-      credential,
-      daoId,
-      bondKind,
-      "Set the visitor proposal bond",
-      policyProposalBond(policy),
-    );
-    process.stdout.write(`${JSON.stringify({ bond_proposal_id: proposal.proposalId, status: proposal.status })}\n`);
+  process.stdout.write(`${JSON.stringify({
+    status: "policy_diff",
+    diff: createPolicyDiff(current, desired),
+  }, null, 2)}\n`);
+  const proposal = await submitProposal(
+    provider,
+    credential,
+    daoId,
+    { ChangePolicy: { policy: desired } },
+    "Set council governance policy and visitor proposal bond",
+    policyProposalBond(current),
+  );
+  if (proposal.status === "Approved") {
+    const applied = await callView<Policy>(provider, daoId, "get_policy", {});
+    if (!sameJsonValue(applied, desired)) {
+      throw new Error(
+        `Policy proposal ${proposal.proposalId} is approved, but live get_policy does not match the desired policy`,
+      );
+    }
+    process.stdout.write(`${JSON.stringify({
+      proposal_id: proposal.proposalId,
+      status: "verified",
+    })}\n`);
+    return;
   }
+  process.stdout.write(`${JSON.stringify({
+    proposal_id: proposal.proposalId,
+    status: proposal.status,
+  })}\n`);
 }
 
 async function proposeVoterDefaults(
@@ -405,6 +516,8 @@ async function proposeVoterDefaults(
   if (config.voter_id !== `s1.${config.seat_nft_id}`) {
     throw new Error("Voter defaults must be read from seat 1 of the configured seat NFT");
   }
+  const policy = await callView<Policy>(provider, config.dao_id, "get_policy", {});
+  assertCouncilCanApproveVoterDefaults(policy);
   const agentConfiguration = readDeploymentAgentConfiguration();
   if (agentConfiguration.voter_id !== config.voter_id) {
     throw new Error("deployments/testnet.json agent_configuration does not match configured seat 1");
@@ -433,7 +546,6 @@ async function proposeVoterDefaults(
   }
 
   const kind = createVoterDefaultsProposalKind(config.seat_nft_id, defaults);
-  const policy = await callView<Policy>(provider, config.dao_id, "get_policy", {});
   const proposal = await submitProposal(
     provider,
     credential,
@@ -646,6 +758,7 @@ async function applyAsVisitor(
   const visitor = loadCredential(visitorKeyPath, config.visitor_account_id);
   const funder = loadCredential(config.funder_key_file, config.funder_account_id);
   const policy = await callView<Policy>(provider, config.dao_id, "get_policy", {});
+  assertVisitorApplicationsReady(policy);
   const visitorsRoleIsReady = policy.roles.some((role) =>
     role.name === "visitors"
       && role.kind === "Everyone"
@@ -779,7 +892,7 @@ export async function main(args: string[]): Promise<void> {
   }
   if (!["propose-policy", "propose-voter-defaults", "apply", "apply-visitor", "claim"].includes(command ?? "")) {
     throw new Error(
-      "Usage: stage3-testnet.js generate-runner-key [--output path] | propose-policy --config path [--drop-council-call-vote] | propose-voter-defaults --config path | apply --config path | claim --config path",
+      "Usage: stage3-testnet.js generate-runner-key [--output path] | propose-voter-defaults --config path | propose-policy --config path | apply --config path | claim --config path",
     );
   }
   const configIndex = args.indexOf("--config");
@@ -791,12 +904,7 @@ export async function main(args: string[]): Promise<void> {
   const provider = new JsonRpcProvider({ url: config.rpc_url }, { retries: 0 });
   if (command === "propose-policy") {
     const credential = loadCredential(config.proposer_key_file, config.proposer_account_id);
-    await proposePolicyChanges(
-      provider,
-      credential,
-      config.dao_id,
-      args.includes("--drop-council-call-vote"),
-    );
+    await proposePolicyChanges(provider, credential, config.dao_id);
   } else if (command === "propose-voter-defaults") {
     const credential = loadCredential(config.proposer_key_file, config.proposer_account_id);
     await proposeVoterDefaults(provider, credential, config);
