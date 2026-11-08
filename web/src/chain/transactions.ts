@@ -11,7 +11,7 @@ export type VoterArgs<Method extends VoterMethod> =
       ? { proposal_id: number }
       : { brief_hash: string; secrets_account_id: string; secrets_profile: string };
 
-const VOTER_CALL_GAS = 30_000_000_000_000n;
+export const VOTER_CALL_GAS = 30_000_000_000_000n;
 const TGAS = 1_000_000_000_000n;
 export const PROPOSAL_CALL_GAS = 50n * TGAS;
 export const PROPOSAL_ACTION_GAS = 10n * TGAS;
@@ -306,7 +306,7 @@ export function friendlyContractError(code: string): string {
     case "ERR_BUY_IN_PROGRESS":
       return "This purchase is already being processed.";
     case "ERR_WRONG_DEPOSIT":
-      return "The attached NEAR doesn't match the approved price.";
+      return "The deposit doesn't match the approved price.";
     case "ERR_PRICE_OVERFLOW":
       return "That price is too large to process.";
     default:

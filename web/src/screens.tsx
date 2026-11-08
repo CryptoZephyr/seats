@@ -771,7 +771,7 @@ export function DelegateBrief() {
             <ol className={s.gives}>
               <li>1. Confirm in your wallet that you hold this seat (no fee) <StepStatus status={step === 1 ? "Pending" : step > 1 ? "Complete" : "Waiting"} /></li>
               <li>2. Storing your brief privately <StepStatus status={step === 2 ? "Pending" : step === 3 || step >= 4 ? "Complete" : "Waiting"} /> <span className={s.muted}>can take up to a minute if the service was asleep</span></li>
-              <li>3. Save the fingerprint on-chain <StepStatus status={step === 5 ? "Pending" : step === 4 ? "Complete" : step === 3 ? "Retry" : "Waiting"} /> <span className={s.muted}>30 Tgas, zero attached deposit. Estimated gas: {gasEstimate ? `${gasEstimate} NEAR` : "checking testnet gas price"}.</span></li>
+              <li>3. Save the fingerprint on-chain <StepStatus status={step === 5 ? "Pending" : step === 4 ? "Complete" : step === 3 ? "Retry" : "Waiting"} /> <span className={s.muted}>Network fee about {gasEstimate ? `${gasEstimate} testnet NEAR` : "checking testnet network fee"}. No deposit.</span></li>
             </ol>
             {!profile ? <GraphicButton glyph="keys" onClick={() => void postBrief()} disabled={busy || !brief.trim() || brief.length > 4000}>
               Save private brief
@@ -857,6 +857,7 @@ function ProposalVoteMember({
   voteState?: SeatVoteState;
   tokenId?: string;
 }) {
+  const networkFee = useGasEstimate(SET_BRIEF_GAS);
   const [historyAttempt, setHistoryAttempt] = useState(0);
   const [historyState, setHistoryState] = useState<ChangeHistoryState>({ status: "loading" });
   const [actionState, setActionState] = useState<VoteActionState>({ status: "idle" });
@@ -1132,6 +1133,7 @@ function ProposalVoteMember({
               )}
               {controlsVisible && (
                 <div className={s.actions}>
+                  <p className={s.note}>Network fee about {networkFee ? `${networkFee} testnet NEAR` : "checking testnet network fee"}. No deposit.</p>
                   {confirmCancel ? (
                     <>
                       <p className={s.muted}>Your seat won't vote on this proposal.</p>

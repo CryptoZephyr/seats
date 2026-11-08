@@ -113,7 +113,8 @@ export function SellSeatFlow() {
       </label>
       {split ? <p className={s.note}>Seller receives {near(split.seller)} NEAR (95%). Club receives {near(split.club)} NEAR (5%).</p>
         : <p className={s.note}>The sale split is unavailable until the live contract levy is verified as 500 bps.</p>}
-      <p>Proposal bond: {near(BigInt(state.data.proposalBond))} NEAR, returned on decision. Estimated gas: {gasEstimate ? `${gasEstimate} NEAR` : "checking testnet gas price"}.</p>
+      <p>Deposit: {near(BigInt(state.data.proposalBond))} NEAR, returned when the proposal is decided.</p>
+      <p>Network fee about {gasEstimate ? `${gasEstimate} testnet NEAR` : "checking testnet network fee"}.</p>
       <GraphicButton glyph="ticket" onClick={() => void submit()} disabled={busy || levy !== 500 || !split}>Submit sale for club vote</GraphicButton>
       {busy && <LoadingStatus>Waiting for your wallet…</LoadingStatus>}
       {error && <ErrorStatus>{error}</ErrorStatus>}

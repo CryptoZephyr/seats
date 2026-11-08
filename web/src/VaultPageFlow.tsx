@@ -54,7 +54,7 @@ export function VaultPageFlow() {
       const requester = Array.from(keyPair.publicKey, (byte) => byte.toString(16).padStart(2, "0")).join("");
       const request = buildVaultRequest(requester, cost);
       if (!await checkFunds(viewer.accountId, request)) {
-        throw new Error(`Your balance must cover the ${near(request.deposit)} NEAR maximum deposit plus gas.`);
+        throw new Error(`Your balance must cover the ${near(request.deposit)} NEAR deposit and network fee.`);
       }
       const tx = await viewer.callContract(request);
       setHash(tx.hash);
@@ -84,9 +84,9 @@ export function VaultPageFlow() {
         : !viewer.isSeatHolder ? <p><RefusedStamp>Not allowed</RefusedStamp> Only current seat holders can open the vault.</p>
         : <>
           <p>The request is encrypted in your browser. Your private key stays in memory and is discarded when you leave this page.</p>
-          <p>Expected charge: about 0.002 testnet NEAR. The execution deposit is estimated live and most is refunded.</p>
-          {cost && cost !== "error" && <p>Maximum deposit: {near(BigInt(cost) + 500_000_000_000n)} NEAR, plus gas.</p>}
-          <p>Estimated gas: {gasEstimate ? `${gasEstimate} NEAR` : "checking testnet gas price"}.</p>
+          <p>Expected execution charge: about 0.002 testnet NEAR. The deposit is estimated live and most is refunded.</p>
+          {cost && cost !== "error" && <p>Deposit: {near(BigInt(cost) + 500_000_000_000n)} NEAR.</p>}
+          <p>Network fee about {gasEstimate ? `${gasEstimate} testnet NEAR` : "checking testnet network fee"}.</p>
           <GraphicButton glyph="vault" onClick={() => void openVault()} disabled={busy || cost === null || cost === "error"}>Open vault</GraphicButton>
           {text && <pre className={s.briefInput}>{text}</pre>}
         </>}

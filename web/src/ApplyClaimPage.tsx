@@ -104,7 +104,7 @@ export function ApplyClaimPage() {
     setBusy(true);
     try {
       if (!await checkFunds(viewer.accountId, request)) {
-        throw new Error(`This account needs ${near(request.deposit)} NEAR plus gas. Get testnet NEAR from a NEAR testnet faucet.`);
+        throw new Error(`This account needs ${near(request.deposit)} NEAR for the deposit and about ${gasEstimate ?? "the current"} testnet NEAR for the network fee. Get testnet NEAR from a NEAR testnet faucet.`);
       }
       const tx = await viewer.callContract(request);
       setResult({ hash: tx.hash, action });
@@ -143,9 +143,9 @@ export function ApplyClaimPage() {
       {viewer.accountId && !viewer.error && !viewer.isLoading && !viewer.isSeatHolder && !inVote && approvalState === "ready" && (
         <>
           <dl className={s.facts}>
-            {!claimable && <Fact label="Proposal bond">{near(BigInt(state.data.proposalBond))} NEAR, returned when the proposal is decided</Fact>}
-            {claimable && <Fact label="Claim deposit">4.5 NEAR funds your delegate. Nearly all is returned after each vote.</Fact>}
-            <Fact label="Estimated gas">{gasEstimate ? `${gasEstimate} NEAR at the current testnet gas price` : "Current testnet gas price is unavailable"}</Fact>
+            {!claimable && <Fact label="Deposit">{near(BigInt(state.data.proposalBond))} NEAR, returned when the proposal is decided</Fact>}
+            {claimable && <Fact label="Deposit">4.5 NEAR funds your delegate. Nearly all is returned after each vote.</Fact>}
+            <Fact label="Network fee">{gasEstimate ? `About ${gasEstimate} testnet NEAR` : "Checking the testnet network fee"}</Fact>
           </dl>
           <GraphicButton glyph="seat" onClick={() => void submit(claimable ? "claim" : "apply")} disabled={busy}>
             {claimable ? "Claim seat" : "Apply"}

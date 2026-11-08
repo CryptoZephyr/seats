@@ -32,7 +32,7 @@ export function BuySeatFlow() {
     try {
       const request = buildBuyRequest(tokenId, price);
       if (!await checkFunds(viewer.accountId, request)) {
-        throw new Error("Your balance is too low for the approved price and gas.");
+        throw new Error("Your balance is too low for the approved deposit and network fee.");
       }
       const tx = await viewer.callContract(request);
       setHashes((previous) => ({ ...previous, [tokenId]: tx.hash }));
@@ -53,8 +53,8 @@ export function BuySeatFlow() {
         const namedBuyer = viewer.accountId === approval.buyer;
         return <RuledSection key={seat.token.token_id} title={`Seat ${seat.token.token_id}`}>
           <p className={s.muted}>Reserved for <span className="mono">{approval.buyer}</span></p>
-          <p>Price: {near(BigInt(approval.price))} NEAR</p>
-          <p>Estimated gas: {gasEstimate ? `${gasEstimate} NEAR` : "checking testnet gas price"}.</p>
+          <p>Deposit: {near(BigInt(approval.price))} NEAR, equal to the seat price.</p>
+          <p>Network fee about {gasEstimate ? `${gasEstimate} testnet NEAR` : "checking testnet network fee"}.</p>
           {split ? <p className={s.note}>Seller receives {near(split.seller)} NEAR (95%). Club receives {near(split.club)} NEAR (5%).</p>
             : <p className={s.note}>The live 95/5 split couldn't be verified. Buying is disabled.</p>}
           {!viewer.accountId ? <p className={s.muted}>Sign in as the named buyer to purchase this seat.</p>
