@@ -323,7 +323,7 @@ async function main(): Promise<void> {
     ? credentialFromPrivateKey(config.briefRelay.ownerAccountId, config.briefRelay.ownerPrivateKey)
     : undefined;
   const rpc = new NearAgentRpc(
-    config.rpcUrl,
+    config.rpcUrls,
     { ...keeper, accountId: config.keeperAccountId },
     [...voters.map((voter) => voter.credential), ...(briefOwnerCredential ? [briefOwnerCredential] : [])],
   );
