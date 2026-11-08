@@ -1,0 +1,8 @@
+.artwork {
+  display: block;
+  width: var(--space-12);
+  height: var(--space-12);
+  aspect-ratio: 1;
+  object-fit: contain;
+  flex: none;
+}

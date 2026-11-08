@@ -26,6 +26,7 @@ import { friendly, useGasEstimate } from "./flowCommon";
 import { SeatPlan, VoteMark, type VoteKind } from "./seatplan";
 import { canChangePendingVote, changeAttribution } from "./voteControls";
 import { useMockRun } from "./useMockRun";
+import { SeatArtwork } from "./SeatArtwork";
 import {
   CastStatus,
   CastRetryStatus,
@@ -283,6 +284,7 @@ export function ClubPage() {
   const seats = data.seats.map((seat) => ({
     seat: seat.token.token_id,
     ownerId: seat.token.owner_id,
+    artwork: seat.token.metadata?.media,
     lastVote: latestVote(seat),
   }));
   const hasMine = Boolean(viewer.accountId && seats.some((seat) => seat.ownerId === viewer.accountId));
@@ -317,6 +319,18 @@ export function ClubPage() {
         ) : (
           <>
             <SeatPlan seats={seats} viewerAccountId={viewer.accountId} />
+            <div className={s.seatHistoryLinks}>
+              {seats.map((seat) => (
+                <div className={s.seatHistoryEntry} key={seat.seat}>
+                  <SeatArtwork seatId={seat.seat} media={seat.artwork} />
+                  <span>
+                    <strong>Seat {seat.seat}</strong>
+                    <span className={s.muted}> · held by <span className="mono">{seat.ownerId}</span></span>
+                  </span>
+                  <TextButton href={`#/seat/${seat.seat}/history`}>View history</TextButton>
+                </div>
+              ))}
+            </div>
             <p className={s.legend}>
               <span><i className={`${s.swatch} ${s.swatchHeld}`} /> Held</span>
               {hasMine && <span><i className={`${s.swatch} ${s.swatchMine}`} /> Yours</span>}
@@ -525,6 +539,9 @@ export function MySeat() {
         <dl className={s.facts}>
           {owned.map((seat) => (
             <div key={seat.token.token_id}>
+              <Fact label={`Seat ${seat.token.token_id} artwork`}>
+                <SeatArtwork seatId={seat.token.token_id} media={seat.token.metadata?.media} />
+              </Fact>
               <Fact label={`Seat ${seat.token.token_id} delegate`}>
                 <span className="mono">{seat.record.voter_id}</span>
               </Fact>
@@ -535,6 +552,9 @@ export function MySeat() {
                 {seat.briefHash ? (
                   <HashValue value={seat.briefHash} label="brief fingerprint" />
                 ) : "No fingerprint stored"}
+              </Fact>
+              <Fact label={`Seat ${seat.token.token_id} history`}>
+                <TextButton href={`#/seat/${seat.token.token_id}/history`}>View seat history</TextButton>
               </Fact>
             </div>
           ))}
@@ -873,6 +893,7 @@ function ProposalVoteMember({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [refreshFailed, setRefreshFailed] = useState(false);
+  const [closedPending, setClosedPending] = useState<PendingView | null | undefined>(undefined);
   const voterId = seat?.record.voter_id;
 
   useEffect(() => {
@@ -896,6 +917,23 @@ function ProposalVoteMember({
       active = false;
     };
   }, [voterId, proposal.id, historyAttempt]);
+
+  useEffect(() => {
+    let active = true;
+    if (!seat || proposal.status === "InProgress") {
+      setClosedPending(undefined);
+      return () => { active = false; };
+    }
+    setClosedPending(undefined);
+    callView(seat.record.voter_id, "get_pending", { proposal_id: proposal.id })
+      .then((pending) => {
+        if (active) setClosedPending(pending);
+      })
+      .catch(() => {
+        if (active) setClosedPending(null);
+      });
+    return () => { active = false; };
+  }, [seat?.record.voter_id, seat?.token.token_id, proposal.id, proposal.status]);
 
   useEffect(() => {
     setActionState({ status: "idle" });
@@ -978,23 +1016,26 @@ function ProposalVoteMember({
   const cancelAttribution = cancelChange && seat
     ? changeAttribution(cancelChange.signerId, seat.controller, viewer.accountId)
     : null;
-  const currentVote = voteState?.kind === "pending"
-    ? voteState.pending.vote
-    : voteState?.kind === "cast"
-      ? voteState.result.vote
+  const displayedVoteState = closedPending && voteState?.kind !== "cast"
+    ? { kind: "missed" as const, pending: closedPending }
+    : voteState;
+  const currentVote = displayedVoteState?.kind === "pending"
+    ? displayedVoteState.pending.vote
+    : displayedVoteState?.kind === "cast"
+      ? displayedVoteState.result.vote
       : null;
-  const voteSource = voteState?.kind === "pending"
+  const voteSource = displayedVoteState?.kind === "pending"
     ? "pending"
-    : voteState?.kind === "cast"
-      ? voteState.result.source
+    : displayedVoteState?.kind === "cast"
+      ? displayedVoteState.result.source
       : null;
-  const retainedPending = seat?.pending[proposal.id] ?? null;
+  const retainedPending = closedPending ?? seat?.pending[proposal.id] ?? null;
   const originalVote = originalDelegateVote(changeHistory?.firstOverride);
   const isOverridden = isCurrentVoteOverridden(changeHistory, currentVote, voteSource);
   const controlsVisible = Boolean(
-    seat && canChangePendingVote(voteState, seat.controller, viewer.accountId),
+    seat && canChangePendingVote(displayedVoteState, seat.controller, viewer.accountId),
   );
-  const otherVote = voteState?.kind === "pending" && voteState.pending.vote === "Approve"
+  const otherVote = displayedVoteState?.kind === "pending" && displayedVoteState.pending.vote === "Approve"
     ? "Reject"
     : "Approve";
   const successHash = actionState.status === "success" ? actionState.txHash : null;
@@ -1065,14 +1106,14 @@ function ProposalVoteMember({
           )}
           {actionState.status === "error" && <ErrorStatus>{actionState.message}</ErrorStatus>}
 
-          {voteState?.kind === "cast" ? (
+          {displayedVoteState?.kind === "cast" ? (
             <>
               <dl className={s.facts}>
-                <Fact label="Vote">Your seat voted {voteState.result.vote}</Fact>
+                <Fact label="Vote">Your seat voted {displayedVoteState.result.vote}</Fact>
                 <Fact label="Voter status"><CastStatus /></Fact>
-                {voteState.result.receipt_hash && (
+                {displayedVoteState.result.receipt_hash && (
                   <Fact label="Receipt hash">
-                    <HashValue value={voteState.result.receipt_hash} label="receipt hash" />
+                    <HashValue value={displayedVoteState.result.receipt_hash} label="receipt hash" />
                   </Fact>
                 )}
               </dl>
@@ -1083,7 +1124,7 @@ function ProposalVoteMember({
                 </p>
               )}
             </>
-          ) : voteState?.kind === "closed" && voteState.result.status === "Canceled" ? (
+          ) : displayedVoteState?.kind === "closed" && displayedVoteState.result.status === "Canceled" ? (
             <>
               <dl className={s.facts}>
                 <Fact label="Voter status"><RefusedStamp>Canceled</RefusedStamp></Fact>
@@ -1101,44 +1142,44 @@ function ProposalVoteMember({
                 <TextButton href={explorerTxUrl(cancelChange.txHash)}>View transaction</TextButton>
               )}
             </>
-          ) : voteState?.kind === "closed" ? (
+          ) : displayedVoteState?.kind === "closed" ? (
             <dl className={s.facts}>
               <Fact label="Voter status">
-                <RefusedStamp>{voteState.result.status}</RefusedStamp>
+                <RefusedStamp>{displayedVoteState.result.status}</RefusedStamp>
               </Fact>
             </dl>
-          ) : voteState?.kind === "missed" ? (
+          ) : displayedVoteState?.kind === "missed" ? (
             <div className={s.voteCard}>
               <VotingClosedStatus />
               <p className={s.reason}>
-                Your delegate chose {voteState.pending.vote}, but it wasn't cast in time
+                Your delegate chose {displayedVoteState.pending.vote}, but it wasn't cast in time
               </p>
             </div>
-          ) : voteState?.kind === "pending" ? (
+          ) : displayedVoteState?.kind === "pending" ? (
             <div className={s.voteCard}>
               <div className={s.voteChoice}>
-                <span className={`${s.voteWord} ${voteState.pending.vote === "Approve" ? s.voteApprove : ""}`}>
-                  {voteState.pending.vote}
+                <span className={`${s.voteWord} ${displayedVoteState.pending.vote === "Approve" ? s.voteApprove : ""}`}>
+                  {displayedVoteState.pending.vote}
                 </span>
-                {voteState.sublabel === "windowClosed" ? (
+                {displayedVoteState.sublabel === "windowClosed" ? (
                   <span className={s.muted}>
                     Override window closed at{" "}
-                    <ProposalDate timestampNs={voteState.pending.deadline} />
+                    <ProposalDate timestampNs={displayedVoteState.pending.deadline} />
                   </span>
                 ) : (
-                  <ProposalDeadline deadlineNs={BigInt(voteState.pending.deadline)} />
+                  <ProposalDeadline deadlineNs={BigInt(displayedVoteState.pending.deadline)} />
                 )}
               </div>
-              {voteState.sublabel === "casting" && <CastingStatus />}
-              {voteState.sublabel === "retry" && <CastRetryStatus />}
-              {voteState.sublabel === "windowClosed" && <WindowClosedStatus />}
+              {displayedVoteState.sublabel === "casting" && <CastingStatus />}
+              {displayedVoteState.sublabel === "retry" && <CastRetryStatus />}
+              {displayedVoteState.sublabel === "windowClosed" && <WindowClosedStatus />}
               {isOverridden && originalVote ? (
                 <p className={s.reason}>
                   Your delegate's reasoning for {originalVote}:{" "}
-                  {voteState.pending.reason}
+                  {displayedVoteState.pending.reason}
                 </p>
               ) : (
-                <p className={s.reason}>{voteState.pending.reason}</p>
+                <p className={s.reason}>{displayedVoteState.pending.reason}</p>
               )}
               {controlsVisible && (
                 <div className={s.actions}>
@@ -1183,7 +1224,11 @@ function ProposalVoteMember({
                 </div>
               )}
             </div>
-          ) : voteState?.kind === "none" && voteState.votingClosed ? (
+          ) : proposal.status !== "InProgress" &&
+            seat !== undefined &&
+            closedPending === undefined ? (
+            <LoadingStatus>Checking this seat's vote…</LoadingStatus>
+          ) : displayedVoteState?.kind === "none" && displayedVoteState.votingClosed ? (
             <div className={s.voteCard}>
               <VotingClosedStatus />
               <p className={s.muted}>No vote from this seat</p>

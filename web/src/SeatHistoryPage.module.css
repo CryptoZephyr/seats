@@ -1,0 +1,83 @@
+.historyHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+.historyArtwork {
+  width: var(--space-16);
+  height: var(--space-16);
+}
+.historyList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.historyRow,
+.saleRow,
+.voteRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-line);
+}
+.historyRow:last-child,
+.saleRow:last-child,
+.voteRow:last-child {
+  border-bottom: 0;
+}
+.historyMain {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.historyMain time {
+  color: var(--color-ink-soft);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+.historyLink,
+.voteDetails a {
+  color: var(--color-chamber);
+  flex: none;
+}
+.saleSplit {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+  margin: var(--space-1) 0;
+}
+.saleSplit div {
+  display: flex;
+  gap: var(--space-2);
+}
+.saleSplit dt {
+  color: var(--color-ink-soft);
+}
+.saleSplit dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.voteDetails {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+}
+.voteWord {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+@media (max-width: 38rem) {
+  .historyRow,
+  .saleRow,
+  .voteRow {
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+}

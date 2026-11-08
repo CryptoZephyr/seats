@@ -14,6 +14,7 @@ import { SellSeatFlow } from "./SellSeatFlow";
 import { VaultPageFlow } from "./VaultPageFlow";
 import { DocsRoute } from "./components/docs/DocPage";
 import { LicensePage, PolicyPage } from "./legal";
+import { SeatHistoryPage } from "./SeatHistoryPage";
 import { WalletProvider } from "./chain/WalletProvider";
 import { SiteFooter, SiteHeader, TestnetStrip } from "./ui";
 
@@ -21,6 +22,7 @@ type Route =
   | "club"
   | "apply"
   | "seat"
+  | "seat-history"
   | "brief"
   | "vote"
   | "vote-proposal"
@@ -38,8 +40,12 @@ type Route =
   | "license"
   | "policy";
 
-function parseRoute(): { route: Route; proposalId?: number; tokenId?: string } {
-  const h = window.location.hash.replace(/^#\/?/, "");
+export function parseRoute(hash = window.location.hash): { route: Route; proposalId?: number; tokenId?: string } {
+  const h = hash.replace(/^#\/?/, "");
+  const seatHistory = h.match(/^seat\/(\d+)\/history$/);
+  if (seatHistory) {
+    return { route: "seat-history", tokenId: seatHistory[1] };
+  }
   const proposalSeatVote = h.match(/^vote\/(\d+)\/([^/]+)$/);
   if (proposalSeatVote) {
     return {
@@ -97,6 +103,9 @@ function AppContent() {
   switch (route.route) {
     case "seat":
       page = <MySeat />;
+      break;
+    case "seat-history":
+      page = <SeatHistoryPage tokenId={route.tokenId ?? ""} />;
       break;
     case "apply":
       page = <ApplyClaimPage />;

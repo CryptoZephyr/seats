@@ -1,0 +1,105 @@
+{
+  "accountTransactions": [
+    {
+      "transaction_hash": "4rLzf36PgdCwMhBhwRRAXHeADNjteRztppsuy6cMXSRm",
+      "tx_block_timestamp": "1794158529953649528",
+      "is_success": true,
+      "is_function_call": true
+    },
+    {
+      "transaction_hash": "J29XAdseALfDtPpPmV8TNPCAvGP6Arvknz37eYo7gco4",
+      "tx_block_timestamp": "1794162995751491293",
+      "is_success": true,
+      "is_function_call": true
+    },
+    {
+      "transaction_hash": "DiNLcScc7K81KTFXve1p9P7nxu55DxywcHhbrSPJJDgh",
+      "tx_block_timestamp": "1794165338231350339",
+      "is_success": true,
+      "is_function_call": true
+    }
+  ],
+  "transactions": [
+    {
+      "transaction": {
+        "signer_id": "seats-final-1794157607.testnet",
+        "receiver_id": "seatsnft3-1793848334.testnet",
+        "actions": [
+          {
+            "FunctionCall": {
+              "method_name": "claim_seat",
+              "args": "eyJhZ2VudF9wdWJsaWNfa2V5IjoiZWQyNTUxOTo1eFV5VmVKd3dacld6TW96Y2RXNUdhTFE0eEVkYm13YlhNYkJHc2JNektmWCJ9",
+              "deposit": "4500000000000000000000000"
+            }
+          }
+        ],
+        "hash": "4rLzf36PgdCwMhBhwRRAXHeADNjteRztppsuy6cMXSRm"
+      },
+      "receipts": [
+        {
+          "execution_outcome": {
+            "outcome": {
+              "logs": [
+                "EVENT_JSON:{\"standard\":\"nep171\",\"version\":\"1.0.0\",\"event\":\"nft_mint\",\"data\":[{\"owner_id\":\"seats-final-1794157607.testnet\",\"token_ids\":[\"4\"]}]}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "transaction": {
+        "signer_id": "seats-buyer-1794158448.testnet",
+        "receiver_id": "seatsnft3-1793848334.testnet",
+        "actions": [
+          {
+            "FunctionCall": {
+              "method_name": "buy",
+              "args": "eyJhZ2VudF9wdWJsaWNfa2V5IjoiZWQyNTUxOTo1eFV5VmVKd3dacld6TW96Y2RXNUdhTFE0eEVkYm13YlhNYkJHc2JNektmWCIsInRva2VuX2lkIjoiNCJ9",
+              "deposit": "1000000000000000000000000"
+            }
+          }
+        ],
+        "hash": "J29XAdseALfDtPpPmV8TNPCAvGP6Arvknz37eYo7gco4"
+      },
+      "receipts": [
+        {
+          "execution_outcome": {
+            "outcome": {
+              "logs": [
+                "EVENT_JSON:{\"standard\":\"nep171\",\"version\":\"1.0.0\",\"event\":\"nft_transfer\",\"data\":[{\"old_owner_id\":\"seats-final-1794157607.testnet\",\"new_owner_id\":\"seats-buyer-1794158448.testnet\",\"token_ids\":[\"4\"],\"memo\":\"approved resale\"}]}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "transaction": {
+        "signer_id": "seats-final-1794157607.testnet",
+        "receiver_id": "seatsnft3-1793848334.testnet",
+        "actions": [
+          {
+            "FunctionCall": {
+              "method_name": "buy",
+              "args": "eyJhZ2VudF9wdWJsaWNfa2V5IjoiZWQyNTUxOTo1eFV5VmVKd3dacld6TW96Y2RXNUdhTFE0eEVkYm13YlhNYkJHc2JNektmWCIsInRva2VuX2lkIjoiNCJ9",
+              "deposit": "500000000000000000000000"
+            }
+          }
+        ],
+        "hash": "DiNLcScc7K81KTFXve1p9P7nxu55DxywcHhbrSPJJDgh"
+      },
+      "receipts": [
+        {
+          "execution_outcome": {
+            "outcome": {
+              "logs": [
+                "EVENT_JSON:{\"standard\":\"nep171\",\"version\":\"1.0.0\",\"event\":\"nft_transfer\",\"data\":[{\"old_owner_id\":\"seats-buyer-1794158448.testnet\",\"new_owner_id\":\"seats-final-1794157607.testnet\",\"token_ids\":[\"4\"],\"memo\":\"approved resale\"}]}"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
