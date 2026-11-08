@@ -1125,13 +1125,13 @@ export function ProposalVote({
       (left, right) =>
         (right.result?.proposal_id ?? -1) - (left.result?.proposal_id ?? -1),
     )[0]?.seat;
-  const seat = routeSeat ?? (
-    closed
+  const seat = tokenId !== undefined
+    ? routeSeat
+    : closed
       ? seatWithLatestCast ?? ownedSeats[0]
       : proposalId !== undefined
         ? seatForRequestedProposal ?? ownedSeats[0]
-        : seatWithPending ?? ownedSeats[0]
-  );
+        : seatWithPending ?? ownedSeats[0];
   const latestCastResult = closed
     ? seat?.results.results.findLast((result) => result.cast)
     : undefined;
