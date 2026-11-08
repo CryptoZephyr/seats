@@ -840,9 +840,14 @@ function ProposalVoteMember({
     : voteState?.kind === "cast"
       ? voteState.result.vote
       : null;
+  const voteSource = voteState?.kind === "pending"
+    ? "pending"
+    : voteState?.kind === "cast"
+      ? voteState.result.source
+      : null;
   const retainedPending = seat?.pending[proposal.id] ?? null;
   const originalVote = originalDelegateVote(changeHistory?.firstOverride);
-  const isOverridden = isCurrentVoteOverridden(changeHistory, currentVote);
+  const isOverridden = isCurrentVoteOverridden(changeHistory, currentVote, voteSource);
   const controlsVisible = Boolean(
     seat && canChangePendingVote(voteState, seat.controller, viewer.accountId),
   );

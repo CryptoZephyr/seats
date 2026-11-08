@@ -163,10 +163,10 @@ describe("parseLatestMemberChange", () => {
     expect(history.firstOverride?.vote).toBe("Reject");
     expect(history.latest?.vote).toBe("Approve");
     expect(originalDelegateVote(history.firstOverride)).toBe("Approve");
-    expect(isCurrentVoteOverridden(history, history.latest?.vote ?? null)).toBe(false);
+    expect(isCurrentVoteOverridden(history, history.latest?.vote ?? null, "pending")).toBe(false);
   });
 
-  it("keeps the delegate's original choice after a third override", () => {
+  it("only treats a pending-sourced cast as overridden after a third override", () => {
     const votes: Array<"Approve" | "Reject"> = ["Reject", "Approve", "Reject"];
     const changes = votes.map((vote, index) => {
       const hash = `override-${index}`;
@@ -186,6 +186,7 @@ describe("parseLatestMemberChange", () => {
     expect(history.firstOverride?.vote).toBe("Reject");
     expect(history.latest?.vote).toBe("Reject");
     expect(originalDelegateVote(history.firstOverride)).toBe("Approve");
-    expect(isCurrentVoteOverridden(history, history.latest?.vote ?? null)).toBe(true);
+    expect(isCurrentVoteOverridden(history, history.latest?.vote ?? null, "member")).toBe(false);
+    expect(isCurrentVoteOverridden(history, history.latest?.vote ?? null, "pending")).toBe(true);
   });
 });

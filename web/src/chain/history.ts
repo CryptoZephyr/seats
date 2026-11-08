@@ -43,7 +43,9 @@ export function originalDelegateVote(
 export function isCurrentVoteOverridden(
   history: MemberChangeHistory | null,
   currentVote: string | null,
+  voteSource: "pending" | "member" | string | null,
 ): boolean {
+  if (voteSource !== "pending") return false;
   const originalVote = originalDelegateVote(history?.firstOverride);
   return history?.latest?.method === "override_vote" &&
     (currentVote === "Approve" || currentVote === "Reject") &&
