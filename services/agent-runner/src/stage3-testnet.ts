@@ -135,6 +135,12 @@ type TransactionResult = {
   value: unknown;
 };
 
+class TransactionSubmissionError extends Error {
+  constructor(message: string, readonly txHash: string, options?: ErrorOptions) {
+    super(message, options);
+  }
+}
+
 function findRoot(start: string): string {
   let current = resolve(start);
   while (dirname(current) !== current) {
@@ -372,7 +378,17 @@ async function sendActionsOnce(
     baseDecode(block.header.hash),
   );
   const [hashBytes, signed] = await credential.signer.signTransaction(transaction);
-  const outcome = await provider.sendTransaction(signed);
+  const hash = baseEncode(hashBytes);
+  let outcome;
+  try {
+    outcome = await provider.sendTransaction(signed);
+  } catch (error) {
+    throw new TransactionSubmissionError(
+      `Transaction status is unknown after submission: ${String(error)}`,
+      hash,
+      { cause: error },
+    );
+  }
   const result = outcome as unknown as {
     status?: { Failure?: unknown; SuccessValue?: string };
     transaction_outcome?: { outcome?: { status?: { Failure?: unknown } } };
@@ -384,7 +400,10 @@ async function sendActionsOnce(
     ...(result.receipts_outcome ?? []).map((receipt) => receipt.outcome?.status?.Failure),
   ].filter((failure) => failure !== undefined);
   if (failures.length > 0) {
-    throw new Error(`Transaction failed: ${JSON.stringify(failures)}`);
+    throw new TransactionSubmissionError(
+      `Transaction failed: ${JSON.stringify(failures)}`,
+      hash,
+    );
   }
 
   let value: unknown = null;
@@ -396,7 +415,7 @@ async function sendActionsOnce(
       value = decoded;
     }
   }
-  return { hash: baseEncode(hashBytes), value };
+  return { hash, value };
 }
 
 async function submitProposal(
@@ -433,7 +452,11 @@ async function submitProposal(
   } catch (error) {
     const landed = await findMatchingProposal(provider, daoId, kind);
     if (landed && (!retryClosedMatch || landed.status === "InProgress")) {
-      return { proposalId: landed.id, status: landed.status };
+      return {
+        proposalId: landed.id,
+        status: landed.status,
+        ...(error instanceof TransactionSubmissionError ? { txHash: error.txHash } : {}),
+      };
     }
     throw new Error(
       `Proposal status is unknown after submission. No automatic resend was attempted: ${String(error)}`,
