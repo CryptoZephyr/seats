@@ -2,7 +2,13 @@ import { createServer, type Server } from "node:http";
 
 export interface HealthInput {
   daoId: string;
-  voters: string[];
+  voters: Array<{ voter_id: string; source: "file" | "discovered" }>;
+  lowBalanceVoters: Array<{
+    voter_id: string;
+    available_yocto: string;
+    required_yocto: string;
+  }>;
+  agentPublicKey: string | null;
   cursor: number | null;
   startedAtMs: number;
   nowMs: number;
@@ -14,7 +20,13 @@ export interface HealthInput {
 export interface HealthResponse {
   status: "starting" | "ok" | "stale";
   dao_id: string;
-  voters: string[];
+  voters: Array<{ voter_id: string; source: "file" | "discovered" }>;
+  low_balance_voters: Array<{
+    voter_id: string;
+    available_yocto: string;
+    required_yocto: string;
+  }>;
+  agent_public_key: string | null;
   cursor: number | null;
   started_at: string;
   uptime_s: number;
@@ -43,6 +55,8 @@ export function healthStatus(input: HealthInput): HealthResponse {
     status,
     dao_id: input.daoId,
     voters: input.voters,
+    low_balance_voters: input.lowBalanceVoters,
+    agent_public_key: input.agentPublicKey,
     cursor: input.cursor,
     started_at: new Date(input.startedAtMs).toISOString(),
     uptime_s: uptimeSeconds,

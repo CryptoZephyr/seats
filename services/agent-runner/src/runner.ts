@@ -12,22 +12,34 @@ import {
 
 export interface Voter {
   voterId: string;
+  source?: "file" | "discovered";
 }
 
 export interface AgentRunnerRpc {
   getLastProposalId(daoId: string): Promise<number>;
   getProposalPeriodNs(daoId: string): Promise<bigint>;
   getProposals(daoId: string, fromIndex: number, limit: number): Promise<Proposal[]>;
+  getAccountInfo(voterId: string): Promise<{
+    amount: string | bigint;
+    storageUsage: string | number | bigint;
+  }>;
   getPending(voterId: string, id: number): Promise<PendingVote | null>;
   getResults(voterId: string): Promise<ResultsView>;
   requestVote(voterId: string, id: number): Promise<string>;
   cast(voterId: string, id: number): Promise<string>;
 }
 
+export interface LowBalanceVoter {
+  available_yocto: string;
+  required_yocto: string;
+}
+
 export interface RunnerState {
   cursor: number;
   pendingByVoter: Record<string, number[]>;
   inFlight: Record<string, Record<string, number>>;
+  requestBackoffByVoter?: Record<string, number>;
+  lowBalanceVoters?: Record<string, LowBalanceVoter>;
 }
 
 export function initialRunnerState(
@@ -49,6 +61,27 @@ export function initialRunnerState(
   return { cursor: firstProposalId - 1, pendingByVoter: {}, inFlight: {} };
 }
 
+export function rewindCursorForNewDiscoveredVoters(
+  state: RunnerState,
+  newlyDiscoveredVoterIds: string[],
+  newestKnownId: number,
+  lookbackProposals: number,
+): boolean {
+  if (newlyDiscoveredVoterIds.length === 0) return false;
+  if (!Number.isSafeInteger(newestKnownId) || newestKnownId < -1) {
+    throw new Error("Newest proposal ID must be an integer greater than or equal to -1");
+  }
+  if (!Number.isSafeInteger(lookbackProposals) || lookbackProposals < 0) {
+    throw new Error("Proposal lookback must be a non-negative integer");
+  }
+  const lookback = lookbackProposals === 0 ? 20 : lookbackProposals;
+  const rewindFloor = Math.max(-1, newestKnownId - lookback - 1);
+  const nextCursor = Math.min(state.cursor, rewindFloor);
+  if (nextCursor === state.cursor) return false;
+  state.cursor = nextCursor;
+  return true;
+}
+
 export interface ActionLog {
   action: string;
   status: "ok" | "skipped" | "error" | "warning";
@@ -57,6 +90,8 @@ export interface ActionLog {
   tx_hash?: string;
   reason?: string;
   error?: string;
+  available_yocto?: string;
+  required_yocto?: string;
 }
 
 interface TickOptions {
@@ -67,6 +102,7 @@ interface TickOptions {
   nowNanoseconds: bigint;
   nowMilliseconds: number;
   requestTtlMs: number;
+  voterMinAvailableYocto?: bigint;
   proposalPeriodNs?: bigint;
   windowSeconds?: number;
   persistState: (state: RunnerState) => void;
@@ -75,6 +111,9 @@ interface TickOptions {
 
 const PROPOSAL_PAGE_SIZE = 100;
 const PROPOSAL_PERIOD_MARGIN_SECONDS = 300;
+const REQUEST_BACKOFF_MS = 60 * 60 * 1000;
+const VOTER_MIN_AVAILABLE_YOCTO = 4_350_000_000_000_000_000_000_000n;
+const STORAGE_COST_PER_BYTE_YOCTO = 10_000_000_000_000_000_000n;
 
 export function isProposalPeriodTooShort(proposalPeriodNs: bigint, windowSeconds: number): boolean {
   return proposalPeriodNs < BigInt(windowSeconds + PROPOSAL_PERIOD_MARGIN_SECONDS) * 1_000_000_000n;
@@ -115,6 +154,54 @@ function clearInFlight(state: RunnerState, voterId: string, id: number): boolean
     delete state.inFlight[voterId];
   }
   return true;
+}
+
+function setRequestBackoff(state: RunnerState, voterId: string, untilMs: number): void {
+  state.requestBackoffByVoter ??= {};
+  state.requestBackoffByVoter[voterId] = untilMs;
+}
+
+function clearRequestBackoff(state: RunnerState, voterId: string): boolean {
+  if (!state.requestBackoffByVoter || !Object.hasOwn(state.requestBackoffByVoter, voterId)) {
+    return false;
+  }
+  delete state.requestBackoffByVoter[voterId];
+  if (Object.keys(state.requestBackoffByVoter).length === 0) {
+    delete state.requestBackoffByVoter;
+  }
+  return true;
+}
+
+function clearLowBalanceVoter(state: RunnerState, voterId: string): boolean {
+  if (!state.lowBalanceVoters || !Object.hasOwn(state.lowBalanceVoters, voterId)) {
+    return false;
+  }
+  delete state.lowBalanceVoters[voterId];
+  if (Object.keys(state.lowBalanceVoters).length === 0) {
+    delete state.lowBalanceVoters;
+  }
+  return true;
+}
+
+function setLowBalanceVoter(
+  state: RunnerState,
+  voterId: string,
+  availableYocto: bigint,
+  requiredYocto: bigint,
+): void {
+  state.lowBalanceVoters ??= {};
+  state.lowBalanceVoters[voterId] = {
+    available_yocto: availableYocto.toString(),
+    required_yocto: requiredYocto.toString(),
+  };
+}
+
+function availableVoterBalance(account: {
+  amount: string | bigint;
+  storageUsage: string | number | bigint;
+}): bigint {
+  return BigInt(account.amount)
+    - BigInt(account.storageUsage) * STORAGE_COST_PER_BYTE_YOCTO;
 }
 
 function hasPending(state: RunnerState, voterId: string, id: number): boolean {
@@ -293,6 +380,19 @@ export async function runTick(options: TickOptions): Promise<RunnerState> {
         continue;
       }
 
+      const hasLowBalanceState = state.lowBalanceVoters?.[voter.voterId] !== undefined;
+      const requestBackoffUntil = state.requestBackoffByVoter?.[voter.voterId];
+      if (requestBackoffUntil !== undefined) {
+        if (requestBackoffUntil > options.nowMilliseconds && !hasLowBalanceState) {
+          firstIncompleteId = firstIncompleteId === null ? id : Math.min(firstIncompleteId, id);
+          continue;
+        }
+        if (requestBackoffUntil <= options.nowMilliseconds
+          && clearRequestBackoff(state, voter.voterId)) {
+          options.persistState(state);
+        }
+      }
+
       const requestedAtMs = getInFlight(state, voter.voterId, id);
       if (requestedAtMs !== undefined && options.nowMilliseconds - requestedAtMs < options.requestTtlMs) {
         firstIncompleteId = firstIncompleteId === null ? id : Math.min(firstIncompleteId, id);
@@ -318,6 +418,48 @@ export async function runTick(options: TickOptions): Promise<RunnerState> {
       if (!shouldRequestVote(pending, results, id)) {
         continue;
       }
+
+      const requiredYocto = options.voterMinAvailableYocto ?? VOTER_MIN_AVAILABLE_YOCTO;
+      try {
+        const account = await rpc.getAccountInfo(voter.voterId);
+        const availableYocto = availableVoterBalance(account);
+        if (availableYocto < requiredYocto) {
+          setLowBalanceVoter(state, voter.voterId, availableYocto, requiredYocto);
+          setRequestBackoff(
+            state,
+            voter.voterId,
+            options.nowMilliseconds + REQUEST_BACKOFF_MS,
+          );
+          firstIncompleteId = firstIncompleteId === null ? id : Math.min(firstIncompleteId, id);
+          options.persistState(state);
+          log({
+            action: "request_vote",
+            status: "skipped",
+            voter_id: voter.voterId,
+            proposal_id: id,
+            reason: "insufficient_voter_balance",
+            available_yocto: availableYocto.toString(),
+            required_yocto: requiredYocto.toString(),
+          });
+          continue;
+        }
+        if (clearLowBalanceVoter(state, voter.voterId)) {
+          clearRequestBackoff(state, voter.voterId);
+          options.persistState(state);
+        }
+      } catch (error) {
+        log({
+          action: "view_account",
+          status: "error",
+          voter_id: voter.voterId,
+          error: String(error),
+        });
+        if (hasLowBalanceState) {
+          firstIncompleteId = firstIncompleteId === null ? id : Math.min(firstIncompleteId, id);
+          continue;
+        }
+      }
+
       const retryAfterTtl = requestedAtMs !== undefined;
       setInFlight(state, voter.voterId, id, options.nowMilliseconds);
       options.persistState(state);
@@ -349,10 +491,30 @@ export async function runTick(options: TickOptions): Promise<RunnerState> {
           continue;
         }
         firstIncompleteId = firstIncompleteId === null ? id : Math.min(firstIncompleteId, id);
+        const needsConfigurationBackoff = voter.source === "discovered"
+          && (message.includes("ERR_AGENT_WASM_NOT_PINNED") || message.includes("ERR_BRIEF_NOT_SET"));
+        if (needsConfigurationBackoff) {
+          setRequestBackoff(
+            state,
+            voter.voterId,
+            options.nowMilliseconds + REQUEST_BACKOFF_MS,
+          );
+        }
         if (isDefiniteRequestPanic(error)) {
           clearInFlight(state, voter.voterId, id);
           removePending(state, voter.voterId, id);
           options.persistState(state);
+        }
+        if (needsConfigurationBackoff) {
+          log({
+            action: "request_vote",
+            status: "skipped",
+            voter_id: voter.voterId,
+            proposal_id: id,
+            reason: "discovered_voter_backoff_1h",
+            error: message,
+          });
+          continue;
         }
         log({
           action: "request_vote",

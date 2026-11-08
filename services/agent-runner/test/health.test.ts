@@ -10,7 +10,9 @@ import {
 function healthInput(overrides: Partial<HealthInput> = {}): HealthInput {
   return {
     daoId: "club.testnet",
-    voters: ["voter.testnet"],
+    voters: [{ voter_id: "voter.testnet", source: "file" }],
+    lowBalanceVoters: [],
+    agentPublicKey: null,
     cursor: 7,
     startedAtMs: 1_000,
     nowMs: 2_000,
@@ -66,6 +68,11 @@ describe("health status", () => {
       nowMs: 30_000,
       lastTickAtMs: 25_000,
       lastTickOkAtMs: 25_000,
+      lowBalanceVoters: [{
+        voter_id: "low.testnet",
+        available_yocto: "400",
+        required_yocto: "500",
+      }],
     }));
     const address = server.address() as AddressInfo;
     const baseUrl = `http://127.0.0.1:${address.port}`;
@@ -75,7 +82,13 @@ describe("health status", () => {
       expect(await getResponse.json()).toEqual({
         status: "ok",
         dao_id: "club.testnet",
-        voters: ["voter.testnet"],
+        voters: [{ voter_id: "voter.testnet", source: "file" }],
+        low_balance_voters: [{
+          voter_id: "low.testnet",
+          available_yocto: "400",
+          required_yocto: "500",
+        }],
+        agent_public_key: null,
         cursor: 7,
         started_at: new Date(0).toISOString(),
         uptime_s: 30,

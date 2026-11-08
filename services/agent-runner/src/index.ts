@@ -2,7 +2,8 @@ import { readFileSync, renameSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Server } from "node:http";
-import { loadCredential, NearAgentRpc } from "./rpc.js";
+import { SeatVoterDiscovery, mergeVoterSources, type VoterSource } from "./discovery.js";
+import { loadCredential, NearAgentRpc, type KeyFileCredential } from "./rpc.js";
 import {
   parseKeepaliveConfig,
   startHealthServer,
@@ -11,6 +12,7 @@ import {
 import {
   initialRunnerState,
   isProposalPeriodTooShort,
+  rewindCursorForNewDiscoveredVoters,
   runTick,
   type ActionLog,
   type RunnerState,
@@ -25,85 +27,132 @@ interface Config {
   rpcUrl: string;
   daoId: string;
   voters: VoterConfig[];
+  seatNftId?: string;
+  runnerAgentKeyFile?: string;
   keeperAccountId: string;
   keeperKeyFile: string;
   pollMs: number;
   windowSeconds: number;
   requestTtlMs: number;
+  voterMinAvailableYocto: bigint;
   startProposalId?: number;
   lookbackProposals: number;
   port?: number;
   keepaliveUrl?: string;
   keepaliveMs: number;
-  votersFile: string;
   stateFile: string;
 }
 
 let healthServer: Server | undefined;
 let keepaliveTimer: NodeJS.Timeout | undefined;
 
-function required(name: string): string {
-  const value = process.env[name]?.trim();
+function required(name: string, env: NodeJS.ProcessEnv): string {
+  const value = env[name]?.trim();
   if (!value) {
     throw new Error(`${name} is required`);
   }
   return value;
 }
 
-function loadConfig(): Config {
-  const votersFile = resolve(required("VOTERS"));
-  const voters = JSON.parse(readFileSync(votersFile, "utf8")) as VoterConfig[];
-  if (!Array.isArray(voters) || voters.length === 0) {
-    throw new Error("VOTERS must contain a non-empty JSON array");
+function assertTestnetAccountId(accountId: string, name: string): void {
+  if (!accountId.endsWith(".testnet")) {
+    throw new Error(`${name} must be a .testnet account`);
+  }
+}
+
+export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+  const votersFile = env.VOTERS?.trim();
+  const seatNftId = env.SEAT_NFT_ID?.trim() || undefined;
+  const runnerAgentKeyFile = env.RUNNER_AGENT_KEY_FILE?.trim() || undefined;
+  if (Boolean(seatNftId) !== Boolean(runnerAgentKeyFile)) {
+    throw new Error("SEAT_NFT_ID and RUNNER_AGENT_KEY_FILE must be set together");
+  }
+  if (!votersFile && !seatNftId) {
+    throw new Error("Configure VOTERS or both SEAT_NFT_ID and RUNNER_AGENT_KEY_FILE");
+  }
+
+  const voters = votersFile
+    ? JSON.parse(readFileSync(resolve(votersFile), "utf8")) as VoterConfig[]
+    : [];
+  if (!Array.isArray(voters)) {
+    throw new Error("VOTERS must contain a JSON array");
   }
   for (const voter of voters) {
-    if (!voter || typeof voter.voter_id !== "string" || typeof voter.agent_key_file !== "string") {
+    if (
+      !voter
+      || typeof voter.voter_id !== "string"
+      || typeof voter.agent_key_file !== "string"
+      || !voter.agent_key_file.trim()
+    ) {
       throw new Error("Each VOTERS entry needs voter_id and agent_key_file strings");
     }
+    assertTestnetAccountId(voter.voter_id, "VOTERS voter_id");
   }
-  const pollMs = Number(process.env.POLL_MS ?? "15000");
+  if (voters.length === 0 && !seatNftId) {
+    throw new Error("VOTERS must contain at least one entry when discovery is disabled");
+  }
+
+  const rpcUrl = required("NEAR_RPC_URL", env);
+  if (!new URL(rpcUrl).hostname.toLowerCase().includes("testnet")) {
+    throw new Error("NEAR_RPC_URL must point to NEAR testnet");
+  }
+  const daoId = required("DAO_ID", env);
+  assertTestnetAccountId(daoId, "DAO_ID");
+  if (seatNftId) assertTestnetAccountId(seatNftId, "SEAT_NFT_ID");
+  const keeperAccountId = required("KEEPER_ACCOUNT_ID", env);
+  assertTestnetAccountId(keeperAccountId, "KEEPER_ACCOUNT_ID");
+
+  const pollMs = Number(env.POLL_MS ?? "15000");
   if (!Number.isSafeInteger(pollMs) || pollMs < 1) {
     throw new Error("POLL_MS must be a positive integer");
   }
-  const windowSeconds = Number(process.env.WINDOW_SECONDS ?? "120");
+  const windowSeconds = Number(env.WINDOW_SECONDS ?? "120");
   if (!Number.isSafeInteger(windowSeconds) || windowSeconds < 1) {
     throw new Error("WINDOW_SECONDS must be a positive integer");
   }
-  const requestTtlMs = Number(process.env.REQUEST_TTL_MS ?? "180000");
+  const requestTtlMs = Number(env.REQUEST_TTL_MS ?? "180000");
   if (!Number.isSafeInteger(requestTtlMs) || requestTtlMs < 1) {
     throw new Error("REQUEST_TTL_MS must be a positive integer");
   }
-  const startProposalIdValue = process.env.START_PROPOSAL_ID?.trim();
+  const voterMinAvailableValue =
+    env.VOTER_MIN_AVAILABLE_YOCTO?.trim() ?? "4350000000000000000000000";
+  if (!/^\d+$/.test(voterMinAvailableValue)) {
+    throw new Error("VOTER_MIN_AVAILABLE_YOCTO must be a decimal yoctoNEAR string");
+  }
+  const voterMinAvailableYocto = BigInt(voterMinAvailableValue);
+  const startProposalIdValue = env.START_PROPOSAL_ID?.trim();
   const startProposalId = startProposalIdValue ? Number(startProposalIdValue) : undefined;
   if (startProposalId !== undefined && (!Number.isSafeInteger(startProposalId) || startProposalId < 0)) {
     throw new Error("START_PROPOSAL_ID must be a non-negative integer");
   }
-  const lookbackValue = process.env.LOOKBACK_PROPOSALS;
+  const lookbackValue = env.LOOKBACK_PROPOSALS;
   const lookbackProposals = lookbackValue === undefined ? 20 : Number(lookbackValue);
   if (!Number.isSafeInteger(lookbackProposals) || lookbackProposals < 0) {
     throw new Error("LOOKBACK_PROPOSALS must be a non-negative integer");
   }
-  const portValue = process.env.PORT;
+  const portValue = env.PORT;
   const port = portValue === undefined ? undefined : Number(portValue);
   if (port !== undefined && (!Number.isSafeInteger(port) || port < 0 || port > 65_535)) {
     throw new Error("PORT must be an integer between 0 and 65535");
   }
-  const keepalive = parseKeepaliveConfig(process.env);
+  const keepalive = parseKeepaliveConfig(env);
   return {
-    rpcUrl: required("NEAR_RPC_URL"),
-    daoId: required("DAO_ID"),
+    rpcUrl,
+    daoId,
     voters,
-    keeperAccountId: required("KEEPER_ACCOUNT_ID"),
-    keeperKeyFile: required("KEEPER_KEY_FILE"),
+    ...(seatNftId ? { seatNftId } : {}),
+    ...(runnerAgentKeyFile ? { runnerAgentKeyFile } : {}),
+    keeperAccountId,
+    keeperKeyFile: required("KEEPER_KEY_FILE", env),
     pollMs,
     windowSeconds,
     requestTtlMs,
+    voterMinAvailableYocto,
     startProposalId,
     lookbackProposals,
     port,
     keepaliveUrl: keepalive.url,
     keepaliveMs: keepalive.intervalMs,
-    votersFile,
     stateFile: resolve(process.cwd(), "state.json"),
   };
 }
@@ -123,10 +172,44 @@ export function readState(stateFile: string): RunnerState | null {
     if (typeof inFlight !== "object" || Array.isArray(inFlight)) {
       throw new Error("Invalid runner state");
     }
+    const requestBackoffByVoter = state.requestBackoffByVoter;
+    if (
+      requestBackoffByVoter !== undefined
+      && (
+        typeof requestBackoffByVoter !== "object"
+        || requestBackoffByVoter === null
+        || Array.isArray(requestBackoffByVoter)
+        || Object.values(requestBackoffByVoter).some(
+          (untilMs) => !Number.isSafeInteger(untilMs) || (untilMs as number) < 0,
+        )
+      )
+    ) {
+      throw new Error("Invalid runner state");
+    }
+    const lowBalanceVoters = state.lowBalanceVoters;
+    if (
+      lowBalanceVoters !== undefined
+      && (
+        typeof lowBalanceVoters !== "object"
+        || lowBalanceVoters === null
+        || Array.isArray(lowBalanceVoters)
+        || Object.values(lowBalanceVoters).some(
+          (entry) => !entry
+            || typeof entry.available_yocto !== "string"
+            || !/^-?\d+$/.test(entry.available_yocto)
+            || typeof entry.required_yocto !== "string"
+            || !/^\d+$/.test(entry.required_yocto),
+        )
+      )
+    ) {
+      throw new Error("Invalid runner state");
+    }
     return {
       cursor: state.cursor as number,
       pendingByVoter: state.pendingByVoter,
       inFlight,
+      ...(requestBackoffByVoter ? { requestBackoffByVoter } : {}),
+      ...(lowBalanceVoters ? { lowBalanceVoters } : {}),
     };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
@@ -162,10 +245,99 @@ async function main(): Promise<void> {
   let state: RunnerState | null = null;
   let lastTickAtMs: number | null = null;
   let lastTickOkAtMs: number | null = null;
+  const keeper = loadCredential(config.keeperKeyFile, config.keeperAccountId);
+  const voters = config.voters.map((voter) => ({
+    voterId: voter.voter_id,
+    credential: loadCredential(voter.agent_key_file, voter.voter_id, false),
+  }));
+  const sharedCredential: KeyFileCredential | undefined = config.runnerAgentKeyFile
+    ? loadCredential(config.runnerAgentKeyFile, "runner-agent.testnet", false)
+    : undefined;
+  const rpc = new NearAgentRpc(
+    config.rpcUrl,
+    { ...keeper, accountId: config.keeperAccountId },
+    voters.map((voter) => voter.credential),
+  );
+  const fileVoterIds = voters.map((voter) => voter.voterId);
+  let discoveredVoterIds: string[] = [];
+  let voterSources: VoterSource[] = mergeVoterSources(fileVoterIds, discoveredVoterIds);
+  const discovery = config.seatNftId && sharedCredential ? new SeatVoterDiscovery() : undefined;
+  let nextDiscoveryAtMs = 0;
+  const refreshDiscovery = async (nowMs: number): Promise<void> => {
+    if (!discovery || !config.seatNftId || !sharedCredential || nowMs < nextDiscoveryAtMs) {
+      return;
+    }
+    nextDiscoveryAtMs = nowMs + 60_000;
+    if (!await discovery.refresh(
+      rpc,
+      config.seatNftId,
+      sharedCredential.publicKey.toString(),
+      log,
+    )) {
+      return;
+    }
+    const nextDiscoveredVoterIds = discovery.voters;
+    const fileVoterSet = new Set(fileVoterIds);
+    const nextDiscoveredSet = new Set(nextDiscoveredVoterIds);
+    const previousDiscoveredSet = new Set(discoveredVoterIds);
+    const newlyDiscoveredVoterIds = nextDiscoveredVoterIds.filter(
+      (voterId) => !previousDiscoveredSet.has(voterId) && !fileVoterSet.has(voterId),
+    );
+    if (newlyDiscoveredVoterIds.length > 0) {
+      const currentState = state;
+      if (!currentState) return;
+      try {
+        const newestKnownId = await rpc.getLastProposalId(config.daoId) - 1;
+        if (rewindCursorForNewDiscoveredVoters(
+          currentState,
+          newlyDiscoveredVoterIds,
+          newestKnownId,
+          config.lookbackProposals,
+        )) {
+          writeState(config.stateFile, currentState);
+          log({
+            action: "discovery_cursor_rewind",
+            status: "ok",
+            reason: "new_discovered_voter",
+          });
+        }
+      } catch (error) {
+        log({
+          action: "discover_voters",
+          status: "error",
+          reason: "cursor_rewind_failed",
+          error: String(error),
+        });
+        return;
+      }
+    }
+    for (const voterId of discoveredVoterIds) {
+      if (!fileVoterSet.has(voterId) && !nextDiscoveredSet.has(voterId)) {
+        rpc.removeCredential(voterId);
+      }
+    }
+    for (const voterId of nextDiscoveredVoterIds) {
+      if (!fileVoterSet.has(voterId)) {
+        rpc.addCredential({ ...sharedCredential, accountId: voterId });
+      }
+    }
+    discoveredVoterIds = nextDiscoveredVoterIds;
+    voterSources = mergeVoterSources(fileVoterIds, discoveredVoterIds);
+  };
   if (config.port !== undefined) {
     healthServer = await startHealthServer(config.port, () => ({
       daoId: config.daoId,
-      voters: config.voters.map((voter) => voter.voter_id),
+      voters: voterSources.map(({ voterId, source }) => ({
+        voter_id: voterId,
+        source,
+      })),
+      lowBalanceVoters: Object.entries(state?.lowBalanceVoters ?? {}).map(
+        ([voterId, balance]) => ({
+          voter_id: voterId,
+          ...balance,
+        }),
+      ),
+      agentPublicKey: sharedCredential?.publicKey.toString() ?? null,
       cursor: state?.cursor ?? null,
       startedAtMs,
       nowMs: Date.now(),
@@ -175,16 +347,6 @@ async function main(): Promise<void> {
     }));
   }
   keepaliveTimer = startKeepalive(config.keepaliveUrl, config.keepaliveMs, log);
-  const keeper = loadCredential(config.keeperKeyFile, config.keeperAccountId);
-  const voters = config.voters.map((voter) => ({
-    voterId: voter.voter_id,
-    credential: loadCredential(voter.agent_key_file, voter.voter_id, false),
-  }));
-  const rpc = new NearAgentRpc(
-    config.rpcUrl,
-    { ...keeper, accountId: config.keeperAccountId },
-    voters.map((voter) => voter.credential),
-  );
   state = readState(config.stateFile);
   if (state === null) {
     const currentNextProposalId = config.startProposalId === undefined
@@ -198,10 +360,15 @@ async function main(): Promise<void> {
     writeState(config.stateFile, state);
   }
 
+  await refreshDiscovery(Date.now());
   process.stdout.write(`${JSON.stringify({
     action: "runner_started",
     dao_id: config.daoId,
-    voters: voters.map((voter) => voter.voterId),
+    voters: voterSources.map(({ voterId, source }) => ({
+      voter_id: voterId,
+      source,
+    })),
+    agent_public_key: sharedCredential?.publicKey.toString() ?? null,
     poll_ms: config.pollMs,
   })}\n`);
   let proposalPeriodNs: bigint | undefined;
@@ -222,14 +389,16 @@ async function main(): Promise<void> {
     const started = Date.now();
     lastTickAtMs = started;
     try {
+      await refreshDiscovery(started);
       await runTick({
         rpc,
         daoId: config.daoId,
-        voters: voters.map(({ voterId }) => ({ voterId })),
+        voters: voterSources.map(({ voterId, source }) => ({ voterId, source })),
         state,
         nowNanoseconds: BigInt(started) * 1_000_000n,
         nowMilliseconds: started,
         requestTtlMs: config.requestTtlMs,
+        voterMinAvailableYocto: config.voterMinAvailableYocto,
         proposalPeriodNs,
         windowSeconds: config.windowSeconds,
         persistState: writeState.bind(null, config.stateFile),

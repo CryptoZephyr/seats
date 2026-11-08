@@ -9,7 +9,7 @@ use near_contract_standards::non_fungible_token::{
 };
 use near_sdk::base64::{engine::general_purpose::STANDARD, Engine as _};
 use near_sdk::collections::LazyOption;
-use near_sdk::json_types::{Base58CryptoHash, Base64VecU8, U128};
+use near_sdk::json_types::{Base58CryptoHash, Base64VecU8, U128, U64};
 use near_sdk::store::LookupMap;
 use near_sdk::{
     env, ext_contract, near, AccountId, Allowance, CryptoHash, Gas, NearToken, PanicOnDefault,
@@ -18,14 +18,18 @@ use near_sdk::{
 
 const SEAT_SVG: &str = include_str!("../../../design/nft/seat-label.svg");
 const DAO_SVG: &str = include_str!("../../../design/nft/dao-label.svg");
+const VOTER_DEFAULTS_STORAGE_KEY: &[u8] = b"voter_defaults";
+const APPLICATION_STORAGE_PREFIX: &[u8] = b"app:";
 
 const VOTER_INIT_GAS: Gas = Gas::from_tgas(30);
 const DAO_CALL_GAS: Gas = Gas::from_tgas(30);
 const VOTER_CALL_GAS: Gas = Gas::from_tgas(30);
-const VOTER_CREATED_CALLBACK_GAS: Gas = Gas::from_tgas(80);
+const VOTER_DEFAULT_CONFIG_GAS: Gas = Gas::from_tgas(15);
+const VOTER_CREATED_CALLBACK_GAS: Gas = Gas::from_tgas(70);
 const REGISTRATION_CALLBACK_GAS: Gas = Gas::from_tgas(40);
 const BUY_CALLBACK_GAS: Gas = Gas::from_tgas(40);
 const MIN_VOTER_FUNDING: u128 = 10_000_000_000_000_000_000_000;
+const CLAIM_SEAT_MIN_DEPOSIT: u128 = 4_500_000_000_000_000_000_000_000;
 
 fn svg_data_url(svg: &str) -> String {
     format!(
@@ -55,6 +59,15 @@ pub struct SaleApproval {
 pub struct SeatView {
     pub voter_id: AccountId,
     pub approval: Option<SaleApproval>,
+}
+
+#[near(serializers = [borsh, json])]
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct VoterDefaults {
+    pub model_signer_hex: String,
+    pub model: String,
+    pub agent_wasm_url: String,
+    pub agent_wasm_sha256: String,
 }
 
 #[near(serializers = [borsh])]
@@ -100,6 +113,8 @@ trait ExtSelf {
         receiver_id: AccountId,
         voter_id: AccountId,
         refund_amount: U128,
+        refund_to: Option<AccountId>,
+        restore_expires_at: Option<U64>,
     );
     fn on_registration_complete(&mut self, voter_id: AccountId);
     fn on_buy(
@@ -147,6 +162,59 @@ impl SeatNft {
     #[payable]
     pub fn mint_seat(&mut self, receiver_id: AccountId, agent_public_key: PublicKey) -> Promise {
         self.assert_dao();
+        self.create_voter_account(receiver_id, agent_public_key, None, None)
+    }
+
+    pub fn approve_application(&mut self, applicant: AccountId, expires_in_ns: u64) {
+        self.assert_dao();
+        assert!(expires_in_ns > 0, "ERR_BAD_APPLICATION_EXPIRY");
+        let expires_at = env::block_timestamp()
+            .checked_add(expires_in_ns)
+            .expect("ERR_APPLICATION_EXPIRY_OVERFLOW");
+        self.store_application_approval(&applicant, expires_at);
+    }
+
+    pub fn get_application_approval(&self, applicant: AccountId) -> Option<U64> {
+        env::storage_read(&Self::application_approval_key(&applicant)).map(|value| {
+            U64(near_sdk::borsh::from_slice(&value).expect("ERR_INVALID_APPLICATION_APPROVAL"))
+        })
+    }
+
+    #[payable]
+    pub fn claim_seat(&mut self, agent_public_key: PublicKey) -> Promise {
+        assert!(
+            env::attached_deposit().as_yoctonear() >= CLAIM_SEAT_MIN_DEPOSIT,
+            "ERR_INSUFFICIENT_DEPOSIT"
+        );
+        let applicant = env::predecessor_account_id();
+        let expires_at = self
+            .get_application_approval(applicant.clone())
+            .expect("ERR_NO_APPLICATION");
+        assert!(
+            env::block_timestamp() < expires_at.0,
+            "ERR_APPLICATION_EXPIRED"
+        );
+        assert_eq!(
+            self.tokens.nft_supply_for_owner(applicant.clone()).0,
+            0,
+            "ERR_ALREADY_MEMBER"
+        );
+        env::storage_remove(&Self::application_approval_key(&applicant));
+        self.create_voter_account(
+            applicant.clone(),
+            agent_public_key,
+            Some(applicant),
+            Some(expires_at),
+        )
+    }
+
+    fn create_voter_account(
+        &mut self,
+        receiver_id: AccountId,
+        agent_public_key: PublicKey,
+        refund_to: Option<AccountId>,
+        restore_expires_at: Option<U64>,
+    ) -> Promise {
         let attached = env::attached_deposit().as_yoctonear();
         assert!(attached >= MIN_VOTER_FUNDING, "ERR_INSUFFICIENT_DEPOSIT");
         let token_id = self.next_seat.to_string();
@@ -184,8 +252,41 @@ impl SeatNft {
             .then(
                 ext_self::ext(env::current_account_id())
                     .with_static_gas(VOTER_CREATED_CALLBACK_GAS)
-                    .on_voter_created(token_id, receiver_id, voter_id, U128(attached)),
+                    .on_voter_created(
+                        token_id,
+                        receiver_id,
+                        voter_id,
+                        U128(attached),
+                        refund_to,
+                        restore_expires_at,
+                    ),
             )
+    }
+
+    pub fn set_voter_defaults(&mut self, defaults: VoterDefaults) {
+        self.assert_dao();
+        let defaults = VoterDefaults {
+            model_signer_hex: defaults.model_signer_hex.to_ascii_lowercase(),
+            ..defaults
+        };
+        assert!(
+            is_model_signer_hex(&defaults.model_signer_hex),
+            "ERR_BAD_SIGNER_ADDRESS"
+        );
+        assert!(!defaults.agent_wasm_url.is_empty(), "ERR_BAD_AGENT_WASM_URL");
+        assert!(
+            is_lower_hex_32(&defaults.agent_wasm_sha256),
+            "ERR_BAD_AGENT_WASM_HASH"
+        );
+        let value =
+            near_sdk::borsh::to_vec(&defaults).expect("ERR_SERIALIZE_VOTER_DEFAULTS");
+        env::storage_write(VOTER_DEFAULTS_STORAGE_KEY, &value);
+    }
+
+    pub fn get_voter_defaults(&self) -> Option<VoterDefaults> {
+        env::storage_read(VOTER_DEFAULTS_STORAGE_KEY).map(|value| {
+            near_sdk::borsh::from_slice(&value).expect("ERR_INVALID_VOTER_DEFAULTS")
+        })
     }
 
     pub fn set_voter_model_signer(
@@ -231,10 +332,16 @@ impl SeatNft {
         receiver_id: AccountId,
         voter_id: AccountId,
         refund_amount: U128,
+        refund_to: Option<AccountId>,
+        restore_expires_at: Option<U64>,
     ) -> PromiseOrValue<bool> {
         if !matches!(env::promise_result(0), PromiseResult::Successful(_)) {
+            if let (Some(applicant), Some(expires_at)) = (&refund_to, restore_expires_at) {
+                self.store_application_approval(applicant, expires_at.0);
+            }
+            let refund_account = refund_to.unwrap_or_else(|| self.dao.clone());
             return PromiseOrValue::Promise(
-                Promise::new(self.dao.clone()).transfer(NearToken::from_yoctonear(refund_amount.0)),
+                Promise::new(refund_account).transfer(NearToken::from_yoctonear(refund_amount.0)),
             );
         }
 
@@ -271,17 +378,30 @@ impl SeatNft {
             },
         );
         let registration_deposit = env::storage_byte_cost().as_yoctonear() * 16;
-        PromiseOrValue::Promise(
-            ext_dao::ext(self.dao.clone())
-                .with_attached_deposit(NearToken::from_yoctonear(registration_deposit))
-                .with_static_gas(DAO_CALL_GAS)
-                .register_delegation(voter_id.clone())
-                .then(
-                    ext_self::ext(env::current_account_id())
-                        .with_static_gas(REGISTRATION_CALLBACK_GAS)
-                        .on_registration_complete(voter_id),
-                ),
-        )
+        let registration = ext_dao::ext(self.dao.clone())
+            .with_attached_deposit(NearToken::from_yoctonear(registration_deposit))
+            .with_static_gas(DAO_CALL_GAS)
+            .register_delegation(voter_id.clone())
+            .then(
+                ext_self::ext(env::current_account_id())
+                    .with_static_gas(REGISTRATION_CALLBACK_GAS)
+                    .on_registration_complete(voter_id.clone()),
+            );
+        match self.get_voter_defaults() {
+            Some(defaults) => {
+                let set_signer = ext_voter::ext(voter_id.clone())
+                    .with_static_gas(VOTER_DEFAULT_CONFIG_GAS)
+                    .set_model_signer(defaults.model_signer_hex, defaults.model);
+                let pin_agent = ext_voter::ext(voter_id)
+                    .with_static_gas(VOTER_DEFAULT_CONFIG_GAS)
+                    .pin_agent_wasm(defaults.agent_wasm_url, defaults.agent_wasm_sha256);
+                // NEAR rejects a joint promise as a function-call return value.
+                set_signer.detach();
+                pin_agent.detach();
+                PromiseOrValue::Promise(registration)
+            }
+            None => PromiseOrValue::Promise(registration),
+        }
     }
 
     #[private]
@@ -482,11 +602,36 @@ impl SeatNft {
         assert_eq!(env::predecessor_account_id(), self.dao, "ERR_NOT_DAO");
     }
 
+    fn store_application_approval(&self, applicant: &AccountId, expires_at: u64) {
+        let value =
+            near_sdk::borsh::to_vec(&expires_at).expect("ERR_SERIALIZE_APPLICATION_APPROVAL");
+        env::storage_write(&Self::application_approval_key(applicant), &value);
+    }
+
+    fn application_approval_key(applicant: &AccountId) -> Vec<u8> {
+        let mut key = APPLICATION_STORAGE_PREFIX.to_vec();
+        key.extend_from_slice(applicant.as_str().as_bytes());
+        key
+    }
+
     fn voter_account_id(&self, token_id: &str) -> AccountId {
         format!("s{token_id}.{}", env::current_account_id())
             .parse()
             .expect("ERR_BAD_VOTER_ACCOUNT_ID")
     }
+}
+
+fn is_model_signer_hex(value: &str) -> bool {
+    value
+        .strip_prefix("0x")
+        .is_some_and(|hex| hex.len() == 40 && hex.bytes().all(|byte| byte.is_ascii_hexdigit()))
+}
+
+fn is_lower_hex_32(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 #[near]
@@ -595,8 +740,13 @@ impl NonFungibleTokenApproval for SeatNft {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use near_sdk::test_utils::VMContextBuilder;
+    use near_sdk::mock::MockAction;
+    use near_sdk::test_utils::{
+        get_created_receipts, testing_env_with_promise_results, VMContextBuilder,
+    };
     use near_sdk::testing_env;
+    use near_sdk::serde_json::{json, Value};
+    use std::panic::{catch_unwind, AssertUnwindSafe};
 
     const SEAT: &str = "seat.testnet";
     const DAO: &str = "dao.testnet";
@@ -640,6 +790,416 @@ mod tests {
             account_id(VOTER),
         );
         contract
+    }
+
+    fn empty_contract() -> SeatNft {
+        set_context(DAO, 1_000, 0);
+        SeatNft::new(
+            account_id(DAO),
+            Base58CryptoHash::from([1; 32]),
+            500,
+            60,
+        )
+    }
+
+    fn voter_defaults() -> VoterDefaults {
+        VoterDefaults {
+            model_signer_hex: format!("0x{}", "a".repeat(40)),
+            model: "test-model".to_string(),
+            agent_wasm_url: "https://example.test/agent.wasm".to_string(),
+            agent_wasm_sha256: "b".repeat(64),
+        }
+    }
+
+    fn call_voter_created(contract: &mut SeatNft) {
+        call_voter_created_for(
+            contract,
+            "1".to_string(),
+            account_id(SELLER),
+            account_id(VOTER),
+            U128(1_000_000_000_000_000_000_000_000),
+            None,
+            None,
+            PromiseResult::Successful(Vec::new()),
+        );
+    }
+
+    fn call_voter_created_for(
+        contract: &mut SeatNft,
+        token_id: TokenId,
+        receiver_id: AccountId,
+        voter_id: AccountId,
+        refund_amount: U128,
+        refund_to: Option<AccountId>,
+        restore_expires_at: Option<U64>,
+        result: PromiseResult,
+    ) {
+        let context = VMContextBuilder::new()
+            .current_account_id(account_id(SEAT))
+            .predecessor_account_id(account_id(SEAT))
+            .attached_deposit(NearToken::from_yoctonear(1_000_000_000_000_000_000_000_000))
+            .build();
+        testing_env_with_promise_results(context, result);
+        contract.on_voter_created(
+            token_id,
+            receiver_id,
+            voter_id,
+            refund_amount,
+            refund_to,
+            restore_expires_at,
+        );
+    }
+
+    fn scheduled_calls() -> Vec<(String, String, Value)> {
+        get_created_receipts()
+            .into_iter()
+            .flat_map(|receipt| {
+                let receiver_id = receipt.receiver_id.to_string();
+                receipt.actions.into_iter().filter_map(move |action| match action {
+                    MockAction::FunctionCallWeight {
+                        method_name, args, ..
+                    } => Some((
+                        receiver_id.clone(),
+                        String::from_utf8(method_name).unwrap(),
+                        near_sdk::serde_json::from_slice(&args).unwrap(),
+                    )),
+                    _ => None,
+                })
+            })
+            .collect()
+    }
+
+    fn scheduled_receipt_count(receiver_id: &str, method_name: &str) -> usize {
+        get_created_receipts()
+            .iter()
+            .filter(|receipt| {
+                receipt.receiver_id.to_string() == receiver_id
+                    && receipt.actions.iter().any(|action| {
+                        matches!(
+                            action,
+                            MockAction::FunctionCallWeight { method_name: method, .. }
+                                if method.as_slice() == method_name.as_bytes()
+                        )
+                    })
+            })
+            .count()
+    }
+
+    fn scheduled_transfers() -> Vec<(String, u128)> {
+        get_created_receipts()
+            .into_iter()
+            .flat_map(|receipt| {
+                let receiver_id = receipt.receiver_id.to_string();
+                receipt
+                    .actions
+                    .into_iter()
+                    .filter_map(move |action| match action {
+                        MockAction::Transfer { deposit, .. } => {
+                            Some((receiver_id.clone(), deposit.as_yoctonear()))
+                        }
+                        _ => None,
+                    })
+            })
+            .collect()
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_NOT_DAO")]
+    fn approving_an_application_is_dao_only() {
+        let mut contract = empty_contract();
+        set_context(OTHER, 1_000, 0);
+
+        contract.approve_application(account_id("visitor.testnet"), 7);
+    }
+
+    #[test]
+    fn application_approval_is_stored_and_can_be_refreshed() {
+        let mut contract = empty_contract();
+        set_context(DAO, 1_000, 0);
+        let applicant = account_id("visitor.testnet");
+
+        contract.approve_application(applicant.clone(), 10);
+        assert_eq!(
+            contract.get_application_approval(applicant.clone()),
+            Some(U64(1_010)),
+        );
+
+        set_context(DAO, 1_005, 0);
+        contract.approve_application(applicant.clone(), 20);
+        assert_eq!(
+            contract.get_application_approval(applicant),
+            Some(U64(1_025)),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_NO_APPLICATION")]
+    fn claim_without_an_application_is_rejected() {
+        let mut contract = empty_contract();
+        set_context("visitor.testnet", 1_000, CLAIM_SEAT_MIN_DEPOSIT);
+
+        contract.claim_seat(test_agent_key());
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_APPLICATION_EXPIRED")]
+    fn claim_after_application_expiry_is_rejected() {
+        let mut contract = empty_contract();
+        set_context(DAO, 1_000, 0);
+        contract.approve_application(account_id("visitor.testnet"), 10);
+        set_context("visitor.testnet", 1_010, CLAIM_SEAT_MIN_DEPOSIT);
+
+        contract.claim_seat(test_agent_key());
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_ALREADY_MEMBER")]
+    fn existing_member_cannot_claim_another_seat() {
+        let mut contract = contract_with_seat();
+        set_context(DAO, 1_000, 0);
+        contract.approve_application(account_id(SELLER), 100);
+        set_context(SELLER, 1_001, CLAIM_SEAT_MIN_DEPOSIT);
+
+        contract.claim_seat(test_agent_key());
+    }
+
+    #[test]
+    fn underfunded_claim_keeps_application_approval() {
+        let mut contract = empty_contract();
+        let applicant = account_id("visitor.testnet");
+        set_context(DAO, 1_000, 0);
+        contract.approve_application(applicant.clone(), 10_000);
+        set_context(
+            "visitor.testnet",
+            1_001,
+            CLAIM_SEAT_MIN_DEPOSIT - 10_000_000_000_000_000_000_000,
+        );
+
+        let result = catch_unwind(AssertUnwindSafe(|| contract.claim_seat(test_agent_key())));
+
+        assert!(result.is_err());
+        assert_eq!(
+            contract.get_application_approval(applicant),
+            Some(U64(11_000)),
+        );
+    }
+
+    #[test]
+    fn successful_claim_consumes_approval_and_creates_voter_for_applicant() {
+        let mut contract = empty_contract();
+        let applicant = account_id("visitor.testnet");
+        set_context(DAO, 1_000, 0);
+        contract.approve_application(applicant.clone(), 10_000);
+        let voter_funding =
+            CLAIM_SEAT_MIN_DEPOSIT - env::storage_byte_cost().as_yoctonear() * 16;
+        set_context("visitor.testnet", 1_001, CLAIM_SEAT_MIN_DEPOSIT);
+
+        contract.claim_seat(test_agent_key());
+
+        assert_eq!(contract.get_application_approval(applicant.clone()), None);
+        assert!(scheduled_transfers()
+            .contains(&("s1.seat.testnet".to_string(), voter_funding)));
+        assert!(scheduled_calls().iter().any(|(receiver, method, args)| {
+            receiver == "s1.seat.testnet"
+                && method == "new"
+                && args["controller"] == "visitor.testnet"
+        }));
+    }
+
+    #[test]
+    fn failed_claim_refunds_applicant_and_restores_original_approval() {
+        let mut contract = empty_contract();
+        let applicant = account_id("visitor.testnet");
+        let refund_amount = CLAIM_SEAT_MIN_DEPOSIT;
+        set_context(DAO, 1_000, 0);
+        contract.approve_application(applicant.clone(), 5_000);
+        set_context("visitor.testnet", 1_001, refund_amount);
+        contract.claim_seat(test_agent_key());
+
+        call_voter_created_for(
+            &mut contract,
+            "1".to_string(),
+            applicant.clone(),
+            account_id("s1.seat.testnet"),
+            U128(refund_amount),
+            Some(applicant.clone()),
+            Some(U64(6_000)),
+            PromiseResult::Failed,
+        );
+
+        assert_eq!(
+            contract.get_application_approval(applicant.clone()),
+            Some(U64(6_000)),
+        );
+        assert!(scheduled_transfers().contains(&("visitor.testnet".to_string(), refund_amount)));
+    }
+
+    #[test]
+    fn claimed_seat_receives_voter_defaults() {
+        let mut contract = empty_contract();
+        let applicant = account_id("visitor.testnet");
+        set_context(DAO, 1_000, 0);
+        let defaults = voter_defaults();
+        contract.set_voter_defaults(defaults.clone());
+        contract.approve_application(applicant.clone(), 10_000);
+        set_context("visitor.testnet", 1_001, CLAIM_SEAT_MIN_DEPOSIT);
+        contract.claim_seat(test_agent_key());
+
+        call_voter_created_for(
+            &mut contract,
+            "1".to_string(),
+            applicant,
+            account_id("s1.seat.testnet"),
+            U128(CLAIM_SEAT_MIN_DEPOSIT),
+            Some(account_id("visitor.testnet")),
+            Some(U64(11_000)),
+            PromiseResult::Successful(Vec::new()),
+        );
+
+        let calls = scheduled_calls();
+        assert!(calls.iter().any(|(receiver, method, args)| {
+            receiver == "s1.seat.testnet"
+                && method == "set_model_signer"
+                && args
+                    == &json!({
+                        "address_hex": defaults.model_signer_hex,
+                        "model": defaults.model,
+                    })
+        }));
+        assert!(calls.iter().any(|(receiver, method, args)| {
+            receiver == "s1.seat.testnet"
+                && method == "pin_agent_wasm"
+                && args
+                    == &json!({
+                        "url": defaults.agent_wasm_url,
+                        "sha256": defaults.agent_wasm_sha256,
+                    })
+        }));
+    }
+
+    #[test]
+    fn voter_defaults_are_stored_outside_contract_state() {
+        let mut contract = empty_contract();
+        assert_eq!(contract.get_voter_defaults(), None);
+
+        set_context(DAO, 1_001, 0);
+        let defaults = voter_defaults();
+        contract.set_voter_defaults(defaults.clone());
+
+        assert_eq!(contract.get_voter_defaults(), Some(defaults));
+    }
+
+    #[test]
+    fn voter_default_signer_hex_is_normalized_before_storage() {
+        let mut contract = empty_contract();
+        set_context(DAO, 1_001, 0);
+        let mut defaults = voter_defaults();
+        defaults.model_signer_hex = format!("0x{}", "A".repeat(40));
+
+        contract.set_voter_defaults(defaults);
+
+        assert_eq!(
+            contract.get_voter_defaults().unwrap().model_signer_hex,
+            format!("0x{}", "a".repeat(40)),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_NOT_DAO")]
+    fn setting_voter_defaults_is_dao_only() {
+        let mut contract = empty_contract();
+        set_context(OTHER, 1_001, 0);
+        contract.set_voter_defaults(voter_defaults());
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_BAD_SIGNER_ADDRESS")]
+    fn voter_defaults_reject_an_invalid_signer_address() {
+        let mut contract = empty_contract();
+        let mut defaults = voter_defaults();
+        defaults.model_signer_hex = format!("0xg{}", "a".repeat(39));
+        contract.set_voter_defaults(defaults);
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_BAD_AGENT_WASM_URL")]
+    fn voter_defaults_reject_an_empty_agent_url() {
+        let mut contract = empty_contract();
+        let mut defaults = voter_defaults();
+        defaults.agent_wasm_url.clear();
+        contract.set_voter_defaults(defaults);
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_BAD_AGENT_WASM_HASH")]
+    fn voter_defaults_reject_a_non_lowercase_wasm_hash() {
+        let mut contract = empty_contract();
+        let mut defaults = voter_defaults();
+        defaults.agent_wasm_sha256 = "A".repeat(64);
+        contract.set_voter_defaults(defaults);
+    }
+
+    #[test]
+    fn mint_callback_configures_the_new_voter_from_defaults() {
+        let mut contract = empty_contract();
+        let defaults = voter_defaults();
+        contract.set_voter_defaults(defaults.clone());
+
+        call_voter_created(&mut contract);
+
+        let calls = scheduled_calls();
+        assert!(calls.iter().any(|(receiver, method, args)| {
+            receiver == VOTER
+                && method == "set_model_signer"
+                && args == &json!({
+                    "address_hex": defaults.model_signer_hex,
+                    "model": defaults.model,
+                })
+        }));
+        assert!(calls.iter().any(|(receiver, method, args)| {
+            receiver == VOTER
+                && method == "pin_agent_wasm"
+                && args == &json!({
+                    "url": defaults.agent_wasm_url,
+                    "sha256": defaults.agent_wasm_sha256,
+                })
+        }));
+        assert!(calls
+            .iter()
+            .any(|(receiver, method, _)| receiver == DAO && method == "register_delegation"));
+        assert_eq!(scheduled_receipt_count(DAO, "register_delegation"), 1);
+        assert_eq!(scheduled_receipt_count(VOTER, "set_model_signer"), 1);
+        assert_eq!(scheduled_receipt_count(VOTER, "pin_agent_wasm"), 1);
+        let config_receipts = get_created_receipts()
+            .iter()
+            .filter(|receipt| receipt.receiver_id.to_string() == VOTER)
+            .filter(|receipt| {
+                receipt.actions.iter().any(|action| {
+                    matches!(
+                        action,
+                        MockAction::FunctionCallWeight { method_name, .. }
+                            if method_name.as_slice() == b"set_model_signer"
+                                || method_name.as_slice() == b"pin_agent_wasm"
+                    )
+                })
+            })
+            .count();
+        assert_eq!(config_receipts, 2);
+    }
+
+    #[test]
+    fn mint_callback_keeps_the_existing_registration_path_without_defaults() {
+        let mut contract = empty_contract();
+
+        call_voter_created(&mut contract);
+
+        let calls = scheduled_calls();
+        assert!(calls
+            .iter()
+            .any(|(receiver, method, _)| receiver == DAO && method == "register_delegation"));
+        assert!(!calls.iter().any(|(_, method, _)| {
+            method == "set_model_signer" || method == "pin_agent_wasm"
+        }));
     }
 
     #[test]
