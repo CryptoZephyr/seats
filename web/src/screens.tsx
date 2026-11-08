@@ -1,6 +1,11 @@
 import { useEffect, useState, type JSX } from "react";
 import { chainConfig } from "./chain/config";
-import { latestMemberChange, type MemberChange } from "./chain/history";
+import {
+  isCurrentVoteOverridden,
+  latestMemberChange,
+  originalDelegateVote,
+  type MemberChangeHistory,
+} from "./chain/history";
 import type { SeatSnapshot } from "./chain/club";
 import { callView } from "./chain/rpc";
 import { contractErrorCode, explorerTxUrl, friendlyVoteError } from "./chain/transactions";
@@ -696,7 +701,7 @@ type VoteChange =
 type ChangeHistoryState =
   | { status: "loading" }
   | { status: "error" }
-  | { status: "ready"; change: MemberChange | null };
+  | { status: "ready"; change: MemberChangeHistory | null };
 
 type VoteActionState =
   | { status: "idle" }
@@ -805,9 +810,17 @@ function ProposalVoteMember({
     }
   }
 
-  const historyChange = historyState.status === "ready" ? historyState.change : null;
-  const overrideChange = historyChange?.method === "override_vote" ? historyChange : null;
-  const cancelChange = historyChange?.method === "cancel" ? historyChange : null;
+  const changeHistory = historyState.status === "ready" ? historyState.change : null;
+  const latestChange = changeHistory?.latest ?? null;
+  const cancelChange = latestChange?.method === "cancel" ? latestChange : null;
+  const currentVote = voteState?.kind === "pending"
+    ? voteState.pending.vote
+    : voteState?.kind === "cast"
+      ? voteState.result.vote
+      : null;
+  const retainedPending = seat?.pending[proposal.id] ?? null;
+  const originalVote = originalDelegateVote(changeHistory?.firstOverride);
+  const isOverridden = isCurrentVoteOverridden(changeHistory, currentVote);
   const controlsVisible = Boolean(
     seat && canChangePendingVote(voteState, seat.controller, viewer.accountId),
   );
@@ -844,10 +857,10 @@ function ProposalVoteMember({
               This seat is controlled by <span className="mono">{seat.controller}</span>.
             </p>
           )}
-          {overrideChange && (
+          {isOverridden && latestChange && (
             <p className={s.muted}>
               <OverriddenStatus byMember={seat.controller !== viewer.accountId} />{" "}
-              <TextButton href={explorerTxUrl(overrideChange.txHash)}>View transaction</TextButton>
+              <TextButton href={explorerTxUrl(latestChange.txHash)}>View transaction</TextButton>
             </p>
           )}
           {actionState.status === "waiting" && (
@@ -868,15 +881,23 @@ function ProposalVoteMember({
           {actionState.status === "error" && <ErrorStatus>{actionState.message}</ErrorStatus>}
 
           {voteState?.kind === "cast" ? (
-            <dl className={s.facts}>
-              <Fact label="Vote">Your seat voted {voteState.result.vote}</Fact>
-              <Fact label="Voter status"><CastStatus /></Fact>
-              {voteState.result.receipt_hash && (
-                <Fact label="Receipt hash">
-                  <HashValue value={voteState.result.receipt_hash} label="receipt hash" />
-                </Fact>
+            <>
+              <dl className={s.facts}>
+                <Fact label="Vote">Your seat voted {voteState.result.vote}</Fact>
+                <Fact label="Voter status"><CastStatus /></Fact>
+                {voteState.result.receipt_hash && (
+                  <Fact label="Receipt hash">
+                    <HashValue value={voteState.result.receipt_hash} label="receipt hash" />
+                  </Fact>
+                )}
+              </dl>
+              {isOverridden && originalVote && retainedPending && (
+                <p className={s.reason}>
+                  Your delegate's reasoning for {originalVote}:{" "}
+                  {retainedPending.reason}
+                </p>
               )}
-            </dl>
+            </>
           ) : voteState?.kind === "closed" && voteState.result.status === "Canceled" ? (
             <>
               <dl className={s.facts}>
@@ -922,9 +943,9 @@ function ProposalVoteMember({
               {voteState.sublabel === "casting" && <CastingStatus />}
               {voteState.sublabel === "retry" && <CastRetryStatus />}
               {voteState.sublabel === "windowClosed" && <WindowClosedStatus />}
-              {overrideChange?.vote ? (
+              {isOverridden && originalVote ? (
                 <p className={s.reason}>
-                  Your delegate's reasoning for {overrideChange.vote === "Approve" ? "Reject" : "Approve"}:{" "}
+                  Your delegate's reasoning for {originalVote}:{" "}
                   {voteState.pending.reason}
                 </p>
               ) : (

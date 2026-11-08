@@ -25,6 +25,31 @@ export interface MemberChange {
   timestampNs: string;
 }
 
+export interface MemberChangeHistory {
+  latest: MemberChange | null;
+  firstOverride: MemberChange | null;
+}
+
+export function originalDelegateVote(
+  firstOverride: MemberChange | null | undefined,
+): "Approve" | "Reject" | null {
+  if (firstOverride?.method !== "override_vote") return null;
+  if (firstOverride.vote === "Approve") return "Reject";
+  if (firstOverride.vote === "Reject") return "Approve";
+  return null;
+}
+
+export function isCurrentVoteOverridden(
+  history: MemberChangeHistory | null,
+  currentVote: string | null,
+): boolean {
+  const originalVote = originalDelegateVote(history?.firstOverride);
+  return history?.latest?.method === "override_vote" &&
+    (currentVote === "Approve" || currentVote === "Reject") &&
+    originalVote !== null &&
+    currentVote !== originalVote;
+}
+
 interface AccountPage {
   account_txs: AccountTransactionSummary[];
   resume_token?: string | null;
@@ -59,7 +84,7 @@ export function parseLatestMemberChange(
   voterId: string,
   controller: string,
   proposalId: number,
-): MemberChange | null {
+): MemberChangeHistory {
   const successfulByHash = new Map(
     accountTransactions
       .filter((item) => item.is_success)
@@ -111,9 +136,16 @@ export function parseLatestMemberChange(
     }
   }
 
-  return changes.sort((left, right) =>
-    BigInt(right.timestampNs) > BigInt(left.timestampNs) ? 1 : -1,
-  )[0] ?? null;
+  changes.sort((left, right) => {
+    const leftTimestamp = BigInt(left.timestampNs);
+    const rightTimestamp = BigInt(right.timestampNs);
+    return leftTimestamp < rightTimestamp ? -1 : leftTimestamp > rightTimestamp ? 1 : 0;
+  });
+
+  return {
+    latest: changes.at(-1) ?? null,
+    firstOverride: changes.find((change) => change.method === "override_vote") ?? null,
+  };
 }
 
 async function postJson<T>(url: string, body: unknown): Promise<T> {
@@ -130,7 +162,7 @@ export async function latestMemberChange(
   voterId: string,
   controller: string,
   proposalId: number,
-): Promise<MemberChange | null> {
+): Promise<MemberChangeHistory> {
   const accountTransactions: AccountTransactionSummary[] = [];
   const seenTokens = new Set<string>();
   let resumeToken: string | undefined;

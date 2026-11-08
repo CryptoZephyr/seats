@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import fixture from "./__fixtures__/proposal-6-override.json";
 import {
+  isCurrentVoteOverridden,
+  originalDelegateVote,
   parseLatestMemberChange,
   type AccountTransactionSummary,
   type FastNearTransaction,
@@ -18,8 +20,9 @@ const fixtureData = fixture as {
 function accountTransaction(
   hash = transactionHash,
   isSuccess = true,
+  timestamp = timestampNs,
 ): AccountTransactionSummary {
-  return { transaction_hash: hash, tx_block_timestamp: timestampNs, is_success: isSuccess };
+  return { transaction_hash: hash, tx_block_timestamp: timestamp, is_success: isSuccess };
 }
 
 function transaction(
@@ -27,9 +30,10 @@ function transaction(
   proposalId = 6,
   signerId = controller,
   hash = transactionHash,
+  vote: "Approve" | "Reject" = "Reject",
 ): FastNearTransaction {
   const args = method === "override_vote"
-    ? { proposal_id: proposalId, vote: "Reject" }
+    ? { proposal_id: proposalId, vote }
     : { proposal_id: proposalId };
   return {
     transaction: {
@@ -55,10 +59,18 @@ describe("parseLatestMemberChange", () => {
       controller,
       6,
     )).toEqual({
-      method: "override_vote",
-      vote: "Reject",
-      txHash: transactionHash,
-      timestampNs,
+      latest: {
+        method: "override_vote",
+        vote: "Reject",
+        txHash: transactionHash,
+        timestampNs,
+      },
+      firstOverride: {
+        method: "override_vote",
+        vote: "Reject",
+        txHash: transactionHash,
+        timestampNs,
+      },
     });
   });
 
@@ -70,7 +82,10 @@ describe("parseLatestMemberChange", () => {
       voterId,
       controller,
       6,
-    )).toEqual({ method: "cancel", txHash: hash, timestampNs });
+    )).toEqual({
+      latest: { method: "cancel", txHash: hash, timestampNs },
+      firstOverride: null,
+    });
   });
 
   it("ignores failed transactions", () => {
@@ -80,7 +95,7 @@ describe("parseLatestMemberChange", () => {
       voterId,
       controller,
       6,
-    )).toBeNull();
+    )).toEqual({ latest: null, firstOverride: null });
   });
 
   it("ignores calls from a different signer", () => {
@@ -91,7 +106,7 @@ describe("parseLatestMemberChange", () => {
       voterId,
       controller,
       6,
-    )).toBeNull();
+    )).toEqual({ latest: null, firstOverride: null });
   });
 
   it("ignores calls for a different proposal", () => {
@@ -101,6 +116,54 @@ describe("parseLatestMemberChange", () => {
       voterId,
       controller,
       6,
-    )).toBeNull();
+    )).toEqual({ latest: null, firstOverride: null });
+  });
+
+  it("recognizes a return to the delegate's original choice after two overrides", () => {
+    const votes: Array<"Approve" | "Reject"> = ["Reject", "Approve"];
+    const changes = votes.map((vote, index) => {
+      const hash = `override-${index}`;
+      const time = (BigInt(timestampNs) + BigInt(index)).toString();
+      return {
+        summary: accountTransaction(hash, true, time),
+        transaction: transaction("override_vote", 6, controller, hash, vote),
+      };
+    });
+    const history = parseLatestMemberChange(
+      changes.map((change) => change.summary),
+      changes.map((change) => change.transaction),
+      voterId,
+      controller,
+      6,
+    );
+
+    expect(history.firstOverride?.vote).toBe("Reject");
+    expect(history.latest?.vote).toBe("Approve");
+    expect(originalDelegateVote(history.firstOverride)).toBe("Approve");
+    expect(isCurrentVoteOverridden(history, history.latest?.vote ?? null)).toBe(false);
+  });
+
+  it("keeps the delegate's original choice after a third override", () => {
+    const votes: Array<"Approve" | "Reject"> = ["Reject", "Approve", "Reject"];
+    const changes = votes.map((vote, index) => {
+      const hash = `override-${index}`;
+      const time = (BigInt(timestampNs) + BigInt(index)).toString();
+      return {
+        summary: accountTransaction(hash, true, time),
+        transaction: transaction("override_vote", 6, controller, hash, vote),
+      };
+    });
+    const history = parseLatestMemberChange(
+      changes.map((change) => change.summary),
+      changes.map((change) => change.transaction),
+      voterId,
+      controller,
+      6,
+    );
+
+    expect(history.firstOverride?.vote).toBe("Reject");
+    expect(history.latest?.vote).toBe("Reject");
+    expect(originalDelegateVote(history.firstOverride)).toBe("Approve");
+    expect(isCurrentVoteOverridden(history, history.latest?.vote ?? null)).toBe(true);
   });
 });
