@@ -135,8 +135,13 @@
       {
         "tx_hash": "2CioBQ4xx2BmtiNp8vZMm1nFHUXeKyboAXStWYSis4y9",
         "measured_cost_near": "0.0001804620261747"
+      },
+      {
+        "tx_hash": "7bRVjFAhx929q5jwtjE4JSSwgxTnnpLF5whtQ2HfDwX1",
+        "measured_cost_near": "0.0001804620261747"
       }
     ],
+    "proposal_15_explanation": "Both earlier requests used proposal_id 15, the next ID returned by get_last_proposal_id. get_proposal(15) panicked with ERR_NO_PROPOSAL, surfaced by rpc_view as rpc result. The job reads get_brief_hash before get_proposal, so both requests passed the brief-hash check.",
     "outlayer_requests": [
       {
         "tx_hash": "Btk1qzMkhDsYpDyyDnt2KPzRTjttZ2Lgbw9S8fLmWpdW",
@@ -174,11 +179,30 @@
         "cost_near": "0.0001803914777433"
       }
     ],
-    "final_get_brief": {
+    "proposal_14_proof": {
+      "tx_hash": "ARy9myExdEZ3M5TLrGVGzm3chxTuo63y1PXhdZqmkMWB",
+      "status": "FINAL",
+      "payer_account_id": "s3faucet-1794137860.testnet",
+      "proposal_id": 14,
+      "decision": "Reject",
+      "receipt_outcomes_examined": 7,
+      "estimate_yocto": "7000100000000000000000",
+      "deposit_yocto": "7000100000500000000000",
+      "payment_charged_near": "0.0024224001",
+      "payment_refunded_near": "0.0045776999005",
+      "measured_net_cost_near": "0.0031428328907213"
+    },
+    "previous_restored_get_brief": {
       "voter_id": "s1.seatsnft3-1793848334.testnet",
       "brief_hash": "648ecae07ec5dd816c22e3571242859871a2dcc4f70ed1b3954dba6f6d63435d",
       "secrets_account_id": "seatfunder-1793834028.testnet",
       "secrets_profile": "brief"
+    },
+    "final_get_brief": {
+      "voter_id": "s1.seatsnft3-1793848334.testnet",
+      "brief_hash": "ad583f34b7478b80d0ae695cde784eb45db19c3778d9e934c2079413df16d6af",
+      "secrets_account_id": "seatsbriefs-1794146327.testnet",
+      "secrets_profile": "s1-ad583f34b7478b80"
     }
   },
   "status": "deployed",
