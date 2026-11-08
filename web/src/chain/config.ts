@@ -6,4 +6,6 @@ export const chainConfig = {
   explorerTxBaseUrl: "https://testnet.nearblocks.io/txns/",
   daoAccountId: deployment.accounts.dao,
   seatNftAccountId: deployment.accounts.seat,
+  outlayerAccountId: "outlayer.testnet",
+  runnerAgentPublicKey: "ed25519:5xUyVeJwwZrWzMozcdW5GaLQ4xEdbmwbXMbBGsbMzKfX",
 } as const;

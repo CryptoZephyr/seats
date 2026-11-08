@@ -12,7 +12,14 @@ import { setupModal, type WalletSelectorModal } from "@near-wallet-selector/moda
 import { loadClubSnapshot } from "./club";
 import { chainConfig } from "./config";
 import { callView } from "./rpc";
-import { voterCall, type VoterArgs, type VoterMethod } from "./transactions";
+import {
+  sendFunctionCall,
+  voterCall,
+  type FunctionCallRequest,
+  type FunctionCallResult,
+  type VoterArgs,
+  type VoterMethod,
+} from "./transactions";
 import type { NftToken } from "./types";
 
 interface Membership {
@@ -38,6 +45,7 @@ interface ViewerValue {
     method: Method,
     args: VoterArgs<Method>,
   ) => Promise<string>;
+  callContract: (request: FunctionCallRequest) => Promise<FunctionCallResult>;
 }
 
 const ViewerContext = createContext<ViewerValue | null>(null);
@@ -197,6 +205,15 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     },
     [accountId, selector],
   );
+  const callContract = useCallback(
+    async (request: FunctionCallRequest) => {
+      if (!accountId) throw new Error("Sign in to continue.");
+      if (!selector) throw new Error("Wallet isn't ready. Try again.");
+      const wallet = await selector.wallet();
+      return sendFunctionCall(wallet, accountId, request);
+    },
+    [accountId, selector],
+  );
 
   const value: ViewerValue = {
     accountId,
@@ -210,6 +227,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     signOut,
     retry,
     callVoter,
+    callContract,
   };
 
   return <ViewerContext.Provider value={value}>{children}</ViewerContext.Provider>;
