@@ -1,16 +1,17 @@
 import { useEffect, useState, type JSX } from "react";
 import {
   AIReceiptPage,
-  BuySeat,
   ClubPage,
   DelegateBrief,
   MySeat,
   ProposalVote,
   ReceiptPage,
-  SellSeat,
   StatesPage,
-  VaultPage,
 } from "./screens";
+import { ApplyClaimPage } from "./ApplyClaimPage";
+import { BuySeatFlow } from "./BuySeatFlow";
+import { SellSeatFlow } from "./SellSeatFlow";
+import { VaultPageFlow } from "./VaultPageFlow";
 import { DocsRoute } from "./components/docs/DocPage";
 import { LicensePage, PolicyPage } from "./legal";
 import { WalletProvider } from "./chain/WalletProvider";
@@ -18,6 +19,7 @@ import { SiteFooter, SiteHeader, TestnetStrip } from "./ui";
 
 type Route =
   | "club"
+  | "apply"
   | "seat"
   | "brief"
   | "vote"
@@ -54,6 +56,7 @@ function parseRoute(): { route: Route; proposalId?: number; tokenId?: string } {
   const map: Record<string, Route> = {
     "": "club",
     club: "club",
+    apply: "apply",
     seat: "seat",
     brief: "brief",
     vote: "vote",
@@ -95,6 +98,9 @@ function AppContent() {
     case "seat":
       page = <MySeat />;
       break;
+    case "apply":
+      page = <ApplyClaimPage />;
+      break;
     case "brief":
       page = <DelegateBrief />;
       break;
@@ -111,13 +117,13 @@ function AppContent() {
       page = <AIReceiptPage />;
       break;
     case "vault":
-      page = <VaultPage />;
+      page = <VaultPageFlow />;
       break;
     case "sell":
-      page = <SellSeat />;
+      page = <SellSeatFlow />;
       break;
     case "buy":
-      page = <BuySeat />;
+      page = <BuySeatFlow />;
       break;
     case "receipt-vote":
       page = <ReceiptPage kind="vote" />;

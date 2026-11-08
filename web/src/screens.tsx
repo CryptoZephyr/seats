@@ -7,13 +7,19 @@ import {
   type MemberChangeHistory,
 } from "./chain/history";
 import type { SeatSnapshot } from "./chain/club";
-import { callView } from "./chain/rpc";
-import { contractErrorCode, explorerTxUrl, friendlyVoteError } from "./chain/transactions";
+import { callView, readSeatNftLevyBps } from "./chain/rpc";
+import {
+  calculateSaleSplit,
+  contractErrorCode,
+  explorerTxUrl,
+  friendlyVoteError,
+} from "./chain/transactions";
 import { useClubData } from "./chain/useClubData";
 import { useViewer } from "./chain/WalletProvider";
 import type { PendingView, ProposalView, VoteResult } from "./chain/types";
 import { formatProposalDate } from "./proposalDate";
 import { isProposalVotingClosed, newestFirst } from "./proposals";
+import { saleListings } from "./chain/sales";
 import { SeatPlan, VoteMark, type VoteKind } from "./seatplan";
 import { canChangePendingVote, changeAttribution } from "./voteControls";
 import { useMockRun } from "./useMockRun";
@@ -189,40 +195,6 @@ function voteSourceLabel(source: string): string {
   return source;
 }
 
-function saleArgs(args: string): { seatId: string | null; buyerId: string | null; price: string | null } {
-  try {
-    const bytes = Uint8Array.from(atob(args), (character) => character.charCodeAt(0));
-    const value = JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>;
-    return {
-      seatId: typeof value.token_id === "string" ? value.token_id : null,
-      buyerId: typeof value.buyer === "string" ? value.buyer : null,
-      price: typeof value.price === "string" && /^\d+$/.test(value.price) ? value.price : null,
-    };
-  } catch {
-    return { seatId: null, buyerId: null, price: null };
-  }
-}
-
-function saleListings(proposals: ProposalView[]) {
-  return proposals.flatMap((proposal) => {
-    if (
-      proposal.status !== "InProgress" ||
-      typeof proposal.kind !== "object" ||
-      proposal.kind === null ||
-      !("FunctionCall" in proposal.kind)
-    ) {
-      return [];
-    }
-    const functionCall = proposal.kind.FunctionCall;
-    if (functionCall.receiver_id !== chainConfig.seatNftAccountId) return [];
-    return functionCall.actions
-      .filter((action) => action.method_name === "approve_sale")
-      .map((action) => ({ proposal, ...saleArgs(action.args) }));
-  });
-}
-
-const SALE_LEVY_BPS = 500n;
-
 function activeSaleApprovals(seats: SeatSnapshot[], nowNs: bigint) {
   return seats.flatMap((seat) => {
     const approval = seat.record.approval;
@@ -235,12 +207,6 @@ function activeSaleApprovals(seats: SeatSnapshot[], nowNs: bigint) {
       expiresAt: String(approval.expires_at),
     }];
   });
-}
-
-function saleSplit(price: string) {
-  const amount = BigInt(price);
-  const levy = amount * SALE_LEVY_BPS / 10_000n;
-  return { seller: amount - levy, levy };
 }
 
 function useCurrentTimeNs() {
@@ -260,16 +226,30 @@ function SaleApprovalDetails({
 }: {
   listing: ReturnType<typeof activeSaleApprovals>[number];
 }) {
-  const split = saleSplit(listing.price);
+  const [levyBps, setLevyBps] = useState<number | null>(null);
+  useEffect(() => {
+    let active = true;
+    void readSeatNftLevyBps().then(
+      (value) => { if (active) setLevyBps(value); },
+      () => { if (active) setLevyBps(-1); },
+    );
+    return () => { active = false; };
+  }, []);
+  let split: { seller: bigint; club: bigint } | null = null;
+  try {
+    if (levyBps === 500) split = calculateSaleSplit(listing.price, levyBps);
+  } catch {
+    split = null;
+  }
   return (
     <dl className={s.facts}>
       <Fact label="Buyer"><span className="mono">{listing.buyerId}</span></Fact>
       <Fact label="Price and split">
-        <MoneySplit
+        {split ? <MoneySplit
           price={nearAmount(listing.price)}
           sellerPct={nearAmount(split.seller.toString())}
-          levyPct={nearAmount(split.levy.toString())}
-        />
+          levyPct={nearAmount(split.club.toString())}
+        /> : <span className={s.muted}>Sale split unavailable until the live levy is verified.</span>}
       </Fact>
       <Fact label="Approval expires">
         <ProposalDate timestampNs={listing.expiresAt} />
@@ -317,6 +297,7 @@ export function ClubPage() {
           Each seat carries one vote in the club's DAO and opens the club vault. Seats move only
           through a club-approved sale.
         </p>
+        <p><TextButton href="#/apply">Apply for a seat</TextButton></p>
       </header>
 
       <RuledSection
@@ -1290,7 +1271,7 @@ export function VaultPage() {
             </p>
           ) : viewer.isSeatHolder ? (
             <p className={s.muted}>
-              Your seat opens the vault. Opening it from this site isn't available yet.
+              Your seat opens the vault through an encrypted request from this browser.
             </p>
           ) : (
             <p>
@@ -1364,7 +1345,6 @@ export function SellSeat() {
               ) : (
                 <p className={s.muted}>No sale proposal is waiting for the club for this seat.</p>
               )}
-              <p className={s.note}>Creating or canceling a sale is not available in this phase.</p>
             </RuledSection>
           );
         })
@@ -1404,7 +1384,6 @@ export function BuySeat() {
             </div>
           ))
         )}
-        <p className={s.note}>Buying a seat is not available in this phase.</p>
       </RuledSection>
 
       <RuledSection title="Awaiting club vote">
@@ -1573,7 +1552,7 @@ export function StatesPage() {
         <ul className={s.stateList}>
           <li className={s.stateRow}>
             <span className={s.stateName}>No seat yet</span>
-            <span className={s.muted}>Applications are not available in this phase.</span>
+            <span className={s.muted}>Visitors can apply from the club page.</span>
           </li>
           <li className={s.stateRow}>
             <span className={s.stateName}>Seat held, no brief</span>
