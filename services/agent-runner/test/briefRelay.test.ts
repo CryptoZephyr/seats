@@ -17,7 +17,7 @@ function rpc(overrides: Partial<BriefRelayRpc> = {}): BriefRelayRpc {
     getTokenOwner: async (tokenId) => `account-${tokenId}.testnet`,
     getSeatVoterId: async (tokenId) => `voter-${tokenId}.testnet`,
     getVoterController: async (voterId) => `account-${voterId.slice("voter-".length).replace(".testnet", "")}.testnet`,
-    getAccountBalance: async () => "1000000000000000000000000",
+    getAccountInfo: async () => ({ amount: "1000000000000000000000000", storageUsage: 0 }),
     storeProfile: async () => "profile-store-tx",
     ...overrides,
   };
@@ -228,9 +228,9 @@ describe("brief relay", () => {
     expect(last.json.error).toBe("RATE_LIMITED");
   });
 
-  it("returns 503 when the profile owner has less than 0.2 NEAR", async () => {
+  it("returns 503 when the profile owner's spendable balance is less than 0.2 NEAR", async () => {
     const url = await serve(createBriefHandler({
-      rpc: rpc({ getAccountBalance: async () => "199999999999999999999999" }),
+      rpc: rpc({ getAccountInfo: async () => ({ amount: "199999999999999999999999", storageUsage: 0 }) }),
       apiKey,
       ownerAccountId: ownerId,
       now: () => nowValue,
@@ -238,6 +238,23 @@ describe("brief relay", () => {
     const { response, json } = await post(url, await signedBody());
     expect(response.status).toBe(503);
     expect(json.error).toBe("BRIEF_OWNER_LOW_BALANCE");
+  });
+
+  it("subtracts storage cost when checking the profile owner's spendable balance", async () => {
+    const storeProfile = vi.fn(async () => "profile-store-tx");
+    const url = await serve(createBriefHandler({
+      rpc: rpc({
+        getAccountInfo: async () => ({ amount: "200000000000000000000000", storageUsage: 1 }),
+        storeProfile,
+      }),
+      apiKey,
+      ownerAccountId: ownerId,
+      now: () => nowValue,
+    }));
+    const { response, json } = await post(url, await signedBody());
+    expect(response.status).toBe(503);
+    expect(json.error).toBe("BRIEF_OWNER_LOW_BALANCE");
+    expect(storeProfile).not.toHaveBeenCalled();
   });
 
   it("only allows configured web origins through CORS", async () => {

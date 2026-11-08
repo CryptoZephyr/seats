@@ -300,7 +300,7 @@ async function main(): Promise<void> {
         getTokenOwner: (tokenId) => rpc.getTokenOwner(config.seatNftId as string, tokenId),
         getSeatVoterId: (tokenId) => rpc.getSeatVoterId(config.seatNftId as string, tokenId),
         getVoterController: rpc.getVoterController.bind(rpc),
-        getAccountBalance: rpc.getAccountBalance.bind(rpc),
+        getAccountInfo: rpc.getAccountInfo.bind(rpc),
         storeProfile: async (profile, secretsJson) => {
           const pubkey = await fetchOutlayerSecretsPubkey(
             config.briefRelay!.ownerAccountId,

@@ -14,7 +14,7 @@ export interface BriefRelayRpc {
   getTokenOwner(tokenId: string): Promise<string | null>;
   getSeatVoterId(tokenId: string): Promise<string | null>;
   getVoterController(voterId: string): Promise<string | null>;
-  getAccountBalance(accountId: string): Promise<string>;
+  getAccountInfo(accountId: string): Promise<{ amount: string; storageUsage: number }>;
   storeProfile(profile: string, secretsJson: string): Promise<string>;
 }
 
@@ -254,7 +254,9 @@ export function createBriefHandler(options: BriefRelayOptions) {
         sendJson(response, 403, { error: "NOT_VOTER_CONTROLLER" });
         return;
       }
-      if (BigInt(await options.rpc.getAccountBalance(options.ownerAccountId)) < MIN_OWNER_BALANCE) {
+      const owner = await options.rpc.getAccountInfo(options.ownerAccountId);
+      const spendableBalance = BigInt(owner.amount) - BigInt(owner.storageUsage) * 10n ** 19n;
+      if (spendableBalance < MIN_OWNER_BALANCE) {
         sendJson(response, 503, { error: "BRIEF_OWNER_LOW_BALANCE" });
         return;
       }
