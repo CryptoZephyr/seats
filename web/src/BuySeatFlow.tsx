@@ -5,7 +5,7 @@ import { readSeatNftLevyBps } from "./chain/rpc";
 import { saleListings } from "./chain/sales";
 import { buildBuyRequest, BUY_SEAT_GAS, calculateSaleSplit } from "./chain/transactions";
 import { ErrorStatus, GraphicButton, LoadingStatus, RuledSection, SuccessStatus } from "./ui";
-import { checkFunds, friendly, near, PageHead, TxLink, useGasEstimate } from "./flowCommon";
+import { checkFunds, friendly, InsufficientFundsError, near, PageHead, TxLink, useGasEstimate } from "./flowCommon";
 import s from "./screens.module.css";
 
 export function BuySeatFlow() {
@@ -32,7 +32,7 @@ export function BuySeatFlow() {
     try {
       const request = buildBuyRequest(tokenId, price);
       if (!await checkFunds(viewer.accountId, request)) {
-        throw new Error("Your balance is too low for the approved deposit and network fee.");
+        throw new InsufficientFundsError(`This account needs ${near(request.deposit)} NEAR for the deposit and about ${gasEstimate ?? "the current"} testnet NEAR for the network fee. Get testnet NEAR from a NEAR testnet faucet.`);
       }
       const tx = await viewer.callContract(request);
       setHashes((previous) => ({ ...previous, [tokenId]: tx.hash }));

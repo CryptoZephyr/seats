@@ -11,7 +11,7 @@ import {
 } from "./chain/transactions";
 import { saleListings } from "./chain/sales";
 import { ErrorStatus, Fact, GraphicButton, LoadingStatus, RuledSection, SuccessStatus } from "./ui";
-import { checkFunds, friendly, near, PageHead, TxLink, useGasEstimate } from "./flowCommon";
+import { checkFunds, friendly, InsufficientFundsError, near, PageHead, TxLink, useGasEstimate } from "./flowCommon";
 import s from "./screens.module.css";
 
 export function SellSeatFlow() {
@@ -63,7 +63,7 @@ export function SellSeatFlow() {
         state.data.proposalBond,
       );
       if (!await checkFunds(viewer.accountId, request)) {
-        throw new Error("Your balance is too low for the proposal bond and gas.");
+        throw new InsufficientFundsError(`This account needs ${near(request.deposit)} NEAR for the deposit and about ${gasEstimate ?? "the current"} testnet NEAR for the network fee. Get testnet NEAR from a NEAR testnet faucet.`);
       }
       const tx = await viewer.callContract(request);
       setHash(tx.hash);
