@@ -17,4 +17,4 @@ Discovery runs at startup and then at intervals of at least 60 seconds. It pages
 
 `/health` lists voter IDs with source `file` or `discovered`. It includes `agent_public_key` when a shared key is configured. The endpoint never includes private key material.
 
-Copy `.env.example` to an external environment file and set the paths to secret files. See the root README for Render setup and testnet proposal scripts.
+Copy `.env.example` to an external environment file and set the paths to secret files. See the root README for Render setup and the testnet visitor apply and claim flow.

@@ -21,9 +21,12 @@ import { loadCredential } from "./rpc.js";
 const TGAS = 1_000_000_000_000n;
 const PROPOSAL_BOND = 100_000_000_000_000_000_000_000n;
 const VISITOR_FUNDING = 2n * 10n ** 23n;
-const VISITOR_MINIMUM_BALANCE = PROPOSAL_BOND + 10n ** 22n;
-const VISITOR_MINT_DEPOSIT = 5n * 10n ** 22n;
-const MINT_SEAT_GAS = 250n * TGAS;
+const VISITOR_CLAIM_DEPOSIT = 5n * 10n ** 22n;
+const VISITOR_GAS_RESERVE = 5n * 10n ** 22n;
+const VISITOR_MINIMUM_BALANCE = PROPOSAL_BOND + VISITOR_CLAIM_DEPOSIT + VISITOR_GAS_RESERVE;
+const CLAIM_SEAT_GAS = 300n * TGAS;
+const APPLICATION_DURATION_NS = 7 * 24 * 60 * 60 * 1_000_000_000;
+const APPLICATION_PROPOSAL_ACTION_GAS = 10n * TGAS;
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
 
 interface Stage3Config {
@@ -296,9 +299,12 @@ async function submitProposal(
   kind: object,
   description: string,
   bond: bigint,
+  retryClosedMatch = false,
 ): Promise<{ proposalId: number; status: string; txHash?: string }> {
   const existing = await findMatchingProposal(provider, daoId, kind);
-  if (existing) return { proposalId: existing.id, status: existing.status };
+  if (existing && (!retryClosedMatch || existing.status === "InProgress")) {
+    return { proposalId: existing.id, status: existing.status };
+  }
 
   try {
     const result = await sendActionsOnce(
@@ -319,7 +325,9 @@ async function submitProposal(
     };
   } catch (error) {
     const landed = await findMatchingProposal(provider, daoId, kind);
-    if (landed) return { proposalId: landed.id, status: landed.status };
+    if (landed && (!retryClosedMatch || landed.status === "InProgress")) {
+      return { proposalId: landed.id, status: landed.status };
+    }
     throw new Error(
       `Proposal status is unknown after submission. No automatic resend was attempted: ${String(error)}`,
       { cause: error },
@@ -544,6 +552,79 @@ async function ensureVisitorAccount(
   }
 }
 
+export function createApplicationProposalKind(seatNftId: string, applicant: string): object {
+  return {
+    FunctionCall: {
+      receiver_id: seatNftId,
+      actions: [{
+        method_name: "approve_application",
+        args: Buffer.from(JSON.stringify({
+          applicant,
+          expires_in_ns: APPLICATION_DURATION_NS,
+        })).toString("base64"),
+        deposit: "0",
+        // Delegate votes forward only 150 Tgas to the DAO, so this action must stay small.
+        gas: APPLICATION_PROPOSAL_ACTION_GAS.toString(),
+      }],
+    },
+  };
+}
+
+async function getApplicationExpiry(
+  provider: JsonRpcProvider,
+  seatNftId: string,
+  applicant: string,
+): Promise<bigint | null> {
+  const value = await callView<string | number | null>(
+    provider,
+    seatNftId,
+    "get_application_approval",
+    { applicant },
+  );
+  if (value === null) return null;
+  const expiration = String(value);
+  if (!/^\d+$/.test(expiration)) {
+    throw new Error("Seat NFT returned an invalid application expiration");
+  }
+  return BigInt(expiration);
+}
+
+async function activeApplicationExpiry(
+  provider: JsonRpcProvider,
+  seatNftId: string,
+  applicant: string,
+): Promise<bigint | null> {
+  const expiresAt = await getApplicationExpiry(provider, seatNftId, applicant);
+  if (expiresAt === null) return null;
+  const block = await provider.viewBlock({ finality: "optimistic" });
+  return BigInt(block.header.timestamp_nanosec) < expiresAt ? expiresAt : null;
+}
+
+async function readClaimedSeat(
+  provider: JsonRpcProvider,
+  seatNftId: string,
+  applicant: string,
+): Promise<{ token_id: string; voter_id: string } | null> {
+  const tokens = await callView<Array<{ token_id: string }>>(
+    provider,
+    seatNftId,
+    "nft_tokens_for_owner",
+    { account_id: applicant, from_index: "0", limit: 10 },
+  );
+  const token = tokens[0];
+  if (!token) return null;
+  const seat = await callView<{ voter_id: string } | null>(
+    provider,
+    seatNftId,
+    "get_seat",
+    { token_id: token.token_id },
+  );
+  if (!seat?.voter_id) {
+    throw new Error(`Seat ${token.token_id} has no voter account`);
+  }
+  return { token_id: token.token_id, voter_id: seat.voter_id };
+}
+
 async function applyAsVisitor(
   provider: JsonRpcProvider,
   config: Stage3Config,
@@ -551,7 +632,6 @@ async function applyAsVisitor(
   if (!config.visitor_account_id.endsWith(`.${config.funder_account_id}`)) {
     throw new Error("visitor_account_id must be an immediate subaccount of funder_account_id");
   }
-  const runner = loadCredential(config.runner_agent_key_file, "runner-agent.testnet", false);
   const visitorKeyPath = assertExternalFile(
     config.visitor_key_file ?? join(homedir(), "near-spike", "secrets", "visitor-apply.json"),
   );
@@ -570,27 +650,26 @@ async function applyAsVisitor(
     throw new Error("DAO proposal_bond must be 0.1 NEAR before visitor apply");
   }
 
-  const kind = {
-    FunctionCall: {
-      receiver_id: config.seat_nft_id,
-      actions: [{
-        method_name: "mint_seat",
-        args: Buffer.from(JSON.stringify({
-          receiver_id: config.visitor_account_id,
-          agent_public_key: runner.publicKey.toString(),
-        })).toString("base64"),
-        deposit: VISITOR_MINT_DEPOSIT.toString(),
-        gas: MINT_SEAT_GAS.toString(),
-      }],
-    },
-  };
-  const existing = await findMatchingProposal(provider, config.dao_id, kind);
-  if (existing) {
-    process.stdout.write(`${JSON.stringify({ proposal_id: existing.id, status: existing.status })}\n`);
+  await ensureVisitorAccount(provider, funder, config.visitor_account_id, visitor);
+  const activeApproval = await activeApplicationExpiry(
+    provider,
+    config.seat_nft_id,
+    config.visitor_account_id,
+  );
+  if (activeApproval !== null) {
+    process.stdout.write(`${JSON.stringify({
+      status: "already_approved",
+      expires_at: activeApproval.toString(),
+    })}\n`);
     return;
   }
 
-  await ensureVisitorAccount(provider, funder, config.visitor_account_id, visitor);
+  const kind = createApplicationProposalKind(config.seat_nft_id, config.visitor_account_id);
+  const existing = await findMatchingProposal(provider, config.dao_id, kind);
+  if (existing?.status === "InProgress") {
+    process.stdout.write(`${JSON.stringify({ proposal_id: existing.id, status: existing.status })}\n`);
+    return;
+  }
   const proposal = await submitProposal(
     provider,
     visitor,
@@ -598,8 +677,85 @@ async function applyAsVisitor(
     kind,
     `Apply for a seat for ${config.visitor_account_id}`,
     PROPOSAL_BOND,
+    true,
   );
   process.stdout.write(`${JSON.stringify({ proposal_id: proposal.proposalId, status: proposal.status })}\n`);
+}
+
+async function claimSeatAsVisitor(
+  provider: JsonRpcProvider,
+  config: Stage3Config,
+): Promise<void> {
+  const visitorKeyPath = assertExternalFile(
+    config.visitor_key_file ?? join(homedir(), "near-spike", "secrets", "visitor-apply.json"),
+  );
+  const visitor = loadCredential(visitorKeyPath, config.visitor_account_id);
+  const runner = loadCredential(config.runner_agent_key_file, "runner-agent.testnet", false);
+  const account = await viewAccountOrNull(provider, config.visitor_account_id);
+  if (!account) throw new Error(`Visitor account ${config.visitor_account_id} does not exist`);
+  if (!await hasAccessKey(provider, config.visitor_account_id, visitor.publicKey)) {
+    throw new Error(`Visitor account ${config.visitor_account_id} does not have the configured full-access key`);
+  }
+  if (BigInt(account.amount) < VISITOR_CLAIM_DEPOSIT + VISITOR_GAS_RESERVE) {
+    throw new Error("Visitor account does not have enough NEAR for the claim deposit and gas reserve");
+  }
+
+  const currentSeat = await readClaimedSeat(
+    provider,
+    config.seat_nft_id,
+    config.visitor_account_id,
+  );
+  if (currentSeat) {
+    process.stdout.write(`${JSON.stringify({ status: "already_claimed", ...currentSeat })}\n`);
+    return;
+  }
+  if (await activeApplicationExpiry(provider, config.seat_nft_id, config.visitor_account_id) === null) {
+    throw new Error("Visitor has no active application approval");
+  }
+
+  let result: TransactionResult;
+  try {
+    result = await sendActionsOnce(
+      provider,
+      visitor,
+      config.seat_nft_id,
+      [actionCreators.functionCall(
+        "claim_seat",
+        { agent_public_key: runner.publicKey.toString() },
+        CLAIM_SEAT_GAS,
+        VISITOR_CLAIM_DEPOSIT,
+      )],
+    );
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("Transaction failed:")) {
+      throw error;
+    }
+    const landedSeat = await readClaimedSeat(
+      provider,
+      config.seat_nft_id,
+      config.visitor_account_id,
+    );
+    if (landedSeat) {
+      process.stdout.write(`${JSON.stringify({ status: "claimed", ...landedSeat })}\n`);
+      return;
+    }
+    throw new Error(
+      `Seat claim status is unknown. Check the visitor's seats before retrying: ${String(error)}`,
+      { cause: error },
+    );
+  }
+
+  const claimedSeat = await readClaimedSeat(
+    provider,
+    config.seat_nft_id,
+    config.visitor_account_id,
+  );
+  if (!claimedSeat) throw new Error("Seat claim completed but no owned seat was returned");
+  process.stdout.write(`${JSON.stringify({
+    status: "claimed",
+    ...claimedSeat,
+    tx_hash: result.hash,
+  })}\n`);
 }
 
 export async function main(args: string[]): Promise<void> {
@@ -614,9 +770,9 @@ export async function main(args: string[]): Promise<void> {
     process.stdout.write(`${publicKey}\n`);
     return;
   }
-  if (!["propose-policy", "propose-voter-defaults", "apply-visitor"].includes(command ?? "")) {
+  if (!["propose-policy", "propose-voter-defaults", "apply", "apply-visitor", "claim"].includes(command ?? "")) {
     throw new Error(
-      "Usage: stage3-testnet.js generate-runner-key [--output path] | propose-policy --config path [--drop-council-call-vote] | propose-voter-defaults --config path | apply-visitor --config path",
+      "Usage: stage3-testnet.js generate-runner-key [--output path] | propose-policy --config path [--drop-council-call-vote] | propose-voter-defaults --config path | apply --config path | claim --config path",
     );
   }
   const configIndex = args.indexOf("--config");
@@ -637,6 +793,8 @@ export async function main(args: string[]): Promise<void> {
   } else if (command === "propose-voter-defaults") {
     const credential = loadCredential(config.proposer_key_file, config.proposer_account_id);
     await proposeVoterDefaults(provider, credential, config);
+  } else if (command === "claim") {
+    await claimSeatAsVisitor(provider, config);
   } else {
     await applyAsVisitor(provider, config);
   }
