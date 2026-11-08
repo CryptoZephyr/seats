@@ -1,12 +1,16 @@
 import { useEffect, useState, type JSX } from "react";
 import { chainConfig } from "./chain/config";
+import { latestMemberChange, type MemberChange } from "./chain/history";
 import type { SeatSnapshot } from "./chain/club";
+import { callView } from "./chain/rpc";
+import { contractErrorCode, explorerTxUrl, friendlyVoteError } from "./chain/transactions";
 import { useClubData } from "./chain/useClubData";
 import { useViewer } from "./chain/WalletProvider";
 import type { PendingView, ProposalView, VoteResult } from "./chain/types";
 import { formatProposalDate } from "./proposalDate";
 import { isProposalVotingClosed, newestFirst } from "./proposals";
 import { SeatPlan, VoteMark, type VoteKind } from "./seatplan";
+import { canChangePendingVote } from "./voteControls";
 import { useMockRun } from "./useMockRun";
 import {
   CastStatus,
@@ -685,6 +689,310 @@ export function DelegateBrief() {
   );
 }
 
+type VoteChange =
+  | { method: "override_vote"; vote: "Approve" | "Reject" }
+  | { method: "cancel" };
+
+type ChangeHistoryState =
+  | { status: "loading" }
+  | { status: "error" }
+  | { status: "ready"; change: MemberChange | null };
+
+type VoteActionState =
+  | { status: "idle" }
+  | { status: "waiting" }
+  | { status: "success"; change: VoteChange; txHash: string | null }
+  | { status: "error"; message: string };
+
+function ProposalVoteMember({
+  state,
+  viewer,
+  proposal,
+  seat,
+  voteState,
+  tokenId,
+}: {
+  state: Extract<ClubDataState, { status: "ready" }>;
+  viewer: ReturnType<typeof useViewer>;
+  proposal: ProposalView;
+  seat?: SeatSnapshot;
+  voteState?: SeatVoteState;
+  tokenId?: string;
+}) {
+  const [historyAttempt, setHistoryAttempt] = useState(0);
+  const [historyState, setHistoryState] = useState<ChangeHistoryState>({ status: "loading" });
+  const [actionState, setActionState] = useState<VoteActionState>({ status: "idle" });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const voterId = seat?.record.voter_id;
+  const controller = seat?.controller;
+
+  useEffect(() => {
+    let active = true;
+    if (!voterId || !controller) {
+      setHistoryState({ status: "ready", change: null });
+      return () => {
+        active = false;
+      };
+    }
+
+    setHistoryState({ status: "loading" });
+    latestMemberChange(voterId, controller, proposal.id)
+      .then((change) => {
+        if (active) setHistoryState({ status: "ready", change });
+      })
+      .catch(() => {
+        if (active) setHistoryState({ status: "error" });
+      });
+    return () => {
+      active = false;
+    };
+  }, [voterId, controller, proposal.id, historyAttempt]);
+
+  useEffect(() => {
+    setActionState({ status: "idle" });
+    setConfirmCancel(false);
+  }, [proposal.id, seat?.token.token_id]);
+
+  async function submitChange(change: VoteChange) {
+    if (!seat) return;
+    setIsSubmitting(true);
+    setActionState({ status: "waiting" });
+    setConfirmCancel(false);
+
+    try {
+      const txHash = change.method === "override_vote"
+        ? await viewer.callVoter(seat.record.voter_id, "override_vote", {
+            proposal_id: proposal.id,
+            vote: change.vote,
+          })
+        : await viewer.callVoter(seat.record.voter_id, "cancel", {
+            proposal_id: proposal.id,
+          });
+      setActionState({ status: "success", change, txHash });
+      await state.refresh();
+      setHistoryAttempt((value) => value + 1);
+    } catch (error) {
+      const code = contractErrorCode(error);
+      if (!code) {
+        try {
+          const [pending, results] = await Promise.all([
+            callView(seat.record.voter_id, "get_pending", { proposal_id: proposal.id }),
+            callView(seat.record.voter_id, "get_results", {}),
+          ]);
+          const result = results.results.findLast((item) => item.proposal_id === proposal.id);
+          const landed = change.method === "cancel"
+            ? result?.status === "Canceled"
+            : pending?.vote === change.vote;
+          if (landed) {
+            setActionState({ status: "success", change, txHash: null });
+            await state.refresh();
+            setHistoryAttempt((value) => value + 1);
+            return;
+          }
+        } catch {
+        }
+      }
+
+      setActionState({
+        status: "error",
+        message: code
+          ? friendlyVoteError(code)
+          : "The vote change couldn't be confirmed. Check the seat's vote before trying again.",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  const historyChange = historyState.status === "ready" ? historyState.change : null;
+  const overrideChange = historyChange?.method === "override_vote" ? historyChange : null;
+  const cancelChange = historyChange?.method === "cancel" ? historyChange : null;
+  const controlsVisible = Boolean(
+    seat && canChangePendingVote(voteState, seat.controller, viewer.accountId),
+  );
+  const otherVote = voteState?.kind === "pending" && voteState.pending.vote === "Approve"
+    ? "Reject"
+    : "Approve";
+  const successHash = actionState.status === "success" ? actionState.txHash : null;
+
+  return (
+    <RuledSection title="Your delegate's vote">
+      {viewer.error ? (
+        <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>
+      ) : viewer.isLoading ? (
+        <LoadingStatus>Checking this account's seats…</LoadingStatus>
+      ) : tokenId !== undefined && viewer.accountId && !seat ? (
+        <>
+          <p className={s.muted}>This account doesn't hold Seat {tokenId}.</p>
+          <TextButton href="#/seat">View your seat</TextButton>
+        </>
+      ) : !seat ? (
+        <p className={s.muted}>Sign in with the account that holds a seat to view its delegate record.</p>
+      ) : (
+        <>
+          {historyState.status === "error" && (
+            <p className={s.muted}>
+              Change history couldn't be loaded.{" "}
+              <TextButton onClick={() => setHistoryAttempt((value) => value + 1)}>
+                Retry
+              </TextButton>
+            </p>
+          )}
+          {overrideChange && (
+            <p className={s.muted}>
+              <OverriddenStatus byMember={seat.controller !== viewer.accountId} />{" "}
+              <TextButton href={explorerTxUrl(overrideChange.txHash)}>View transaction</TextButton>
+            </p>
+          )}
+          {actionState.status === "waiting" && (
+            <LoadingStatus>Waiting for your wallet…</LoadingStatus>
+          )}
+          {actionState.status === "success" && (
+            <SuccessStatus>
+              {actionState.change.method === "cancel"
+                ? "Your seat won't vote on this proposal."
+                : `Your vote was changed to ${actionState.change.vote}.`}{" "}
+              {successHash ? (
+                <TextButton href={explorerTxUrl(successHash)}>View transaction</TextButton>
+              ) : (
+                "The transaction hash isn't available yet."
+              )}
+            </SuccessStatus>
+          )}
+          {actionState.status === "error" && <ErrorStatus>{actionState.message}</ErrorStatus>}
+
+          {voteState?.kind === "cast" ? (
+            <dl className={s.facts}>
+              <Fact label="Vote">Your seat voted {voteState.result.vote}</Fact>
+              <Fact label="Voter status"><CastStatus /></Fact>
+              {voteState.result.receipt_hash && (
+                <Fact label="Receipt hash">
+                  <HashValue value={voteState.result.receipt_hash} label="receipt hash" />
+                </Fact>
+              )}
+            </dl>
+          ) : voteState?.kind === "closed" && voteState.result.status === "Canceled" ? (
+            <>
+              <dl className={s.facts}>
+                <Fact label="Voter status"><RefusedStamp>Canceled</RefusedStamp></Fact>
+              </dl>
+              <p className={s.muted}>
+                {seat.controller === viewer.accountId
+                  ? "You canceled this vote"
+                  : "Canceled by the member"}
+              </p>
+              {cancelChange && (
+                <TextButton href={explorerTxUrl(cancelChange.txHash)}>View transaction</TextButton>
+              )}
+            </>
+          ) : voteState?.kind === "closed" ? (
+            <dl className={s.facts}>
+              <Fact label="Voter status">
+                <RefusedStamp>{voteState.result.status}</RefusedStamp>
+              </Fact>
+            </dl>
+          ) : voteState?.kind === "missed" ? (
+            <div className={s.voteCard}>
+              <VotingClosedStatus />
+              <p className={s.reason}>
+                Your delegate chose {voteState.pending.vote}, but it wasn't cast in time
+              </p>
+            </div>
+          ) : voteState?.kind === "pending" ? (
+            <div className={s.voteCard}>
+              <div className={s.voteChoice}>
+                <span className={`${s.voteWord} ${voteState.pending.vote === "Approve" ? s.voteApprove : ""}`}>
+                  {voteState.pending.vote}
+                </span>
+                {voteState.sublabel === "windowClosed" ? (
+                  <span className={s.muted}>
+                    Override window closed at{" "}
+                    <ProposalDate timestampNs={voteState.pending.deadline} />
+                  </span>
+                ) : (
+                  <ProposalDeadline deadlineNs={BigInt(voteState.pending.deadline)} />
+                )}
+              </div>
+              {voteState.sublabel === "casting" && <CastingStatus />}
+              {voteState.sublabel === "retry" && <CastRetryStatus />}
+              {voteState.sublabel === "windowClosed" && <WindowClosedStatus />}
+              {overrideChange?.vote ? (
+                <p className={s.reason}>
+                  Your delegate's reasoning for {overrideChange.vote === "Approve" ? "Reject" : "Approve"}:{" "}
+                  {voteState.pending.reason}
+                </p>
+              ) : (
+                <p className={s.reason}>{voteState.pending.reason}</p>
+              )}
+              {viewer.accountId && seat.controller !== viewer.accountId && (
+                <p className={s.muted}>
+                  This seat is controlled by <span className="mono">{seat.controller}</span>.
+                </p>
+              )}
+              {controlsVisible && (
+                <div className={s.actions}>
+                  {confirmCancel ? (
+                    <>
+                      <p className={s.muted}>Your seat won't vote on this proposal.</p>
+                      <GraphicButton
+                        glyph="ticket"
+                        disabled={isSubmitting}
+                        onClick={() => void submitChange({ method: "cancel" })}
+                      >
+                        Confirm cancellation
+                      </GraphicButton>
+                      <TextButton
+                        disabled={isSubmitting}
+                        onClick={() => setConfirmCancel(false)}
+                      >
+                        Keep this vote
+                      </TextButton>
+                    </>
+                  ) : (
+                    <>
+                      <GraphicButton
+                        glyph="arrow"
+                        disabled={isSubmitting}
+                        onClick={() => void submitChange({
+                          method: "override_vote",
+                          vote: otherVote,
+                        })}
+                      >
+                        Change vote to {otherVote}
+                      </GraphicButton>
+                      <TextButton
+                        disabled={isSubmitting}
+                        onClick={() => setConfirmCancel(true)}
+                      >
+                        Cancel this vote
+                      </TextButton>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : voteState?.kind === "none" && voteState.votingClosed ? (
+            <div className={s.voteCard}>
+              <VotingClosedStatus />
+              <p className={s.muted}>No vote from this seat</p>
+            </div>
+          ) : (
+            <>
+              <p className={s.muted}>Your delegate hasn't voted yet.</p>
+              <ProposalDeadline
+                deadlineNs={
+                  BigInt(proposal.submission_time) + BigInt(state.data.proposalPeriodNs)
+                }
+              />
+            </>
+          )}
+        </>
+      )}
+    </RuledSection>
+  );
+}
+
 export function ProposalVote({
   closed = false,
   proposalId,
@@ -823,85 +1131,14 @@ export function ProposalVote({
         </dl>
       </header>
 
-      <RuledSection title="Your delegate's vote">
-        {viewer.error ? (
-          <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>
-        ) : viewer.isLoading ? (
-          <LoadingStatus>Checking this account's seats…</LoadingStatus>
-        ) : tokenId !== undefined && viewer.accountId && !routeSeat ? (
-          <>
-            <p className={s.muted}>This account doesn't hold Seat {tokenId}.</p>
-            <TextButton href="#/seat">View your seat</TextButton>
-          </>
-        ) : !seat ? (
-          <p className={s.muted}>Sign in with the account that holds a seat to view its delegate record.</p>
-        ) : voteState?.kind === "cast" ? (
-          <dl className={s.facts}>
-            <Fact label="Vote">Your seat voted {voteState.result.vote}</Fact>
-            <Fact label="Voter status">
-              <CastStatus />
-            </Fact>
-            {voteState.result.receipt_hash && (
-              <Fact label="Receipt hash">
-                <HashValue value={voteState.result.receipt_hash} label="receipt hash" />
-              </Fact>
-            )}
-          </dl>
-        ) : voteState?.kind === "closed" ? (
-          <dl className={s.facts}>
-            <Fact label="Voter status">
-              <RefusedStamp>{voteState.result.status}</RefusedStamp>
-            </Fact>
-          </dl>
-        ) : voteState?.kind === "missed" ? (
-          <div className={s.voteCard}>
-            <VotingClosedStatus />
-            <p className={s.reason}>
-              Your delegate chose {voteState.pending.vote}, but it wasn't cast in time
-            </p>
-          </div>
-        ) : voteState?.kind === "pending" ? (
-          <div className={s.voteCard}>
-            <div className={s.voteChoice}>
-              <span className={`${s.voteWord} ${voteState.pending.vote === "Approve" ? s.voteApprove : ""}`}>
-                {voteState.pending.vote}
-              </span>
-              {voteState.sublabel === "windowClosed" ? (
-                <span className={s.muted}>
-                  Override window closed at{" "}
-                  <ProposalDate timestampNs={voteState.pending.deadline} />
-                </span>
-              ) : (
-                <ProposalDeadline deadlineNs={BigInt(voteState.pending.deadline)} />
-              )}
-            </div>
-            {voteState.sublabel === "casting" && <CastingStatus />}
-            {voteState.sublabel === "retry" && <CastRetryStatus />}
-            {voteState.sublabel === "windowClosed" && <WindowClosedStatus />}
-            <p className={s.reason}>{voteState.pending.reason}</p>
-          </div>
-        ) : voteState?.kind === "none" && voteState.votingClosed ? (
-          <div className={s.voteCard}>
-            <VotingClosedStatus />
-            <p className={s.muted}>No vote from this seat</p>
-          </div>
-        ) : (
-          <>
-            <p className={s.muted}>Your delegate hasn't voted yet.</p>
-            <ProposalDeadline
-              deadlineNs={
-                BigInt(proposal.submission_time) + BigInt(state.data.proposalPeriodNs)
-              }
-            />
-          </>
-        )}
-      </RuledSection>
-
-      {!closed && voteState?.kind === "pending" && viewer.isVoterController && (
-        <RuledSection title="Override before it is cast">
-          <p className={s.muted}>Vote changes are not available in this phase.</p>
-        </RuledSection>
-      )}
+      <ProposalVoteMember
+        state={state}
+        viewer={viewer}
+        proposal={proposal}
+        seat={seat}
+        voteState={voteState}
+        tokenId={tokenId}
+      />
     </main>
   );
 }

@@ -213,8 +213,8 @@ export function GraphicButton({
 type TextButtonProps = {
   children: ReactNode;
 } & (
-  | { href: string; onClick?: never }
-  | { href?: never; onClick: () => void }
+  | { href: string; onClick?: never; disabled?: never }
+  | { href?: never; onClick: () => void; disabled?: boolean }
 );
 
 export function TextButton(props: TextButtonProps) {
@@ -226,7 +226,12 @@ export function TextButton(props: TextButtonProps) {
     );
   }
   return (
-    <button type="button" className={styles.textButton} onClick={props.onClick}>
+    <button
+      type="button"
+      className={styles.textButton}
+      onClick={props.onClick}
+      disabled={props.disabled}
+    >
       {props.children}
     </button>
   );
@@ -312,11 +317,11 @@ export function PendingStatus({
   );
 }
 
-export function OverriddenStatus() {
+export function OverriddenStatus({ byMember = false }: { byMember?: boolean }) {
   return (
     <span className={styles.statusOverridden}>
       <span className={styles.solidSquare} aria-hidden="true" />
-      Overridden by you
+      {byMember ? "Overridden by the member" : "Overridden by you"}
     </span>
   );
 }
