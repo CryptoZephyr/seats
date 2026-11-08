@@ -1143,5 +1143,4 @@ mod tests {
         set_context(CONTROLLER, 101);
         contract.set_controller(account_id("buyer.testnet"), next_agent_key());
     }
-
 }
