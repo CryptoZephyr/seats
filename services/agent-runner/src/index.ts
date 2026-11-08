@@ -27,6 +27,7 @@ interface VoterConfig {
 
 interface Config {
   rpcUrl: string;
+  rpcUrls: string[];
   daoId: string;
   voters: VoterConfig[];
   seatNftId?: string;
@@ -80,6 +81,24 @@ function assertTestnetAccountId(accountId: string, name: string): void {
   }
 }
 
+const defaultRpcFallbackUrls = [
+  "https://test.rpc.fastnear.com",
+  "https://rpc.testnet.near.org",
+];
+
+function assertTestnetRpcUrl(url: string, name: string): string {
+  let hostname: string;
+  try {
+    hostname = new URL(url).hostname.toLowerCase();
+  } catch {
+    throw new Error(`${name} must be a valid URL`);
+  }
+  if (!hostname.includes("testnet") && hostname !== "test.rpc.fastnear.com") {
+    throw new Error(`${name} must point to NEAR testnet`);
+  }
+  return url;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const votersFile = env.VOTERS?.trim();
   const seatNftId = env.SEAT_NFT_ID?.trim() || undefined;
@@ -112,10 +131,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new Error("VOTERS must contain at least one entry when discovery is disabled");
   }
 
-  const rpcUrl = required("NEAR_RPC_URL", env);
-  if (!new URL(rpcUrl).hostname.toLowerCase().includes("testnet")) {
-    throw new Error("NEAR_RPC_URL must point to NEAR testnet");
+  const rpcUrl = assertTestnetRpcUrl(required("NEAR_RPC_URL", env), "NEAR_RPC_URL");
+  const rpcFallbackUrls = (env.NEAR_RPC_FALLBACK_URLS === undefined
+    ? defaultRpcFallbackUrls
+    : env.NEAR_RPC_FALLBACK_URLS.split(",").map((url) => url.trim()).filter(Boolean))
+    .map((url) => assertTestnetRpcUrl(url, "NEAR_RPC_FALLBACK_URLS"));
+  const urlsByEndpoint = new Map<string, string>();
+  for (const url of [rpcUrl, ...rpcFallbackUrls]) {
+    const endpoint = new URL(url).href;
+    if (!urlsByEndpoint.has(endpoint)) urlsByEndpoint.set(endpoint, url);
   }
+  const rpcUrls = [...urlsByEndpoint.values()];
   const daoId = required("DAO_ID", env);
   assertTestnetAccountId(daoId, "DAO_ID");
   if (seatNftId) assertTestnetAccountId(seatNftId, "SEAT_NFT_ID");
@@ -168,6 +194,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (briefValues[0]) assertTestnetAccountId(briefValues[0], "BRIEF_OWNER_ACCOUNT_ID");
   return {
     rpcUrl,
+    rpcUrls,
     daoId,
     voters,
     ...(seatNftId ? { seatNftId } : {}),
@@ -296,7 +323,7 @@ async function main(): Promise<void> {
     ? credentialFromPrivateKey(config.briefRelay.ownerAccountId, config.briefRelay.ownerPrivateKey)
     : undefined;
   const rpc = new NearAgentRpc(
-    config.rpcUrl,
+    config.rpcUrls,
     { ...keeper, accountId: config.keeperAccountId },
     [...voters.map((voter) => voter.credential), ...(briefOwnerCredential ? [briefOwnerCredential] : [])],
   );

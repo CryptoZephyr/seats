@@ -10,6 +10,7 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22"
+      # NEAR_RPC_FALLBACK_URLS defaults to test.rpc.fastnear.com and rpc.testnet.near.org.
       - key: NEAR_RPC_URL
         value: https://rpc.testnet.fastnear.com
       - key: DAO_ID

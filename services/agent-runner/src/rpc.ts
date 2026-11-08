@@ -21,6 +21,13 @@ type Credential = {
   signer: KeyPairSigner;
 };
 
+const retryDelaysMs = [300, 900, 2_000, 4_000];
+const maxRpcAttempts = retryDelaysMs.length + 1;
+
+type RetryOptions = {
+  broadcast?: boolean;
+};
+
 export interface KeyFileCredential {
   accountId: string;
   signer: KeyPairSigner;
@@ -69,13 +76,14 @@ function requireFile(filePath: string): string {
 }
 
 export class NearAgentRpc implements AgentRunnerRpc, VoterDiscoveryRpc {
-  private readonly provider: JsonRpcProvider;
+  private readonly providers: JsonRpcProvider[];
   private readonly credentials: Map<string, Credential>;
   private readonly keeper: Credential;
   private readonly nonceCache = new Map<string, bigint>();
 
-  constructor(rpcUrl: string, keeper: KeyFileCredential, voters: KeyFileCredential[]) {
-    this.provider = new JsonRpcProvider({ url: rpcUrl }, { retries: 0 });
+  constructor(rpcUrls: string[], keeper: KeyFileCredential, voters: KeyFileCredential[]) {
+    if (rpcUrls.length === 0) throw new Error("At least one NEAR RPC URL is required");
+    this.providers = rpcUrls.map((url) => new JsonRpcProvider({ url }, { retries: 0 }));
     this.keeper = keeper;
     this.credentials = new Map(voters.map((voter) => [voter.accountId, voter]));
   }
@@ -113,7 +121,8 @@ export class NearAgentRpc implements AgentRunnerRpc, VoterDiscoveryRpc {
 
   async isFullAccessKey(accountId: string, publicKey: string): Promise<boolean> {
     try {
-      const accessKey = await this.provider.viewAccessKey(accountId, publicKey, { finality: "final" });
+      const accessKey = await this.withRetry((provider) =>
+        provider.viewAccessKey(accountId, publicKey, { finality: "final" }));
       return accessKey.permission === "FullAccess";
     } catch {
       return false;
@@ -134,7 +143,8 @@ export class NearAgentRpc implements AgentRunnerRpc, VoterDiscoveryRpc {
   }
 
   async getAccountBalance(accountId: string): Promise<string> {
-    const account = await this.provider.viewAccount(accountId, { finality: "final" });
+    const account = await this.withRetry((provider) =>
+      provider.viewAccount(accountId, { finality: "final" }));
     return account.amount.toString();
   }
 
@@ -159,7 +169,8 @@ export class NearAgentRpc implements AgentRunnerRpc, VoterDiscoveryRpc {
 
   async hasRequestVoteAccessKey(voterId: string, publicKey: string): Promise<boolean> {
     try {
-      const accessKey = await this.provider.viewAccessKey(voterId, publicKey, { finality: "final" });
+      const accessKey = await this.withRetry((provider) =>
+        provider.viewAccessKey(voterId, publicKey, { finality: "final" }));
       const permission = accessKey.permission;
       if (typeof permission !== "object" || permission === null || !("FunctionCall" in permission)) {
         return false;
@@ -206,7 +217,8 @@ export class NearAgentRpc implements AgentRunnerRpc, VoterDiscoveryRpc {
     amount: string;
     storageUsage: number;
   }> {
-    const account = await this.provider.viewAccount(voterId, { finality: "optimistic" });
+    const account = await this.withRetry((provider) =>
+      provider.viewAccount(voterId, { finality: "optimistic" }));
     return { amount: account.amount.toString(), storageUsage: account.storage_usage };
   }
 
@@ -231,14 +243,36 @@ export class NearAgentRpc implements AgentRunnerRpc, VoterDiscoveryRpc {
   }
 
   private async view<T>(accountId: string, methodName: string, args: object): Promise<T> {
-    const response = await this.provider.sendJsonRpc<CallFunctionResult>("query", {
+    const response = await this.withRetry((provider) => provider.sendJsonRpc<CallFunctionResult>("query", {
       request_type: "call_function",
       finality: "final",
       account_id: accountId,
       method_name: methodName,
       args_base64: Buffer.from(JSON.stringify(args)).toString("base64"),
-    });
+    }));
     return JSON.parse(Buffer.from(response.result).toString("utf8")) as T;
+  }
+
+  private async withRetry<T>(
+    operation: (provider: JsonRpcProvider) => Promise<T>,
+    { broadcast = false }: RetryOptions = {},
+  ): Promise<T> {
+    const attempts = Math.max(maxRpcAttempts, this.providers.length);
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        const provider = this.providers[attempt % this.providers.length];
+        if (!provider) throw new Error("No NEAR RPC providers configured");
+        return await operation(provider);
+      } catch (error) {
+        if (attempt + 1 >= attempts || !isRetryableRpcError(error, { broadcast })) {
+          throw error;
+        }
+        const baseDelayMs = retryDelaysMs[Math.min(attempt, retryDelaysMs.length - 1)]!;
+        const delayMs = baseDelayMs * (0.5 + Math.random() * 0.5);
+        await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+    throw new Error("NEAR RPC retries exhausted");
   }
 
   private async call(
@@ -250,13 +284,18 @@ export class NearAgentRpc implements AgentRunnerRpc, VoterDiscoveryRpc {
     deposit = 0n,
   ): Promise<string> {
     const publicKey = await credential.signer.getPublicKey();
+    const nonceProvider: Pick<JsonRpcProvider, "viewAccessKey"> = {
+      viewAccessKey: (accountId, key, finality) => this.withRetry((provider) =>
+        provider.viewAccessKey(accountId, key, finality)),
+    };
     return sendWithNonceRetry(
-      this.provider,
+      nonceProvider,
       credential.accountId,
       publicKey,
       this.nonceCache,
       async (nonce) => {
-        const block = await this.provider.viewBlock({ finality: "optimistic" });
+        const block = await this.withRetry((provider) =>
+          provider.viewBlock({ finality: "optimistic" }));
         const transaction = createTransaction(
           credential.accountId,
           publicKey,
@@ -271,7 +310,10 @@ export class NearAgentRpc implements AgentRunnerRpc, VoterDiscoveryRpc {
           baseDecode(block.header.hash),
         );
         const [hashBytes, signedTransaction] = await credential.signer.signTransaction(transaction);
-        const outcome = await this.provider.sendTransaction(signedTransaction);
+        const outcome = await this.withRetry(
+          (provider) => provider.sendTransaction(signedTransaction),
+          { broadcast: true },
+        );
         const failure = transactionFailure(outcome);
         if (failure !== null) {
           throw new Error(failure);
@@ -280,6 +322,72 @@ export class NearAgentRpc implements AgentRunnerRpc, VoterDiscoveryRpc {
       },
     );
   }
+}
+
+function isRetryableRpcError(error: unknown, { broadcast = false }: RetryOptions = {}): boolean {
+  const messages: string[] = [];
+  const names: string[] = [];
+  const codes: number[] = [];
+  const statuses: number[] = [];
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+
+  while (current !== undefined && current !== null && !seen.has(current)) {
+    seen.add(current);
+    if (typeof current === "object") {
+      const details = current as {
+        name?: unknown;
+        message?: unknown;
+        type?: unknown;
+        code?: unknown;
+        status?: unknown;
+        statusCode?: unknown;
+        cause?: unknown;
+      };
+      if (details.name !== undefined) {
+        names.push(String(details.name));
+        messages.push(String(details.name));
+      }
+      if (details.message !== undefined) messages.push(String(details.message));
+      if (details.type !== undefined) messages.push(String(details.type));
+      for (const code of [details.code, details.status, details.statusCode]) {
+        if (code !== undefined) messages.push(String(code));
+        const numericCode = typeof code === "number" ? code : Number(code);
+        if (Number.isInteger(numericCode)) {
+          codes.push(numericCode);
+          if (code === details.status || code === details.statusCode) statuses.push(numericCode);
+        }
+      }
+      current = details.cause;
+    } else {
+      messages.push(String(current));
+      const numericCause = typeof current === "number" ? current : Number(current);
+      if (Number.isInteger(numericCause)) statuses.push(numericCause);
+      current = undefined;
+    }
+  }
+
+  const message = messages.join(" ");
+  const rateLimited = codes.includes(-429)
+    || codes.includes(429)
+    || statuses.includes(429)
+    || /-429\b|rate limits exceeded|\bHTTP(?:\/\d(?:\.\d)?\s+)?(?:status\s+)?429\b/i.test(message);
+  if (rateLimited) return true;
+  if (broadcast) return false;
+
+  const serverError = statuses.some((status) => status >= 500 && status <= 599)
+    || codes.some((code) => code >= 500 && code <= 599)
+    || /\bHTTP(?:\/\d(?:\.\d)?\s+)?(?:status\s+)?5\d{2}\b|(?:status|cause)\s*[:=]?\s*5\d{2}\b/i.test(message);
+  if (serverError) return true;
+
+  const timeout = /\btimeout\b|\btimed?\s*out\b|ETIMEDOUT|UND_ERR_.*TIMEOUT/i.test(message)
+    || names.some((name) => /^(?:AbortError|TimeoutError|Timeout)$/i.test(name));
+  const connectionError = /ECONNRESET|ECONNREFUSED|ECONNABORTED|EHOSTUNREACH|ENETUNREACH|ENOTFOUND|EAI_AGAIN|socket hang up|connection (?:reset|refused|closed|timed out)|fetch failed|failed to fetch|network error/i
+    .test(message);
+  const fetchTypeError = names.some((name) => name === "TypeError")
+    && /fetch|network|connection|socket/i.test(message);
+  const fetchError = names.some((name) => name === "FetchError");
+  return timeout || connectionError || fetchTypeError || fetchError;
 }
 
 function isMissingAccessKeyError(error: unknown): boolean {

@@ -105,7 +105,7 @@ describe("runTick with mocked RPC", () => {
     expect(requestVote).toHaveBeenCalledTimes(1);
     expect(requestVote).toHaveBeenCalledWith("discovered.testnet", 40);
     expect(requestVote).not.toHaveBeenCalledWith("existing.testnet", 40);
-    expect(result.cursor).toBe(50);
+    expect(result.cursor).toBe(40);
   });
 
   it("requests each in-progress proposal once and persists the cursor", async () => {
@@ -127,6 +127,43 @@ describe("runTick with mocked RPC", () => {
     expect(result.cursor).toBe(1);
     expect(result.pendingByVoter["voter.testnet"]).toEqual([0, 1]);
     expect(logs).toHaveLength(2);
+  });
+
+  it("does not skip proposals missing from a lagging proposal host", async () => {
+    const proposalPages = [
+      [{ id: 1, status: "Expired" }],
+      [{ id: 2, status: "InProgress" }],
+    ];
+    const getProposals = vi.fn(async () => proposalPages.shift() ?? []);
+    const requestVote = vi.fn(async (_voterId: string, id: number) => `request-${id}`);
+    const rpc = createRpc({
+      getLastProposalId: vi.fn(async () => 3),
+      getProposals,
+      requestVote,
+    });
+    const currentState: RunnerState = { cursor: 0, pendingByVoter: {}, inFlight: {} };
+    const options = {
+      rpc,
+      daoId: "club.testnet",
+      voters: [{ voterId: "voter.testnet" }],
+      state: currentState,
+      nowNanoseconds: 0n,
+      nowMilliseconds: 0,
+      requestTtlMs: 180_000,
+      persistState: () => undefined,
+      log: () => undefined,
+    };
+
+    const firstTick = await runTick(options);
+    expect(firstTick.cursor).toBe(1);
+    expect(requestVote).not.toHaveBeenCalled();
+
+    const secondTick = await runTick(options);
+    expect(secondTick.cursor).toBe(2);
+    expect(getProposals).toHaveBeenNthCalledWith(1, "club.testnet", 1, 2);
+    expect(getProposals).toHaveBeenNthCalledWith(2, "club.testnet", 2, 1);
+    expect(requestVote).toHaveBeenCalledOnce();
+    expect(requestVote).toHaveBeenCalledWith("voter.testnet", 2);
   });
 
   it("sends a voter's requests sequentially", async () => {
