@@ -700,20 +700,6 @@ export function ProposalVote({
   const pageState = ReadPageState({ state, retry: state.retry });
   if (pageState) return pageState;
   if (state.status !== "ready") return null;
-  if (viewer.error) {
-    return (
-      <main className={s.page}>
-        <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>
-      </main>
-    );
-  }
-  if (viewer.accountId && viewer.isLoading) {
-    return (
-      <main className={s.page}>
-        <LoadingStatus>Checking this account's seats…</LoadingStatus>
-      </main>
-    );
-  }
 
   const proposals = state.data.proposals;
   const openProposals = newestFirst(
@@ -744,25 +730,6 @@ export function ProposalVote({
   const routeSeat = tokenId === undefined
     ? undefined
     : ownedSeats.find((item) => item.token.token_id === tokenId);
-  if (tokenId !== undefined && !routeSeat) {
-    if (!viewer.walletReady) {
-      return (
-        <main className={s.page}>
-          <LoadingStatus>Checking this account's seats…</LoadingStatus>
-        </main>
-      );
-    }
-    return (
-      <main className={s.page}>
-        <header className={s.pageHead}>
-          <p className={s.eyebrow}>Proposal {proposalId}</p>
-          <h1>Not your seat</h1>
-        </header>
-        <p className={s.muted}>This account doesn't hold Seat {tokenId}.</p>
-        <TextButton href="#/seat">View your seat</TextButton>
-      </main>
-    );
-  }
   const seatWithPending = ownedSeats.find((item) =>
     openProposals.some((proposal) => {
       const votingClosed =
@@ -857,7 +824,16 @@ export function ProposalVote({
       </header>
 
       <RuledSection title="Your delegate's vote">
-        {!seat ? (
+        {viewer.error ? (
+          <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>
+        ) : viewer.isLoading ? (
+          <LoadingStatus>Checking this account's seats…</LoadingStatus>
+        ) : tokenId !== undefined && viewer.accountId && !routeSeat ? (
+          <>
+            <p className={s.muted}>This account doesn't hold Seat {tokenId}.</p>
+            <TextButton href="#/seat">View your seat</TextButton>
+          </>
+        ) : !seat ? (
           <p className={s.muted}>Sign in with the account that holds a seat to view its delegate record.</p>
         ) : voteState?.kind === "cast" ? (
           <dl className={s.facts}>
@@ -937,22 +913,7 @@ export function AIReceiptPage() {
   if (pageState) return pageState;
   if (state.status !== "ready") return null;
 
-  if (viewer.error) {
-    return (
-      <main className={s.page}>
-        <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>
-      </main>
-    );
-  }
-  if (viewer.accountId && viewer.isLoading) {
-    return (
-      <main className={s.page}>
-        <LoadingStatus>Checking this account's seats…</LoadingStatus>
-      </main>
-    );
-  }
-
-  const seats = viewer.accountId
+  const seats = viewer.accountId && !viewer.error && !viewer.isLoading
     ? state.data.seats.filter((seat) => viewer.seatIds.includes(seat.token.token_id))
     : state.data.seats;
   const results = seats.flatMap((seat) =>
@@ -965,6 +926,18 @@ export function AIReceiptPage() {
         <p className={s.eyebrow}>On-chain vote records</p>
         <h1>Delegate vote receipts</h1>
       </header>
+      {viewer.error && (
+        <RuledSection title="Your records">
+          <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>
+          <p className={s.muted}>Public record information is shown below.</p>
+        </RuledSection>
+      )}
+      {!viewer.error && viewer.accountId && viewer.isLoading && (
+        <RuledSection title="Your records">
+          <LoadingStatus>Checking this account's seats…</LoadingStatus>
+          <p className={s.muted}>Public record information is shown while membership is checked.</p>
+        </RuledSection>
+      )}
       {results.length === 0 ? (
         <p className={s.muted}>No vote receipts are stored in the current voter views.</p>
       ) : results.map(({ seatId, result }) => (
@@ -1171,22 +1144,8 @@ export function ReceiptPage({ kind }: { kind: "vote" | "sale" | "buy" | "vault" 
   const pageState = ReadPageState({ state, retry: state.retry });
   if (pageState) return pageState;
   if (state.status !== "ready") return null;
-  if (viewer.error) {
-    return (
-      <main className={s.page}>
-        <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>
-      </main>
-    );
-  }
-  if (viewer.accountId && viewer.isLoading) {
-    return (
-      <main className={s.page}>
-        <LoadingStatus>Checking this account's seats…</LoadingStatus>
-      </main>
-    );
-  }
 
-  const seats = viewer.accountId
+  const seats = viewer.accountId && !viewer.error && !viewer.isLoading
     ? state.data.seats.filter((seat) => viewer.seatIds.includes(seat.token.token_id))
     : state.data.seats;
   const results = kind === "vote"
@@ -1199,6 +1158,18 @@ export function ReceiptPage({ kind }: { kind: "vote" | "sale" | "buy" | "vault" 
         <p className={s.eyebrow}>Receipt</p>
         <h1>{kind === "vote" ? "Vote records" : `${kind[0].toUpperCase()}${kind.slice(1)} records`}</h1>
       </header>
+      {viewer.error && (
+        <RuledSection title="Your records">
+          <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>
+          <p className={s.muted}>Public vote records are shown below.</p>
+        </RuledSection>
+      )}
+      {!viewer.error && viewer.accountId && viewer.isLoading && (
+        <RuledSection title="Your records">
+          <LoadingStatus>Checking this account's seats…</LoadingStatus>
+          <p className={s.muted}>Public vote records are shown while membership is checked.</p>
+        </RuledSection>
+      )}
       {results.length === 0 ? (
         <p className={s.muted}>
           Vote receipts are on the public record. Sale, purchase, and vault receipts aren't recorded.
