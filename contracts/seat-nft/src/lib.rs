@@ -199,9 +199,12 @@ impl SeatNft {
             )
     }
 
-    pub fn set_voter_defaults(&mut self, mut defaults: VoterDefaults) {
+    pub fn set_voter_defaults(&mut self, defaults: VoterDefaults) {
         self.assert_dao();
-        defaults.model_signer_hex = defaults.model_signer_hex.to_ascii_lowercase();
+        let defaults = VoterDefaults {
+            model_signer_hex: defaults.model_signer_hex.to_ascii_lowercase(),
+            ..defaults
+        };
         assert!(
             is_model_signer_hex(&defaults.model_signer_hex),
             "ERR_BAD_SIGNER_ADDRESS"
