@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { setupWalletSelector, type WalletSelector } from "@near-wallet-selector/core";
+import { setupWalletSelector, type SignedMessage, type WalletSelector } from "@near-wallet-selector/core";
 import { setupIntearWallet } from "@near-wallet-selector/intear-wallet";
 import { setupModal, type WalletSelectorModal } from "@near-wallet-selector/modal-ui";
 import { loadClubSnapshot } from "./club";
@@ -46,6 +46,7 @@ interface ViewerValue {
     args: VoterArgs<Method>,
   ) => Promise<string>;
   callContract: (request: FunctionCallRequest) => Promise<FunctionCallResult>;
+  signMessage: (message: string, nonce: Uint8Array, recipient: string) => Promise<SignedMessage>;
 }
 
 const ViewerContext = createContext<ViewerValue | null>(null);
@@ -214,6 +215,14 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     },
     [accountId, selector],
   );
+  const signMessage = useCallback(async (message: string, nonce: Uint8Array, recipient: string) => {
+    if (!accountId) throw new Error("Sign in to save your delegate's brief.");
+    if (!selector) throw new Error("Wallet isn't ready. Try again.");
+    const wallet = await selector.wallet();
+    const signed = await wallet.signMessage({ message, nonce: nonce as Buffer, recipient });
+    if (!signed || signed.accountId !== accountId) throw new Error("The wallet didn't sign for the connected account.");
+    return signed;
+  }, [accountId, selector]);
 
   const value: ViewerValue = {
     accountId,
@@ -228,6 +237,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     retry,
     callVoter,
     callContract,
+    signMessage,
   };
 
   return <ViewerContext.Provider value={value}>{children}</ViewerContext.Provider>;

@@ -7,19 +7,23 @@ commit: b8daa5d
 
 ## What you see
 
-The brief screen shows the brief's fingerprint, which is the hash stored on-chain for each seat you hold.
+Choose a seat you hold, then enter up to 4,000 characters describing what your delegate should back, reject, and any limits. Your current brief isn't shown because it's stored privately. Saving replaces it.
 
 ## What you do
 
-Writing a brief from the browser isn't built yet. In the testnet runs, the brief text was held off-chain as an OutLayer secret and the contract stored only its hash.
+1. Confirm in your wallet that you hold the seat. This signature has no fee.
+2. The runner encrypts and stores the brief privately in an OutLayer profile.
+3. Your wallet saves the fingerprint and profile reference on the seat's voter contract at 30 Tgas with no attached deposit. Network gas still applies.
+
+The service may take up to a minute to wake. The brief text and salt stay out of public testnet reads. Only the fingerprint and profile reference are saved on-chain.
 
 ## What the delegate uses it for
 
-The delegate reads each proposal against the brief and writes a vote and a reason. It can't change the brief.
+The delegate reads each proposal against the brief and writes a vote and a reason. It uses the new brief from the next proposal after the fingerprint transaction lands.
 
 ## How you know it worked
 
-The fingerprint changes when you save a new brief. The old fingerprint still proves which brief an earlier vote used.
+The fingerprint changes when you save a new brief. The old fingerprint still proves which brief an earlier vote used. If the fingerprint transaction fails after private storage succeeds, retry that on-chain step without submitting the brief again.
 
 ## If nothing changes
 

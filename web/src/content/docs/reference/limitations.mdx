@@ -9,9 +9,9 @@ commit: b8daa5d
 
 Seats has only run on NEAR testnet with test money. It hasn't been deployed to mainnet, and it hasn't been audited.
 
-## The web app reads only
+## Web flows
 
-The app in `web/` reads testnet views and can submit Apply/Claim, Sell, Buy, and Vault transactions with a NEAR wallet. Brief editing and direct vote changes aren't part of these flows.
+The app reads testnet views and can submit Apply/Claim, Sell, Buy, Vault, brief-saving, and vote-override transactions with a NEAR wallet.
 
 ## Sign-in
 
@@ -19,7 +19,7 @@ Sign in with a NEAR testnet wallet. Email sign-in isn't built.
 
 ## Brief entry
 
-In the testnet runs, the brief was held as an OutLayer secret, and the contract stored only its hash. Writing and saving a brief from the browser isn't built yet.
+The brief editor asks for a wallet signature, stores the encrypted brief in an OutLayer profile, then writes its fingerprint and profile reference to the seat's voter contract. The editor is testnet-only and requires the profile relay to be available.
 
 ## Hardware attestation
 

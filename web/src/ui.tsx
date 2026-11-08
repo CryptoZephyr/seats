@@ -416,6 +416,21 @@ export function CheckedStamp() {
   );
 }
 
+export function StepStatus({ status }: { status: "Waiting" | "Pending" | "Complete" | "Retry" }) {
+  const className = status === "Complete"
+    ? styles.statusCast
+    : status === "Retry"
+      ? styles.statusCastRetry
+      : styles.statusWindowClosed;
+  const shapeClass = status === "Complete" ? styles.ringStamp : styles.castRetryShape;
+  return (
+    <span className={className} role="status" aria-live="polite">
+      <span className={shapeClass} aria-hidden="true" />
+      {status}
+    </span>
+  );
+}
+
 export function WindowBar({ deadline, countdown, fraction }: { deadline: string; countdown: string; fraction: number }) {
   const pct = `${Math.round(fraction * 100)}%`;
   return (
