@@ -13,7 +13,7 @@
   "code_hashes": {
     "tee_verifier": "2Xxmex5tQgNi51iWK825hA36YJuVrGiYcU1WpPxwseEh",
     "seat_voter": "425aVstaWC75Vcg7Kq9hTCagpeaCj5MMgapfKyKdEHFg",
-    "seat_nft": "2SJo9Aj8zskG5PR2j9UrbSkakLcrPyYjB9qVJkjYs6cA"
+    "seat_nft": "35dAYyVFuHnDpwkmEjgENVKtYcqAhPrQmUpwxm1a45rR"
   },
   "seat_nft_art_upgrade": {
     "account_id": "seatsnft3-1793848334.testnet",
@@ -61,6 +61,48 @@
         },
         "art_matches_svgs": true,
         "runner_health_after": "ok"
+      }
+    }
+  },
+  "seat_nft_claim_deposit_upgrade": {
+    "account_id": "seatsnft3-1793848334.testnet",
+    "signer": "seatsnft3-1793848334.testnet",
+    "tx_hash": "8UZm2NYnbs7fWcDqzzpuonheHop4JHTm5ae6Pd4NbjDp",
+    "source_commit": "1d8ee0bf8d75545552e55be0310f43976b2f511e",
+    "previous_code_hash": "B64N7rjVL2yxsTGvUiRoyu2v8aW1oGAhtv87QjSdALDF",
+    "new_code_hash": "35dAYyVFuHnDpwkmEjgENVKtYcqAhPrQmUpwxm1a45rR",
+    "wasm_sha256": "1ee696afc9d20b961f3e9ad663c725e2c00bbc2e660a32a73761d88b86b8c9ca",
+    "wasm_bytes": 339735,
+    "init_call": false,
+    "gas_burned": "2.7 Tgas",
+    "transaction_fee_near": "0.0002607439465265",
+    "verification": {
+      "finality": "final",
+      "seats_unchanged": true,
+      "seat_1": {
+        "token_id": "1",
+        "owner_id": "rb.seatsfund1-1793846395.testnet",
+        "token_response_sha256": "adc1898e321de26e41d1e26f8f6a1fb2fa56da4dc9fabf1dc3177d0c4cee22cb",
+        "record": {
+          "approval": null,
+          "voter_id": "s1.seatsnft3-1793848334.testnet"
+        }
+      },
+      "seat_3": {
+        "token_id": "3",
+        "owner_id": "visitor.seatsfund1-1793846395.testnet",
+        "token_response_sha256": "a45f87df54bc56c19d08b06807d258c703e9a1b480e766e8e8f314d11f77d8fa",
+        "record": {
+          "approval": null,
+          "voter_id": "s3.seatsnft3-1793848334.testnet"
+        }
+      },
+      "voter_defaults_unchanged": true,
+      "voter_defaults": {
+        "agent_wasm_sha256": "a2db80036766e04aab58c50b09387c033f0617a7cb3580d82482ca8756b6519d",
+        "agent_wasm_url": "https://github.com/CryptoZephyr/outlayer-spike/releases/download/brief-agent-v0.1.0/brief-agent.wasm",
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+        "model_signer_hex": "0xfe0071895500a9755c18044948ab4f4e1a7f337e"
       }
     }
   },
