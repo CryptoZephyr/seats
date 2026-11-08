@@ -8,6 +8,10 @@ import { ErrorStatus, GraphicButton, LoadingStatus, RuledSection, SuccessStatus 
 import { checkFunds, friendly, InsufficientFundsError, near, PageHead, TxLink, useGasEstimate } from "./flowCommon";
 import s from "./screens.module.css";
 
+function PurchaseSuccess({ hash }: { hash: string }) {
+  return <SuccessStatus>Purchase submitted. <TxLink hash={hash} /> <a href="#/brief">Save your delegate's brief so it can vote for you.</a></SuccessStatus>;
+}
+
 export function BuySeatFlow() {
   const state = useClubData();
   const viewer = useViewer();
@@ -17,7 +21,12 @@ export function BuySeatFlow() {
   const [hashes, setHashes] = useState<Record<string, string>>({});
   const gasEstimate = useGasEstimate(BUY_SEAT_GAS);
   useEffect(() => { void readSeatNftLevyBps().then(setLevy).catch(() => setLevy(-1)); }, []);
-  if (state.status === "loading") return <main className={s.page}><LoadingStatus>Reading active sale approvals…</LoadingStatus></main>;
+  if (state.status === "loading") return <main className={s.page}>
+    <LoadingStatus>Reading active sale approvals…</LoadingStatus>
+    {Object.entries(hashes).map(([tokenId, hash]) => hash ? (
+      <RuledSection key={tokenId} title={`Seat ${tokenId}`}><PurchaseSuccess hash={hash} /></RuledSection>
+    ) : null)}
+  </main>;
   if (state.status === "error") return <main className={s.page}><ErrorStatus onRetry={state.retry}>{state.error.message}</ErrorStatus></main>;
   const now = BigInt(Date.now()) * 1_000_000n;
   const listings = state.data.seats.flatMap((seat) => {
@@ -62,7 +71,7 @@ export function BuySeatFlow() {
             : <p className={s.muted}>This seat is reserved for {approval.buyer}.</p>}
           {busySeatId === seat.token.token_id && <LoadingStatus>Waiting for your wallet…</LoadingStatus>}
           {errors[seat.token.token_id] && <ErrorStatus>{errors[seat.token.token_id]}</ErrorStatus>}
-          {hashes[seat.token.token_id] && <SuccessStatus>Purchase submitted. <TxLink hash={hashes[seat.token.token_id]} /> <a href="#/brief">Save your delegate's brief so it can vote for you.</a></SuccessStatus>}
+          {hashes[seat.token.token_id] && <PurchaseSuccess hash={hashes[seat.token.token_id]} />}
         </RuledSection>;
       })}
     <RuledSection title="Awaiting club vote">

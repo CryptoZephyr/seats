@@ -786,7 +786,10 @@ export function DelegateBrief() {
             {step === 4 && <SuccessStatus>Your delegate uses this brief from the next proposal. <a href={explorerTxUrl(txHash)} target="_blank" rel="noreferrer">View transaction</a></SuccessStatus>}
           </>
         ) : (
-          <p className={s.muted}>This account doesn't hold a seat.</p>
+          <>
+            <p><StepStatus status="Retry" /> This account doesn't show a seat yet.</p>
+            <GraphicButton glyph="seat" onClick={viewer.retry}>Check again</GraphicButton>
+          </>
         )}
       </RuledSection>
 

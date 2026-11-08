@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { findApplication } from "../ApplyClaimPage";
+import { describe, expect, it, vi } from "vitest";
+import { findApplication, recordSuccessfulAction } from "../ApplyClaimPage";
 import { chainConfig } from "./config";
 
 const args = (value: object) => btoa(JSON.stringify(value));
@@ -30,5 +30,17 @@ describe("application proposal matching", () => {
       },
     ] as never;
     expect(findApplication(proposals, "visitor.testnet")?.id).toBe(4);
+  });
+});
+
+describe("claim success", () => {
+  it("refreshes viewer membership after recording the claim result", () => {
+    const setResult = vi.fn();
+    const retryViewer = vi.fn();
+
+    recordSuccessfulAction("claim", "claim-transaction", setResult, retryViewer);
+
+    expect(setResult).toHaveBeenCalledWith({ hash: "claim-transaction", action: "claim" });
+    expect(retryViewer).toHaveBeenCalledOnce();
   });
 });
