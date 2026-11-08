@@ -654,6 +654,7 @@ export function DelegateBrief() {
     setTxHash("");
     setBusy(true);
     setStep(1);
+    let profileStored = false;
     try {
       const nonce = crypto.getRandomValues(new Uint8Array(32));
       const salt = randomBriefSalt();
@@ -684,6 +685,7 @@ export function DelegateBrief() {
       if (!response.ok || !result.secrets_account_id || !result.profile || !result.brief_hash || !result.tx_hash) {
         throw new Error(result.error ? briefRelayError(result.error) : "The private brief couldn't be stored.");
       }
+      profileStored = true;
       setProfile({
         secrets_account_id: result.secrets_account_id,
         profile: result.profile,
@@ -694,7 +696,7 @@ export function DelegateBrief() {
       await saveFingerprint(result.secrets_account_id, result.profile, result.brief_hash);
     } catch (cause) {
       setError(friendly(cause));
-      if (step < 2) setStep(0);
+      if (!profileStored) setStep(0);
     } finally {
       setBusy(false);
     }
@@ -719,6 +721,13 @@ export function DelegateBrief() {
     } finally {
       setBusy(false);
     }
+  };
+  const resetBrief = () => {
+    setBrief("");
+    setProfile(null);
+    setStep(0);
+    setError("");
+    setTxHash("");
   };
 
   return (
@@ -760,14 +769,16 @@ export function DelegateBrief() {
             </label>
             <p className={s.note}>{brief.length}/4000 characters</p>
             <ol className={s.gives}>
-              <li>1. Confirm in your wallet that you hold this seat (no fee) <StepStatus status={step >= 2 ? "Complete" : "Waiting"} /></li>
-              <li>2. Storing your brief privately <StepStatus status={step === 3 || step >= 4 || step === 5 ? "Complete" : "Waiting"} /> <span className={s.muted}>can take up to a minute if the service was asleep</span></li>
-              <li>3. Save the fingerprint on-chain <StepStatus status={step >= 4 ? "Complete" : step === 3 ? "Retry" : step === 5 ? "Pending" : "Waiting"} /> <span className={s.muted}>30 Tgas, zero attached deposit. Estimated gas: {gasEstimate ? `${gasEstimate} NEAR` : "checking testnet gas price"}.</span></li>
+              <li>1. Confirm in your wallet that you hold this seat (no fee) <StepStatus status={step === 1 ? "Pending" : step > 1 ? "Complete" : "Waiting"} /></li>
+              <li>2. Storing your brief privately <StepStatus status={step === 2 ? "Pending" : step === 3 || step >= 4 ? "Complete" : "Waiting"} /> <span className={s.muted}>can take up to a minute if the service was asleep</span></li>
+              <li>3. Save the fingerprint on-chain <StepStatus status={step === 5 ? "Pending" : step === 4 ? "Complete" : step === 3 ? "Retry" : "Waiting"} /> <span className={s.muted}>30 Tgas, zero attached deposit. Estimated gas: {gasEstimate ? `${gasEstimate} NEAR` : "checking testnet gas price"}.</span></li>
             </ol>
             {!profile ? <GraphicButton glyph="keys" onClick={() => void postBrief()} disabled={busy || !brief.trim() || brief.length > 4000}>
               Save private brief
             </GraphicButton> : step === 3 ? <GraphicButton glyph="keys" onClick={() => void saveFingerprint(profile.secrets_account_id, profile.profile, profile.brief_hash)} disabled={busy}>
               Retry on-chain save
+            </GraphicButton> : step === 4 ? <GraphicButton glyph="keys" onClick={resetBrief} disabled={busy}>
+              Write a new brief
             </GraphicButton> : null}
             {busy && <LoadingStatus>{step <= 1 ? "Waiting for your wallet…" : step === 2 ? "Storing your brief privately…" : "Saving the fingerprint on-chain…"}</LoadingStatus>}
             {error && <ErrorStatus>{error}</ErrorStatus>}
