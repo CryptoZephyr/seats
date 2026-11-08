@@ -929,13 +929,13 @@ export function AIReceiptPage() {
       {viewer.error && (
         <RuledSection title="Your records">
           <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>
-          <p className={s.muted}>Public record information is shown below.</p>
+          <p className={s.muted}>Public vote records are shown below.</p>
         </RuledSection>
       )}
       {!viewer.error && viewer.accountId && viewer.isLoading && (
         <RuledSection title="Your records">
           <LoadingStatus>Checking this account's seats…</LoadingStatus>
-          <p className={s.muted}>Public record information is shown while membership is checked.</p>
+          <p className={s.muted}>Public vote records are shown while membership is checked.</p>
         </RuledSection>
       )}
       {results.length === 0 ? (
@@ -1161,13 +1161,13 @@ export function ReceiptPage({ kind }: { kind: "vote" | "sale" | "buy" | "vault" 
       {viewer.error && (
         <RuledSection title="Your records">
           <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>
-          <p className={s.muted}>Public vote records are shown below.</p>
+          <p className={s.muted}>Public record information is shown below.</p>
         </RuledSection>
       )}
       {!viewer.error && viewer.accountId && viewer.isLoading && (
         <RuledSection title="Your records">
           <LoadingStatus>Checking this account's seats…</LoadingStatus>
-          <p className={s.muted}>Public vote records are shown while membership is checked.</p>
+          <p className={s.muted}>Public record information is shown while membership is checked.</p>
         </RuledSection>
       )}
       {results.length === 0 ? (
