@@ -577,7 +577,7 @@ export function MySeat() {
                           <>
                             <Fact label="Cast status"><WindowClosedStatus /></Fact>
                             <Fact label="Override window">
-                              Override window closed at{" "}
+                              Closed at{" "}
                               <ProposalDate timestampNs={voteState.pending.deadline} />
                             </Fact>
                           </>
