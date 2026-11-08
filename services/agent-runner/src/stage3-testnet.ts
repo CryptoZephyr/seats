@@ -41,6 +41,14 @@ interface Stage3Config {
   runner_agent_key_file: string;
 }
 
+interface DeploymentAgentConfiguration {
+  voter_id: string;
+  model_signer_hex: string;
+  model: string;
+  agent_wasm_url: string;
+  agent_wasm_sha256: string;
+}
+
 type Credential = {
   accountId: string;
   signer: KeyPairSigner;
@@ -125,6 +133,40 @@ function writeKeyFile(path: string, accountId?: string): string {
 
 function readConfig(path: string): Stage3Config {
   return JSON.parse(readFileSync(resolve(path), "utf8")) as Stage3Config;
+}
+
+export function readDeploymentAgentConfiguration(
+  path = join(ROOT, "deployments", "testnet.json"),
+): DeploymentAgentConfiguration {
+  const deployment = JSON.parse(readFileSync(path, "utf8")) as {
+    agent_configuration?: {
+      voter_id?: unknown;
+      model_signer?: { address_hex?: unknown; model?: unknown };
+      pinned_agent?: { url?: unknown; sha256?: unknown };
+    };
+  };
+  const configuration = deployment.agent_configuration;
+  const voterId = configuration?.voter_id;
+  const signerHex = configuration?.model_signer?.address_hex;
+  const model = configuration?.model_signer?.model;
+  const wasmUrl = configuration?.pinned_agent?.url;
+  const wasmSha256 = configuration?.pinned_agent?.sha256;
+  if (
+    typeof voterId !== "string"
+    || typeof signerHex !== "string"
+    || typeof model !== "string"
+    || typeof wasmUrl !== "string"
+    || typeof wasmSha256 !== "string"
+  ) {
+    throw new Error("deployments/testnet.json has incomplete agent_configuration");
+  }
+  return {
+    voter_id: voterId,
+    model_signer_hex: signerHex.toLowerCase(),
+    model,
+    agent_wasm_url: wasmUrl,
+    agent_wasm_sha256: wasmSha256,
+  };
 }
 
 function assertTestnetConfig(config: Stage3Config): void {
@@ -355,17 +397,15 @@ async function proposeVoterDefaults(
   if (config.voter_id !== `s1.${config.seat_nft_id}`) {
     throw new Error("Voter defaults must be read from seat 1 of the configured seat NFT");
   }
-  const values = await callView<{
-    model_signer_hex: string;
-    model: string;
-    agent_wasm_url: string;
-    agent_wasm_sha256: string;
-  }>(provider, config.voter_id, "get_voter_configuration", {});
+  const agentConfiguration = readDeploymentAgentConfiguration();
+  if (agentConfiguration.voter_id !== config.voter_id) {
+    throw new Error("deployments/testnet.json agent_configuration does not match configured seat 1");
+  }
   const defaults = {
-    model_signer_hex: values.model_signer_hex,
-    model: values.model,
-    agent_wasm_url: values.agent_wasm_url,
-    agent_wasm_sha256: values.agent_wasm_sha256,
+    model_signer_hex: agentConfiguration.model_signer_hex,
+    model: agentConfiguration.model,
+    agent_wasm_url: agentConfiguration.agent_wasm_url,
+    agent_wasm_sha256: agentConfiguration.agent_wasm_sha256,
   };
   if (!/^0x[0-9a-fA-F]{40}$/.test(defaults.model_signer_hex)) {
     throw new Error("Seat 1 returned an invalid model signer address");
