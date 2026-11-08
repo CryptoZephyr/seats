@@ -19,10 +19,19 @@ export interface AgentRunnerRpc {
   getLastProposalId(daoId: string): Promise<number>;
   getProposalPeriodNs(daoId: string): Promise<bigint>;
   getProposals(daoId: string, fromIndex: number, limit: number): Promise<Proposal[]>;
+  getAccountInfo(voterId: string): Promise<{
+    amount: string | bigint;
+    storageUsage: string | number | bigint;
+  }>;
   getPending(voterId: string, id: number): Promise<PendingVote | null>;
   getResults(voterId: string): Promise<ResultsView>;
   requestVote(voterId: string, id: number): Promise<string>;
   cast(voterId: string, id: number): Promise<string>;
+}
+
+export interface LowBalanceVoter {
+  available_yocto: string;
+  required_yocto: string;
 }
 
 export interface RunnerState {
@@ -30,6 +39,7 @@ export interface RunnerState {
   pendingByVoter: Record<string, number[]>;
   inFlight: Record<string, Record<string, number>>;
   requestBackoffByVoter?: Record<string, number>;
+  lowBalanceVoters?: Record<string, LowBalanceVoter>;
 }
 
 export function initialRunnerState(
@@ -80,6 +90,8 @@ export interface ActionLog {
   tx_hash?: string;
   reason?: string;
   error?: string;
+  available_yocto?: string;
+  required_yocto?: string;
 }
 
 interface TickOptions {
@@ -90,6 +102,7 @@ interface TickOptions {
   nowNanoseconds: bigint;
   nowMilliseconds: number;
   requestTtlMs: number;
+  voterMinAvailableYocto?: bigint;
   proposalPeriodNs?: bigint;
   windowSeconds?: number;
   persistState: (state: RunnerState) => void;
@@ -98,7 +111,9 @@ interface TickOptions {
 
 const PROPOSAL_PAGE_SIZE = 100;
 const PROPOSAL_PERIOD_MARGIN_SECONDS = 300;
-const DISCOVERED_VOTER_BACKOFF_MS = 60 * 60 * 1000;
+const REQUEST_BACKOFF_MS = 60 * 60 * 1000;
+const VOTER_MIN_AVAILABLE_YOCTO = 4_350_000_000_000_000_000_000_000n;
+const STORAGE_COST_PER_BYTE_YOCTO = 10_000_000_000_000_000_000n;
 
 export function isProposalPeriodTooShort(proposalPeriodNs: bigint, windowSeconds: number): boolean {
   return proposalPeriodNs < BigInt(windowSeconds + PROPOSAL_PERIOD_MARGIN_SECONDS) * 1_000_000_000n;
@@ -155,6 +170,38 @@ function clearRequestBackoff(state: RunnerState, voterId: string): boolean {
     delete state.requestBackoffByVoter;
   }
   return true;
+}
+
+function clearLowBalanceVoter(state: RunnerState, voterId: string): boolean {
+  if (!state.lowBalanceVoters || !Object.hasOwn(state.lowBalanceVoters, voterId)) {
+    return false;
+  }
+  delete state.lowBalanceVoters[voterId];
+  if (Object.keys(state.lowBalanceVoters).length === 0) {
+    delete state.lowBalanceVoters;
+  }
+  return true;
+}
+
+function setLowBalanceVoter(
+  state: RunnerState,
+  voterId: string,
+  availableYocto: bigint,
+  requiredYocto: bigint,
+): void {
+  state.lowBalanceVoters ??= {};
+  state.lowBalanceVoters[voterId] = {
+    available_yocto: availableYocto.toString(),
+    required_yocto: requiredYocto.toString(),
+  };
+}
+
+function availableVoterBalance(account: {
+  amount: string | bigint;
+  storageUsage: string | number | bigint;
+}): bigint {
+  return BigInt(account.amount)
+    - BigInt(account.storageUsage) * STORAGE_COST_PER_BYTE_YOCTO;
 }
 
 function hasPending(state: RunnerState, voterId: string, id: number): boolean {
@@ -333,15 +380,15 @@ export async function runTick(options: TickOptions): Promise<RunnerState> {
         continue;
       }
 
-      const requestBackoffUntil = voter.source === "discovered"
-        ? state.requestBackoffByVoter?.[voter.voterId]
-        : undefined;
+      const hasLowBalanceState = state.lowBalanceVoters?.[voter.voterId] !== undefined;
+      const requestBackoffUntil = state.requestBackoffByVoter?.[voter.voterId];
       if (requestBackoffUntil !== undefined) {
-        if (requestBackoffUntil > options.nowMilliseconds) {
+        if (requestBackoffUntil > options.nowMilliseconds && !hasLowBalanceState) {
           firstIncompleteId = firstIncompleteId === null ? id : Math.min(firstIncompleteId, id);
           continue;
         }
-        if (clearRequestBackoff(state, voter.voterId)) {
+        if (requestBackoffUntil <= options.nowMilliseconds
+          && clearRequestBackoff(state, voter.voterId)) {
           options.persistState(state);
         }
       }
@@ -371,6 +418,44 @@ export async function runTick(options: TickOptions): Promise<RunnerState> {
       if (!shouldRequestVote(pending, results, id)) {
         continue;
       }
+
+      const requiredYocto = options.voterMinAvailableYocto ?? VOTER_MIN_AVAILABLE_YOCTO;
+      try {
+        const account = await rpc.getAccountInfo(voter.voterId);
+        const availableYocto = availableVoterBalance(account);
+        if (availableYocto < requiredYocto) {
+          setLowBalanceVoter(state, voter.voterId, availableYocto, requiredYocto);
+          setRequestBackoff(
+            state,
+            voter.voterId,
+            options.nowMilliseconds + REQUEST_BACKOFF_MS,
+          );
+          firstIncompleteId = firstIncompleteId === null ? id : Math.min(firstIncompleteId, id);
+          options.persistState(state);
+          log({
+            action: "request_vote",
+            status: "skipped",
+            voter_id: voter.voterId,
+            proposal_id: id,
+            reason: "insufficient_voter_balance",
+            available_yocto: availableYocto.toString(),
+            required_yocto: requiredYocto.toString(),
+          });
+          continue;
+        }
+        if (clearLowBalanceVoter(state, voter.voterId)) {
+          clearRequestBackoff(state, voter.voterId);
+          options.persistState(state);
+        }
+      } catch (error) {
+        log({
+          action: "view_account",
+          status: "error",
+          voter_id: voter.voterId,
+          error: String(error),
+        });
+      }
+
       const retryAfterTtl = requestedAtMs !== undefined;
       setInFlight(state, voter.voterId, id, options.nowMilliseconds);
       options.persistState(state);
@@ -408,7 +493,7 @@ export async function runTick(options: TickOptions): Promise<RunnerState> {
           setRequestBackoff(
             state,
             voter.voterId,
-            options.nowMilliseconds + DISCOVERED_VOTER_BACKOFF_MS,
+            options.nowMilliseconds + REQUEST_BACKOFF_MS,
           );
         }
         if (isDefiniteRequestPanic(error)) {

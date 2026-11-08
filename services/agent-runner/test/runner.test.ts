@@ -8,6 +8,7 @@ import {
   isProposalPeriodTooShort,
   rewindCursorForNewDiscoveredVoters,
   runTick,
+  type ActionLog,
   type AgentRunnerRpc,
   type RunnerState,
 } from "../src/runner.js";
@@ -17,6 +18,10 @@ function createRpc(overrides: Partial<AgentRunnerRpc> = {}): AgentRunnerRpc {
     getLastProposalId: vi.fn(async () => 2),
     getProposalPeriodNs: vi.fn(async () => 600_000_000_000n),
     getProposals: vi.fn(async () => [{ id: 0, status: "InProgress" }, { id: 1, status: "InProgress" }]),
+    getAccountInfo: vi.fn(async () => ({
+      amount: "100000000000000000000000000000000",
+      storageUsage: 0,
+    })),
     getPending: vi.fn(async () => null),
     getResults: vi.fn(async () => ({ results: [] })),
     requestVote: vi.fn(async (_voterId: string, id: number) => `request-${id}`),
@@ -272,6 +277,117 @@ describe("runTick with mocked RPC", () => {
 
     expect(requestVote.mock.calls.filter(([, id]) => id === 0)).toHaveLength(1);
     expect(result.cursor).toBe(-1);
+  });
+
+  it.each(["file", "discovered"] as const)(
+    "skips low-balance %s voters and sets a one-hour backoff",
+    async (source) => {
+      const currentState = state();
+      const rpc = createRpc({
+        getLastProposalId: vi.fn(async () => 1),
+        getProposals: vi.fn(async () => [{ id: 0, status: "InProgress" }]),
+        getAccountInfo: vi.fn(async () => ({
+          amount: "20000000000000000099",
+          storageUsage: 2,
+        })),
+      });
+      const logs: ActionLog[] = [];
+
+      await runTick({
+        rpc,
+        daoId: "club.testnet",
+        voters: [{ voterId: "voter.testnet", source }],
+        state: currentState,
+        nowNanoseconds: 0n,
+        nowMilliseconds: 1_000,
+        requestTtlMs: 180_000,
+        voterMinAvailableYocto: 100n,
+        persistState: () => undefined,
+        log: (entry) => logs.push(entry),
+      });
+
+      expect(rpc.requestVote).not.toHaveBeenCalled();
+      expect(currentState.requestBackoffByVoter?.["voter.testnet"]).toBe(3_601_000);
+      expect(currentState.lowBalanceVoters?.["voter.testnet"]).toEqual({
+        available_yocto: "99",
+        required_yocto: "100",
+      });
+      expect(logs).toContainEqual(expect.objectContaining({
+        action: "request_vote",
+        status: "skipped",
+        reason: "insufficient_voter_balance",
+        available_yocto: "99",
+        required_yocto: "100",
+      }));
+    },
+  );
+
+  it("clears low-balance state and backoff when the voter balance recovers", async () => {
+    const currentState: RunnerState = {
+      cursor: -1,
+      pendingByVoter: {},
+      inFlight: {},
+      requestBackoffByVoter: { "voter.testnet": 3_601_000 },
+      lowBalanceVoters: {
+        "voter.testnet": { available_yocto: "99", required_yocto: "100" },
+      },
+    };
+    const rpc = createRpc({
+      getLastProposalId: vi.fn(async () => 1),
+      getProposals: vi.fn(async () => [{ id: 0, status: "InProgress" }]),
+      getAccountInfo: vi.fn(async () => ({
+        amount: "10000000000000000191",
+        storageUsage: 1,
+      })),
+    });
+
+    await runTick({
+      rpc,
+      daoId: "club.testnet",
+      voters: [{ voterId: "voter.testnet", source: "file" }],
+      state: currentState,
+      nowNanoseconds: 0n,
+      nowMilliseconds: 2_000,
+      requestTtlMs: 180_000,
+      voterMinAvailableYocto: 100n,
+      persistState: () => undefined,
+      log: () => undefined,
+    });
+
+    expect(rpc.requestVote).toHaveBeenCalledWith("voter.testnet", 0);
+    expect(currentState.lowBalanceVoters).toBeUndefined();
+    expect(currentState.requestBackoffByVoter).toBeUndefined();
+  });
+
+  it("logs a view_account failure and proceeds with the vote request", async () => {
+    const rpc = createRpc({
+      getLastProposalId: vi.fn(async () => 1),
+      getProposals: vi.fn(async () => [{ id: 0, status: "InProgress" }]),
+      getAccountInfo: vi.fn(async () => {
+        throw new Error("RPC unavailable");
+      }),
+    });
+    const logs: ActionLog[] = [];
+
+    await runTick({
+      rpc,
+      daoId: "club.testnet",
+      voters: [{ voterId: "voter.testnet", source: "file" }],
+      state: state(),
+      nowNanoseconds: 0n,
+      nowMilliseconds: 1_000,
+      requestTtlMs: 180_000,
+      voterMinAvailableYocto: 100n,
+      persistState: () => undefined,
+      log: (entry) => logs.push(entry),
+    });
+
+    expect(rpc.requestVote).toHaveBeenCalledWith("voter.testnet", 0);
+    expect(logs).toContainEqual(expect.objectContaining({
+      action: "view_account",
+      status: "error",
+      error: "Error: RPC unavailable",
+    }));
   });
 
   it.each(["ERR_AGENT_WASM_NOT_PINNED", "ERR_BRIEF_NOT_SET"])(

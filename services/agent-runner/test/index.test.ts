@@ -44,6 +44,37 @@ describe("runner configuration", () => {
     }]);
     expect(config.seatNftId).toBeUndefined();
     expect(config.runnerAgentKeyFile).toBeUndefined();
+    expect(config.voterMinAvailableYocto).toBe(4_350_000_000_000_000_000_000_000n);
+  });
+
+  it("parses a configured minimum voter balance as decimal yoctoNEAR", () => {
+    const directory = temporaryDirectory();
+    const votersFile = join(directory, "voters.json");
+    writeFileSync(votersFile, JSON.stringify([{
+      voter_id: "voter.testnet",
+      agent_key_file: "/etc/secrets/voter.json",
+    }]));
+
+    expect(loadConfig({
+      ...baseEnvironment(),
+      VOTERS: votersFile,
+      VOTER_MIN_AVAILABLE_YOCTO: "123456789",
+    }).voterMinAvailableYocto).toBe(123456789n);
+  });
+
+  it("rejects a non-decimal minimum voter balance", () => {
+    const directory = temporaryDirectory();
+    const votersFile = join(directory, "voters.json");
+    writeFileSync(votersFile, JSON.stringify([{
+      voter_id: "voter.testnet",
+      agent_key_file: "/etc/secrets/voter.json",
+    }]));
+
+    expect(() => loadConfig({
+      ...baseEnvironment(),
+      VOTERS: votersFile,
+      VOTER_MIN_AVAILABLE_YOCTO: "1.5",
+    })).toThrow("VOTER_MIN_AVAILABLE_YOCTO must be a decimal yoctoNEAR string");
   });
 
   it("requires either VOTERS or the complete discovery configuration", () => {

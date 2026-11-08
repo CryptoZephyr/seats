@@ -147,6 +147,14 @@ export class NearAgentRpc implements AgentRunnerRpc, VoterDiscoveryRpc {
     });
   }
 
+  async getAccountInfo(voterId: string): Promise<{
+    amount: string;
+    storageUsage: number;
+  }> {
+    const account = await this.provider.viewAccount(voterId, { finality: "optimistic" });
+    return { amount: account.amount.toString(), storageUsage: account.storage_usage };
+  }
+
   async getPending(voterId: string, id: number): Promise<PendingVote | null> {
     return this.view<PendingVote | null>(voterId, "get_pending", { proposal_id: id });
   }

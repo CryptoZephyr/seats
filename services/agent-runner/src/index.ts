@@ -34,6 +34,7 @@ interface Config {
   pollMs: number;
   windowSeconds: number;
   requestTtlMs: number;
+  voterMinAvailableYocto: bigint;
   startProposalId?: number;
   lookbackProposals: number;
   port?: number;
@@ -113,6 +114,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (!Number.isSafeInteger(requestTtlMs) || requestTtlMs < 1) {
     throw new Error("REQUEST_TTL_MS must be a positive integer");
   }
+  const voterMinAvailableValue =
+    env.VOTER_MIN_AVAILABLE_YOCTO?.trim() ?? "4350000000000000000000000";
+  if (!/^\d+$/.test(voterMinAvailableValue)) {
+    throw new Error("VOTER_MIN_AVAILABLE_YOCTO must be a decimal yoctoNEAR string");
+  }
+  const voterMinAvailableYocto = BigInt(voterMinAvailableValue);
   const startProposalIdValue = env.START_PROPOSAL_ID?.trim();
   const startProposalId = startProposalIdValue ? Number(startProposalIdValue) : undefined;
   if (startProposalId !== undefined && (!Number.isSafeInteger(startProposalId) || startProposalId < 0)) {
@@ -140,6 +147,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     pollMs,
     windowSeconds,
     requestTtlMs,
+    voterMinAvailableYocto,
     startProposalId,
     lookbackProposals,
     port,
@@ -178,11 +186,30 @@ export function readState(stateFile: string): RunnerState | null {
     ) {
       throw new Error("Invalid runner state");
     }
+    const lowBalanceVoters = state.lowBalanceVoters;
+    if (
+      lowBalanceVoters !== undefined
+      && (
+        typeof lowBalanceVoters !== "object"
+        || lowBalanceVoters === null
+        || Array.isArray(lowBalanceVoters)
+        || Object.values(lowBalanceVoters).some(
+          (entry) => !entry
+            || typeof entry.available_yocto !== "string"
+            || !/^-?\d+$/.test(entry.available_yocto)
+            || typeof entry.required_yocto !== "string"
+            || !/^\d+$/.test(entry.required_yocto),
+        )
+      )
+    ) {
+      throw new Error("Invalid runner state");
+    }
     return {
       cursor: state.cursor as number,
       pendingByVoter: state.pendingByVoter,
       inFlight,
       ...(requestBackoffByVoter ? { requestBackoffByVoter } : {}),
+      ...(lowBalanceVoters ? { lowBalanceVoters } : {}),
     };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
@@ -304,6 +331,12 @@ async function main(): Promise<void> {
         voter_id: voterId,
         source,
       })),
+      lowBalanceVoters: Object.entries(state?.lowBalanceVoters ?? {}).map(
+        ([voterId, balance]) => ({
+          voter_id: voterId,
+          ...balance,
+        }),
+      ),
       agentPublicKey: sharedCredential?.publicKey.toString() ?? null,
       cursor: state?.cursor ?? null,
       startedAtMs,
@@ -365,6 +398,7 @@ async function main(): Promise<void> {
         nowNanoseconds: BigInt(started) * 1_000_000n,
         nowMilliseconds: started,
         requestTtlMs: config.requestTtlMs,
+        voterMinAvailableYocto: config.voterMinAvailableYocto,
         proposalPeriodNs,
         windowSeconds: config.windowSeconds,
         persistState: writeState.bind(null, config.stateFile),
