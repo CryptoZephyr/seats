@@ -897,7 +897,11 @@ async function applyAsVisitor(
     PROPOSAL_BOND,
     true,
   );
-  process.stdout.write(`${JSON.stringify({ proposal_id: proposal.proposalId, status: proposal.status })}\n`);
+  process.stdout.write(`${JSON.stringify({
+    proposal_id: proposal.proposalId,
+    status: proposal.status,
+    ...(proposal.txHash ? { tx_hash: proposal.txHash } : {}),
+  })}\n`);
 }
 
 async function claimSeatAsVisitor(
