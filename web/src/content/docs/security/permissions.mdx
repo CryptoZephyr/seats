@@ -1,26 +1,26 @@
 ---
-title: Permissions
-summary: What each key and account can do, and what it can't.
-lastVerified: 2026-11-06
-commit: 886500f
+title: Who can do what
+summary: See what you, your delegate, and the club can do.
+lastVerified: 2026-11-09
+commit: 7165ac0
 ---
 
-## The delegate key
+## You
 
-Limited to requesting votes, with a 1 NEAR allowance. It can't cast early, override, cancel, or move funds. The testnet run confirmed that other methods and direct DAO calls were refused.
+The wallet that controls your seat can save a brief, change or cancel a pending vote before its deadline, open the vault while you hold the seat, and offer the seat for sale.
 
-## The member account
+## Your delegate
 
-Can override, cancel, and set the brief. A member can sell the seat, but only through the approved sale.
+Your delegate can prepare a vote and a one-line reason. Its key can request votes. It can't move your funds, override your choice, cancel a vote, or send the final vote before the change window closes.
 
-## The voter account
+## The vote service
 
-After setup, the voter account has no full-access key. The old delegate key is removed on resale and a new one is issued with the same limits.
+A service sends the prepared vote after the window closes. It can't change the choice. A slow service can delay a cast.
 
-## The seat contract
+## The club
 
-Can set the voter's controller on a sale and nothing else. It refuses plain transfers.
+The club decides who can join and whether to approve a sale. Club rules and contract changes are public.
 
-## The club DAO
+## After a sale
 
-Sets the model signer and approves sales through a proposal members can see.
+The new holder controls the seat and writes a new brief. Your access to the seat and vault ends.

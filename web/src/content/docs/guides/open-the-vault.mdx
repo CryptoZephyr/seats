@@ -1,26 +1,24 @@
 ---
 title: Open the vault
-summary: Open the club vault as a seat holder, and see the content encrypted to your own key.
-lastVerified: 2026-11-06
-commit: 886500f
+summary: Check the club vault with the wallet that currently holds a seat.
+lastVerified: 2026-11-09
+commit: 7165ac0
 ---
 
-## What you see
+## What you need
 
-The vault screen checks your testnet seat and shows the current maximum execution deposit and expected charge before signing.
+A current seat and the wallet that holds it. Keep testnet NEAR for the vault charge and network fee. [Get testnet NEAR from the faucet](https://near-faucet.io/).
 
-## What you do
+## Steps
 
-Choose Open vault. Your browser generates an X25519 key pair in memory and signs a request to the OutLayer testnet contract. The private key is discarded when the page closes.
+1. Open `#/vault` and connect the seat holder wallet.
+2. Check the estimated charge and deposit shown on `Club vault`.
+3. Choose `Open vault` and approve the wallet request.
 
-## What Seats does
+## What you'll see
 
-The vault job checks that your account holds a seat. If it does, it returns the vault content encrypted to a key only your browser holds. If it doesn't, it refuses.
+The vault content appears in your browser. Your browser decrypts it with a key held in memory. Leaving the page discards that key. Most of the deposit is returned.
 
-## How you know it worked
+## If it goes wrong
 
-Deposit: the live contract estimate plus a small buffer. The expected execution charge is about 0.002 testnet NEAR, and most of the deposit is returned. The browser decrypts the job result locally.
-
-## If you are not a holder
-
-You see the refusal: only current seat holders can open the vault. Former members are refused by design. In the testnet run, the former seller's attempt returned `ERR_NO_SEAT`.
+Only the current seat holder can open the vault. If the estimate or network read fails, choose the page's retry action. If the wallet times out, check the transaction before trying again.

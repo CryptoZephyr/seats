@@ -1,30 +1,24 @@
 ---
-title: Trust model
-summary: Who controls each part of a seat, a vote, and a sale.
-lastVerified: 2026-11-06
-commit: 886500f
+title: What Seats relies on
+summary: Learn which people, services, and public rules are involved.
+lastVerified: 2026-11-09
+commit: 7165ac0
 ---
 
-## The club
+## You and the club
 
-The club's DAO controls admission, sale approval, the model signer, and the levy. Members vote on each of these in the DAO.
+You control the brief and can change or cancel a pending vote during its 2-minute window. The club votes on membership applications and sale offers.
 
-## The member
+## Your delegate and NEAR AI
 
-The member controls the brief, can override or cancel a vote in the window, and can sell the seat through an approved sale.
+Your delegate reads the proposal and brief, then prepares a vote. NEAR AI creates and signs the response. The club's contract checks that signature. A signed response doesn't prove that the proposal was understood correctly.
 
-## The delegate
+## The public rules
 
-The delegate prepares a vote and signs nothing on the member's behalf beyond its receipt. Its key can request votes and nothing else.
+The contracts enforce who controls a seat, when a vote can be changed, and how a sale is paid. A separate service can request a vote and send it after the window, but it can't override your choice.
 
-## NEAR AI
+## Hardware evidence
 
-NEAR AI's inference service signs each answer. A club registers the signer, so the contract can check receipts against it.
+Verified public OS on genuine Intel and NVIDIA hardware.
 
-## The keeper
-
-The keeper requests votes and casts expired ones. It can't cast early, override, or move funds.
-
-## The contract
-
-The seat contract and the voter contract enforce the rules: the approved-sale gate, the window, the receipt check, and the payout. A change to any rule needs a new deployment.
+This check covers the public operating system and listed hardware. It doesn't show which private software handled each request. See [the testnet limits](/docs/reference/limitations).

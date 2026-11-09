@@ -1,30 +1,22 @@
 ---
-title: Verified examples
-summary: The recorded testnet runs, what each one proves, and the limits on each.
-lastVerified: 2026-11-07
-commit: b8daa5d
+title: Testnet examples
+summary: Read examples of votes, changes, sales, and vault checks recorded on testnet.
+lastVerified: 2026-11-09
+commit: 7165ac0
 ---
 
-## Delegate vote on an 80 NEAR venue
+## A vote and a change
 
-A proposal to pay 80 NEAR for a venue was voted Reject by the delegate, with the reason that it exceeds the 50 NEAR cap. The receipt hash is recorded, the DAO recorded the Reject under the voter account, the DAO status is Rejected, and no funds moved.
+Recorded testnet runs show a delegate voting Reject on an 80 NEAR proposal, and a member changing a pending Approve to Reject during the change window. The vote and short reason are public.
 
-The cast transaction isn't captured in the record.
+## A completed sale
 
-## Override inside the window
+A recorded 0.5 NEAR sale paid 0.475 NEAR to the seller and 0.025 NEAR to the club. The old holder lost vault access and the buyer became the seat holder.
 
-The delegate prepared Approve on a 0.01 NEAR snacks proposal. The member overrode to Reject inside the window. A later override returned `ERR_WINDOW_CLOSED`.
+## Vault check
 
-The cast landed after the DAO's period because of RPC timeouts. That run was under the earlier 300 second period, and the live DAO now uses 600 seconds. The DAO status is recorded as Expired, and the overridden Reject is the vote on record.
-
-## Approved resale
-
-Token 1 sold for 0.5 NEAR. The seller received 0.475 NEAR and the DAO 0.025 NEAR. The owner and the voter controller both moved to the buyer, the brief was cleared, and the seller's old delegate key was removed. The new key can call only the vote request method, with a 1 NEAR allowance.
-
-## Vault isolation
-
-The holder's vault check returned encrypted content. The former seller's check returned `ERR_NO_SEAT`. The record marks the isolation test as passing.
+A current holder received encrypted vault content. A former holder's request was refused.
 
 ## Limits
 
-These are single runs on testnet. They show that each step ran once, not that every case is covered.
+These are single testnet examples, not a promise about every future run. Older test votes made before the fixed delegate also exposed brief text in public receipts. See [Data and privacy](/docs/security/data-and-privacy).

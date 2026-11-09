@@ -1,40 +1,27 @@
 ---
-title: States
-summary: What each vote, sale, and seat state means on the screen.
-lastVerified: 2026-11-06
-commit: 886500f
+title: Vote and sale states
+summary: Learn what the words and shapes on your seat pages mean.
+lastVerified: 2026-11-09
+commit: 7165ac0
 ---
 
 ## Vote states
 
-Pending, window open: your delegate's vote is recorded and you can still override it. The screen shows the clock time and countdown.
+- `Pending`: your delegate has prepared a vote. The page shows a clock time and countdown while you can still change or cancel it.
+- `Overridden`: you changed the prepared vote. It will be sent when the window closes.
+- `Canceled`: your seat won't vote on this proposal.
+- `Cast`: the vote was sent to the club's voting record.
+- `Approved`, `Rejected`, or `Expired`: the proposal's result.
 
-Overridden, window open: you changed the vote inside the window. It will be cast at the deadline.
-
-Window closed, waiting for cast: the deadline passed and the vote hasn't been cast yet. Anyone can trigger the cast.
-
-Cast: the vote was sent to the DAO under the seat's voter account.
-
-Approved, rejected, expired: the DAO's result for the proposal. Each status uses a word and a shape, never colour alone.
+Each status uses a word and a shape. Don't rely on color alone. A vote change window lasts 2 minutes.
 
 ## Sale states
 
-Listed for sale: the seat is on the club page with its price.
-
-Offer waiting for club: a buyer escrowed the price, and the club hasn't voted.
-
-Sale approved: the seat moved. The seller sees the payout, and the buyer sees the seat.
-
-Declined or timed out: the buyer was refunded in full and the seller keeps the seat.
-
-## Access states
-
-Former member opening the vault: refused, with the message that only current seat holders can open the vault.
-
-Late override refused: the window closed before the change arrived.
+- `For sale`: the club approved an offer for the named buyer.
+- `Awaiting club vote`: the club hasn't decided on the offer.
+- Completed sale: the seat moved to the buyer, who paid the approved price.
+- Declined or timed out: the buyer is refunded and the seller keeps the seat.
 
 ## Connection states
 
-Network slow: the screen says what is waiting and how long it has been. It never shows a frozen spinner.
-
-Wallet not connected: the screen offers a connect action and doesn't hide the state.
+If the page can't read the testnet, it shows an error or loading state. Use the retry action and check the transaction record before trying a wallet request again.

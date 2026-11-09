@@ -1,26 +1,22 @@
 ---
 title: Data and privacy
-summary: What Seats stores on-chain, what stays off-chain, and what anyone can read.
-lastVerified: 2026-11-07
-commit: b8daa5d
+summary: See what stays encrypted and what anyone can read on testnet.
+lastVerified: 2026-11-09
+commit: 7165ac0
 ---
 
-## On-chain
+## Your brief
 
-Seat ownership, the voter controller, the brief's hash, the receipt hash, the votes, the sale transactions, and the payouts are on-chain and public.
+Your saved brief is encrypted in private storage outside the public testnet record. The service sends it to NEAR AI when your delegate prepares a vote. Don't put passwords, wallet keys, or other secrets in it.
 
-## Public in the receipt
+The fixed delegate asks for no reasoning and refuses to send a vote receipt if reasoning is present. Older test votes made before this fix include brief text in public receipts. That text is public and can't be removed. Seats using older delegate code may not have the same protection.
 
-The delegate's answer is passed to the contract as response bytes. That includes the one-line reason, so anyone can read it.
+## Public records
 
-## Off-chain
-
-The brief text stays off-chain, held as an OutLayer secret. The request sent to the model contains the brief, so it stays off-chain too.
+Anyone can read the seat owner, brief fingerprint, vote, one-line reason, proposal, and transaction records. The fingerprint does not reveal the saved brief by itself. A public vote receipt may contain more data, especially if it came from an older delegate.
 
 ## Vault content
 
-The vault content is returned encrypted to your key. It is never stored on-chain in plain text.
+The vault response is encrypted to a key created in your browser. Your browser decrypts it locally. The public transaction doesn't contain the vault text in plain form.
 
-## What the site shows
-
-The site shows the public account IDs and records it reads from testnet. It doesn't collect personal data.
+Read [who can act on a seat](/docs/security/permissions) before connecting a wallet.

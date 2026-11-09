@@ -1,32 +1,28 @@
 ---
 title: Write your brief
-summary: Tell your delegate what to back, what to reject, and any limits, in plain words.
-lastVerified: 2026-11-07
-commit: b8daa5d
+summary: Give your delegate plain rules for how to vote on club proposals.
+lastVerified: 2026-11-09
+commit: 7165ac0
 ---
 
-## What you see
+## What you need
 
-Choose a seat you hold, then enter up to 4,000 characters describing what your delegate should back, reject, and any limits. Your current brief isn't shown because it's stored privately. Saving replaces it.
+The wallet that controls your seat, a brief of up to 4,000 characters, and testnet NEAR for the network fee. There is no deposit. [Get testnet NEAR from the faucet](https://near-faucet.io/).
 
-## What you do
+## Steps
 
-1. Confirm in your wallet that you hold the seat. This signature has no fee.
-2. The runner encrypts and stores the brief privately in an OutLayer profile.
-3. Your wallet saves the fingerprint and profile reference on the seat's voter contract. Network fee about the live testnet estimate. No deposit.
+1. Open `#/brief`. On `Your delegate's brief`, find the `The brief` section.
+2. If you hold more than one seat, choose the seat you want to update.
+3. Write clear rules in `Your delegate's brief`. Don't include passwords, keys, or other secrets.
+4. Choose `Save private brief` and confirm the wallet request.
+5. Wait for private storage and the public fingerprint save to finish.
 
-Your brief is sent over HTTPS to the Seats runner, which doesn't keep it, and to OutLayer's keystore, which encrypts it. Only the fingerprint and a profile reference go on-chain.
+## What you'll see
 
-The service may take up to a minute to wake. The brief text and salt stay out of public testnet reads.
+The fingerprint, a short public code for the saved brief, changes. Your brief text isn't shown on the seat page. Your delegate uses the saved brief for proposals it requests after the public record updates.
 
-## What the delegate uses it for
+## If it goes wrong
 
-The delegate reads each proposal against the brief and writes a vote and a reason. It uses the new brief from the next proposal after the fingerprint transaction lands.
+Private storage can take up to a minute to wake. If the page offers `Retry on-chain save`, use it to save the fingerprint without storing the brief again. Refresh and check the fingerprint before repeating a save.
 
-## How you know it worked
-
-The fingerprint changes when you save a new brief. The old fingerprint still proves which brief an earlier vote used. If the fingerprint transaction fails after private storage succeeds, retry that on-chain step without submitting the brief again.
-
-## If nothing changes
-
-Check that the brief saved, then open the pending vote. If the vote still shows the old reason, it was prepared before your change. Override it inside the window if you want a different result.
+Your saved brief is encrypted in private storage outside the public testnet record. Votes and their reasons are public, and older test receipts exposed brief text. Read [Data and privacy](/docs/security/data-and-privacy) before you save.
