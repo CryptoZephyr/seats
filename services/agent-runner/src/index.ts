@@ -82,7 +82,7 @@ function assertTestnetAccountId(accountId: string, name: string): void {
 
 const defaultRpcFallbackUrls = [
   "https://test.rpc.fastnear.com",
-  "https://rpc.testnet.near.org",
+  "https://near-testnet.drpc.org",
 ];
 
 function assertTestnetRpcUrl(url: string, name: string): string {

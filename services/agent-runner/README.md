@@ -4,7 +4,7 @@ The runner polls the DAO and submits expired pending votes. It supports explicit
 
 ## Configuration
 
-Required values are `NEAR_RPC_URL`, `DAO_ID`, `KEEPER_ACCOUNT_ID`, and `KEEPER_KEY_FILE`. Use a NEAR testnet RPC and `.testnet` account IDs. `NEAR_RPC_FALLBACK_URLS` optionally accepts comma-separated testnet RPC URLs. When unset, reads also use `https://test.rpc.fastnear.com` and `https://rpc.testnet.near.org` after retryable errors. Transaction broadcasts fail over only on rate limits and reuse the same signed transaction.
+Required values are `NEAR_RPC_URL`, `DAO_ID`, `KEEPER_ACCOUNT_ID`, and `KEEPER_KEY_FILE`. Use a NEAR testnet RPC and `.testnet` account IDs. `NEAR_RPC_FALLBACK_URLS` optionally accepts comma-separated testnet RPC URLs. When unset, reads also use `https://test.rpc.fastnear.com` and `https://near-testnet.drpc.org` after retryable errors. Transaction broadcasts fail over only on rate limits and reuse the same signed transaction.
 
 `VOTERS` is an optional path to a JSON array with `voter_id` and `agent_key_file` fields. Explicit entries keep their own key files and take precedence over discovery.
 

@@ -1,6 +1,6 @@
 {
   "network": "testnet",
-  "rpc_url": "https://rpc.testnet.near.org",
+  "rpc_url": "https://rpc.testnet.fastnear.com",
   "secrets_dir": "/path/to/near-spike/secrets",
   "funder_account_id": "funder.testnet",
   "funder_key_file": ".near-credentials/testnet/funder.testnet.json",
