@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { buildBriefMessage, buildBriefRequestBody, hashBrief } from "./brief";
+import { buildBriefMessage, buildBriefRelayUrl, buildBriefRequestBody, hashBrief } from "./brief";
 import { buildSetBriefRequest, SET_BRIEF_GAS } from "./transactions";
 
 describe("brief relay builders", () => {
+  it("builds the relative Vercel brief endpoint URL", () => {
+    expect(buildBriefRelayUrl("/api")).toBe("/api/brief");
+    expect(buildBriefRelayUrl("/api/")).toBe("/api/brief");
+  });
+
   it("builds the required signed message string", () => {
     expect(buildBriefMessage("1", "ab".repeat(32), 1_800_000_000_000)).toBe(
       '{"action":"seats-save-brief","token_id":"1","brief_hash":"abababababababababababababababababababababababababababababababab","issued_at":1800000000000}',

@@ -173,6 +173,15 @@ export class NearAgentRpc implements AgentRunnerRpc, VoterDiscoveryRpc {
     );
   }
 
+  async profileExists(ownerId: string, profile: string, agentWasmSha256: string): Promise<boolean> {
+    const existing = await this.view<unknown>("outlayer.testnet", "get_secrets", {
+      accessor: { WasmHash: { hash: agentWasmSha256 } },
+      profile,
+      owner: ownerId,
+    });
+    return existing !== null && existing !== undefined;
+  }
+
   async hasRequestVoteAccessKey(voterId: string, publicKey: string): Promise<boolean> {
     try {
       const accessKey = await this.withRetry((provider) =>

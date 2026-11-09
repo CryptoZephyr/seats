@@ -1,0 +1,10 @@
+{
+  "installCommand": "npm ci --prefix web && npm ci --prefix services/agent-runner",
+  "buildCommand": "npm run build --prefix web",
+  "outputDirectory": "web/dist",
+  "functions": {
+    "api/brief.ts": {
+      "maxDuration": 60
+    }
+  }
+}
