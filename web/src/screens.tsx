@@ -1379,7 +1379,7 @@ export function ProposalVote({
     <main className={s.page}>
       <header className={s.pageHead}>
         <p className={s.eyebrow}>Proposal {proposal.id}</p>
-        <h1>{proposal.description}</h1>
+        <h1 className={s.proposalTitle}>{proposal.description}</h1>
         <dl className={s.facts}>
           <Fact label="Kind">{proposalKindName(proposal)}</Fact>
           <Fact label="Proposer"><span className="mono">{proposal.proposer}</span></Fact>
