@@ -89,8 +89,8 @@ describe("DelegateBrief pending save recovery", () => {
     const markup = renderToStaticMarkup(<DelegateBrief />);
     const remountedMarkup = renderToStaticMarkup(<DelegateBrief />);
 
-    expect(markup).toContain("Save fingerprint on-chain (0.1 NEAR storage)");
-    expect(remountedMarkup).toContain("Save fingerprint on-chain (0.1 NEAR storage)");
+    expect(markup).toContain("Save fingerprint on-chain");
+    expect(remountedMarkup).toContain("Save fingerprint on-chain");
     expect(markup).toContain("Failed to fetch");
     expect(markup).toContain("Try again");
     expect(mocks.viewer.callContract).not.toHaveBeenCalled();

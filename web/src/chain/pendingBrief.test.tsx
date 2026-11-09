@@ -46,7 +46,7 @@ describe("pending brief saves", () => {
     const button = PendingBriefSaveButton({ onClick, disabled: false });
 
     expect(callContract).not.toHaveBeenCalled();
-    expect(button.props.children).toBe("Save fingerprint on-chain (0.1 NEAR storage)");
+    expect(button.props.children).toBe("Save fingerprint on-chain");
     await button.props.onClick();
 
     expect(callContract).toHaveBeenCalledOnce();
