@@ -43,7 +43,8 @@ export function SellSeatFlow() {
   if (viewer.accountId && viewer.error) return <main className={s.page}><ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus></main>;
   if (viewer.accountId && viewer.isLoading) return <main className={s.page}><LoadingStatus>Checking your seat on testnet…</LoadingStatus></main>;
   const seats = state.data.seats.filter((seat) => viewer.seatIds.includes(seat.token.token_id));
-  const proposals = saleListings(state.data.proposals);
+  const nowNs = BigInt(Date.now()) * 1_000_000n;
+  const proposals = saleListings(state.data.proposals, state.data.proposalPeriodNs, nowNs);
   const selectedSeat = seats.find((seat) => seat.token.token_id === selectedSeatId) ?? seats[0];
   const selectedListing = proposals.find((item) => item.seatId === selectedSeat?.token.token_id);
   const split = (() => {

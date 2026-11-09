@@ -2,6 +2,29 @@ import { describe, expect, it } from "vitest";
 import { saleListings } from "./sales";
 import { chainConfig } from "./config";
 
+function saleProposal(status: string, submissionTime: string) {
+  const args = btoa(JSON.stringify({
+    token_id: "7",
+    buyer: "buyer.testnet",
+    price: "1000000000000000000000000",
+  }));
+  return {
+    id: 33,
+    proposer: "seller.testnet",
+    description: "Sell Seat 7 to buyer.testnet",
+    kind: {
+      FunctionCall: {
+        receiver_id: chainConfig.seatNftAccountId,
+        actions: [{ method_name: "approve_sale", args, deposit: "0", gas: "10000000000000" }],
+      },
+    },
+    status,
+    vote_counts: {},
+    votes: {},
+    submission_time: submissionTime,
+  } as never;
+}
+
 describe("sale proposal parsing", () => {
   it("recognizes the new sale description and approve_sale arguments", () => {
     const args = btoa(JSON.stringify({
@@ -25,7 +48,7 @@ describe("sale proposal parsing", () => {
       votes: {},
       submission_time: "1000",
     }] as never;
-    expect(saleListings(proposals)).toMatchObject([{
+    expect(saleListings(proposals, 1000n, 1500n)).toMatchObject([{
       seatId: "3",
       buyerId: "buyer.testnet",
       price: "1000000000000000000000000",
@@ -54,6 +77,22 @@ describe("sale proposal parsing", () => {
       votes: {},
       submission_time: "1000",
     }] as never;
-    expect(saleListings(proposals)).toMatchObject([{ seatId: "3", buyerId: "buyer.testnet" }]);
+    expect(saleListings(proposals, 1000n, 1500n)).toMatchObject([{ seatId: "3", buyerId: "buyer.testnet" }]);
+  });
+
+  it("includes an InProgress sale proposal before its deadline", () => {
+    expect(saleListings([saleProposal("InProgress", "1000")], "100", 1099n)).toHaveLength(1);
+  });
+
+  it("excludes an InProgress sale proposal at its exact deadline", () => {
+    expect(saleListings([saleProposal("InProgress", "1000")], "100", 1100n)).toHaveLength(0);
+  });
+
+  it("excludes an InProgress sale proposal after its deadline", () => {
+    expect(saleListings([saleProposal("InProgress", "1000")], "100", 1101n)).toHaveLength(0);
+  });
+
+  it("excludes proposals whose status isn't InProgress", () => {
+    expect(saleListings([saleProposal("Expired", "1000")], "100", 1000n)).toHaveLength(0);
   });
 });

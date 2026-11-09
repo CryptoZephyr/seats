@@ -43,11 +43,12 @@ export function BuySeatFlow() {
     <LoadingStatus>Reading active sale approvals…</LoadingStatus>
   </main>;
   if (state.status === "error") return <main className={s.page}><ErrorStatus onRetry={state.retry}>{state.error.message}</ErrorStatus></main>;
-  const now = BigInt(Date.now()) * 1_000_000n;
+  const nowNs = BigInt(Date.now()) * 1_000_000n;
   const listings = state.data.seats.flatMap((seat) => {
     const approval = seat.record.approval;
-    return approval && now < BigInt(approval.expires_at) ? [{ seat, approval }] : [];
+    return approval && nowNs < BigInt(approval.expires_at) ? [{ seat, approval }] : [];
   });
+  const saleProposals = saleListings(state.data.proposals, state.data.proposalPeriodNs, nowNs);
   const buy = async (tokenId: string, price: string) => {
     const account = viewer.accountId;
     if (!account) return;
@@ -100,8 +101,8 @@ export function BuySeatFlow() {
         </RuledSection>;
       })}
     <RuledSection title="Awaiting club vote">
-      {saleListings(state.data.proposals).length === 0 ? <p className={s.muted}>No sale proposals are waiting for a vote.</p>
-        : saleListings(state.data.proposals).map((item) =>
+      {saleProposals.length === 0 ? <p className={s.muted}>No sale proposals are waiting for a vote.</p>
+        : saleProposals.map((item) =>
           <p key={item.proposal.id}>Seat {item.seatId ?? "unknown"}, proposal {item.proposal.id}: {item.buyerId} at {item.price ? `${near(BigInt(item.price))} NEAR` : "unknown price"}</p>)}
     </RuledSection>
   </main>;
