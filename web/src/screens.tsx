@@ -21,8 +21,15 @@ import { formatProposalDate } from "./proposalDate";
 import { isProposalVotingClosed, newestFirst } from "./proposals";
 import { saleListings } from "./chain/sales";
 import { buildBriefMessage, buildBriefRelayUrl, buildBriefRequestBody, hashBrief, randomBriefSalt } from "./chain/brief";
-import { buildSetBriefRequest, SET_BRIEF_GAS } from "./chain/transactions";
+import { SET_BRIEF_GAS } from "./chain/transactions";
+import {
+  loadPendingBriefSave,
+  pendingBriefSessionStorage,
+  storePendingBriefSave,
+  submitPendingBriefSave,
+} from "./chain/pendingBrief";
 import { friendly, useGasEstimate } from "./flowCommon";
+import { PendingBriefSaveButton } from "./PendingBriefSaveButton";
 import { SeatPlan, VoteMark, type VoteKind } from "./seatplan";
 import { canChangePendingVote, changeAttribution } from "./voteControls";
 import { useMockRun } from "./useMockRun";
@@ -55,7 +62,16 @@ import s from "./screens.module.css";
 
 type ClubDataState = ReturnType<typeof useClubData>;
 
-function ReadPageState({ state, retry }: { state: ClubDataState; retry: () => void }) {
+function ReadPageState({
+  state,
+  retry,
+  keepCurrentPage = false,
+}: {
+  state: ClubDataState;
+  retry: () => void;
+  keepCurrentPage?: boolean;
+}) {
+  if (keepCurrentPage) return null;
   if (state.status === "ready") return null;
   return (
     <main className={s.page}>
@@ -654,32 +670,49 @@ export function DelegateBrief() {
   const viewer = useViewer();
   const gasEstimate = useGasEstimate(SET_BRIEF_GAS);
   const [brief, setBrief] = useState("");
-  const [selectedSeatId, setSelectedSeatId] = useState("");
-  const [profile, setProfile] = useState<{ secrets_account_id: string; profile: string; brief_hash: string } | null>(null);
-  const [step, setStep] = useState(0);
+  const [pendingBrief, setPendingBrief] = useState(() =>
+    loadPendingBriefSave(pendingBriefSessionStorage()),
+  );
+  const [selectedSeatId, setSelectedSeatId] = useState(() => pendingBrief?.seatId ?? "");
+  const [step, setStep] = useState(() => pendingBrief ? 3 : 0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [readError, setReadError] = useState("");
   const [txHash, setTxHash] = useState("");
   useEffect(() => {
+    const restored = loadPendingBriefSave(pendingBriefSessionStorage(), viewer.accountId);
     setBrief("");
-    setProfile(null);
-    setStep(0);
+    setPendingBrief(restored);
+    setSelectedSeatId(restored?.seatId ?? "");
+    setStep(restored ? 3 : 0);
     setError("");
+    setReadError("");
     setTxHash("");
   }, [viewer.accountId]);
-  const pageState = ReadPageState({ state, retry: state.retry });
+  const keepCurrentPage = Boolean(pendingBrief) || step === 4;
+  const pageState = ReadPageState({ state, retry: state.retry, keepCurrentPage });
   if (pageState) return pageState;
-  if (state.status !== "ready") return null;
+  if (state.status !== "ready" && !keepCurrentPage) return null;
 
-  const seats = state.data.seats.filter((seat) => viewer.seatIds.includes(seat.token.token_id));
+  const seats = state.status === "ready"
+    ? state.data.seats.filter((seat) => viewer.seatIds.includes(seat.token.token_id))
+    : [];
   const selectedSeat = seats.find((seat) => seat.token.token_id === selectedSeatId) ?? seats[0];
+  const refreshClubData = async () => {
+    setReadError("");
+    try {
+      await state.refresh();
+    } catch (cause) {
+      setReadError(friendly(cause));
+    }
+  };
   const postBrief = async () => {
     if (!viewer.accountId || !selectedSeat) return;
     setError("");
     setTxHash("");
     setBusy(true);
     setStep(1);
-    let profileStored = false;
+    let relayStored = false;
     try {
       const nonce = crypto.getRandomValues(new Uint8Array(32));
       const salt = randomBriefSalt();
@@ -717,36 +750,45 @@ export function DelegateBrief() {
       ) {
         throw new Error(result.error ? briefRelayError(result.error) : "The private brief couldn't be stored.");
       }
-      profileStored = true;
-      setProfile({
-        secrets_account_id: result.secrets_account_id,
-        profile: result.profile,
-        brief_hash: result.brief_hash,
-      });
-      setStep(5);
-      await saveFingerprint(result.secrets_account_id, result.profile, result.brief_hash);
+      relayStored = true;
+      const pending = {
+        voterId: selectedSeat.record.voter_id,
+        seatId: selectedSeat.token.token_id,
+        ownerAccountId: viewer.accountId,
+        result: {
+          secrets_account_id: result.secrets_account_id,
+          profile: result.profile,
+          brief_hash: result.brief_hash,
+        },
+      };
+      setPendingBrief(pending);
+      setSelectedSeatId(pending.seatId);
+      setStep(3);
+      storePendingBriefSave(pendingBriefSessionStorage(), pending);
     } catch (cause) {
       setError(friendly(cause));
-      if (!profileStored) setStep(0);
+      if (!relayStored) setStep(0);
     } finally {
       setBusy(false);
     }
   };
-  const saveFingerprint = async (accountId: string, name: string, hash: string) => {
-    if (!selectedSeat) return;
+  const saveFingerprint = async () => {
+    if (!pendingBrief || !viewer.accountId) return;
     setBusy(true);
     setStep(5);
+    setError("");
     try {
-      const request = buildSetBriefRequest(selectedSeat.record.voter_id, hash, accountId, name);
-      const tx = await viewer.callContract(request);
+      const tx = await submitPendingBriefSave(
+        pendingBrief,
+        viewer.callContract,
+        pendingBriefSessionStorage(),
+      );
       setTxHash(tx.hash);
-      state.retry();
-      viewer.retry();
+      setPendingBrief(null);
       setStep(4);
       setError("");
+      void refreshClubData();
     } catch (cause) {
-      state.retry();
-      viewer.retry();
       setError(friendly(cause));
       setStep(3);
     } finally {
@@ -755,11 +797,20 @@ export function DelegateBrief() {
   };
   const resetBrief = () => {
     setBrief("");
-    setProfile(null);
+    setPendingBrief(null);
     setStep(0);
     setError("");
+    setReadError("");
     setTxHash("");
   };
+  const readFailure = readError || (state.status === "error" ? state.error.message : "");
+  const stepStatuses = (
+    <ol className={s.gives}>
+      <li>1. Confirm in your wallet that you hold this seat (no fee) <StepStatus status={step === 1 ? "Pending" : step > 1 ? "Complete" : "Waiting"} /></li>
+      <li>2. Storing your brief privately <StepStatus status={step === 2 ? "Pending" : step >= 3 ? "Complete" : "Waiting"} /> <span className={s.muted}>can take up to a minute if the service was asleep</span></li>
+      <li>3. Save the fingerprint on-chain <StepStatus status={step === 5 ? "Pending" : step === 4 ? "Complete" : "Waiting"} /> <span className={s.muted}>Network fee about {gasEstimate ? `${gasEstimate} testnet NEAR` : "checking testnet network fee"}. Storage: 0.1 NEAR.</span></li>
+    </ol>
+  );
 
   return (
     <main className={s.page}>
@@ -773,7 +824,27 @@ export function DelegateBrief() {
       </header>
 
       <RuledSection title="The brief">
-        {!viewer.accountId ? (
+        {pendingBrief ? (
+          <>
+            {viewer.isLoading && <LoadingStatus>Checking this account's seats…</LoadingStatus>}
+            {viewer.error && <ErrorStatus onRetry={viewer.retry}>{viewer.error.message}</ErrorStatus>}
+            {readFailure && <ErrorStatus onRetry={() => void refreshClubData()}>{readFailure}</ErrorStatus>}
+            {stepStatuses}
+            <PendingBriefSaveButton
+              onClick={() => void saveFingerprint()}
+              disabled={busy || !viewer.accountId || !viewer.walletReady}
+            />
+            {busy && <LoadingStatus>Saving the fingerprint on-chain…</LoadingStatus>}
+            {error && <ErrorStatus>{error}</ErrorStatus>}
+          </>
+        ) : step === 4 && state.status !== "ready" ? (
+          <>
+            {readFailure && <ErrorStatus onRetry={() => void refreshClubData()}>{readFailure}</ErrorStatus>}
+            {stepStatuses}
+            <SuccessStatus>Your delegate uses this brief from the next proposal. <a href={explorerTxUrl(txHash)} target="_blank" rel="noreferrer">View transaction</a></SuccessStatus>
+            <GraphicButton glyph="keys" onClick={resetBrief}>Write a new brief</GraphicButton>
+          </>
+        ) : !viewer.accountId ? (
           <p className={s.muted}>Sign in with the wallet that holds your seat to save a private brief.</p>
         ) : viewer.isLoading ? (
           <LoadingStatus>Checking this account's seats…</LoadingStatus>
@@ -785,7 +856,7 @@ export function DelegateBrief() {
               <select className={s.priceInput} value={selectedSeat?.token.token_id ?? ""} onChange={(event) => {
                 setSelectedSeatId(event.target.value);
                 setBrief("");
-                setProfile(null);
+                setPendingBrief(null);
                 setStep(0);
                 setError("");
               }}>
@@ -800,15 +871,10 @@ export function DelegateBrief() {
               <textarea className={s.briefInput} rows={8} maxLength={4000} value={brief} onChange={(event) => setBrief(event.target.value)} />
             </label>
             <p className={s.note}>{brief.length}/4000 characters</p>
-            <ol className={s.gives}>
-              <li>1. Confirm in your wallet that you hold this seat (no fee) <StepStatus status={step === 1 ? "Pending" : step > 1 ? "Complete" : "Waiting"} /></li>
-              <li>2. Storing your brief privately <StepStatus status={step === 2 ? "Pending" : step === 3 || step >= 4 ? "Complete" : "Waiting"} /> <span className={s.muted}>can take up to a minute if the service was asleep</span></li>
-              <li>3. Save the fingerprint on-chain <StepStatus status={step === 5 ? "Pending" : step === 4 ? "Complete" : step === 3 ? "Retry" : "Waiting"} /> <span className={s.muted}>Network fee about {gasEstimate ? `${gasEstimate} testnet NEAR` : "checking testnet network fee"}. No deposit.</span></li>
-            </ol>
-            {!profile ? <GraphicButton glyph="keys" onClick={() => void postBrief()} disabled={busy || !brief.trim() || brief.length > 4000}>
+            {step === 4 && readError && <ErrorStatus onRetry={() => void refreshClubData()}>{readError}</ErrorStatus>}
+            {stepStatuses}
+            {step < 4 ? <GraphicButton glyph="keys" onClick={() => void postBrief()} disabled={busy || !brief.trim() || brief.length > 4000}>
               Save private brief
-            </GraphicButton> : step === 3 ? <GraphicButton glyph="keys" onClick={() => void saveFingerprint(profile.secrets_account_id, profile.profile, profile.brief_hash)} disabled={busy}>
-              Retry on-chain save
             </GraphicButton> : step === 4 ? <GraphicButton glyph="keys" onClick={resetBrief} disabled={busy}>
               Write a new brief
             </GraphicButton> : null}

@@ -7,15 +7,16 @@ commit: 7165ac0
 
 ## What you need
 
-The wallet that controls your seat, a brief of up to 4,000 characters, and testnet NEAR for the network fee. There is no deposit. [Get testnet NEAR from the faucet](https://near-faucet.io/).
+The wallet that controls your seat, a brief of up to 4,000 characters, and testnet NEAR for the network fee and 0.1 NEAR storage. The fingerprint call attaches no deposit. [Get testnet NEAR from the faucet](https://near-faucet.io/).
 
 ## Steps
 
 1. Open `#/brief`. On `Your delegate's brief`, find the `The brief` section.
 2. If you hold more than one seat, choose the seat you want to update.
 3. Write clear rules in `Your delegate's brief`. Don't include passwords, keys, or other secrets.
-4. Choose `Save private brief` and confirm the wallet request.
-5. Wait for private storage and the public fingerprint save to finish.
+4. Choose `Save private brief` and confirm the wallet signature.
+5. Wait for private storage to finish.
+6. Choose `Save fingerprint on-chain` and confirm the wallet request.
 
 ## What you'll see
 
@@ -23,6 +24,6 @@ The fingerprint, a short public code for the saved brief, changes. Your brief te
 
 ## If it goes wrong
 
-Private storage can take up to a minute to wake. If the page offers `Retry on-chain save`, use it to save the fingerprint without storing the brief again. Refresh and check the fingerprint before repeating a save.
+Private storage can take up to a minute to wake. The fingerprint save is a separate wallet action. If it fails, choose `Save fingerprint on-chain` again. The stored result stays in this tab, so you don't need to store the brief again.
 
 Your saved brief is encrypted in private storage outside the public testnet record. Votes and their reasons are public, and older test receipts exposed brief text. Read [Data and privacy](/docs/security/data-and-privacy) before you save.
