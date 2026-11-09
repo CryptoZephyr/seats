@@ -3,6 +3,7 @@ import {
   APPLICATION_DURATION_NS,
   CLAIM_SEAT_DEPOSIT,
   CLAIM_SEAT_GAS,
+  buildApplyDescription,
   PROPOSAL_ACTION_GAS,
   PROPOSAL_CALL_GAS,
   VAULT_REQUEST_GAS,
@@ -13,6 +14,7 @@ import {
   buildVaultRequest,
   calculateSaleSplit,
   parseNearAmount,
+  sanitizeApplicationReason,
 } from "./transactions";
 import { chainConfig } from "./config";
 import { decryptVaultResponse, generateVaultKeyPair } from "./vaultCrypto";
@@ -30,7 +32,7 @@ describe("flow transaction builders", () => {
       deposit: 100_000_000_000_000_000_000_000n,
       args: {
         proposal: {
-          description: "Apply for a seat for visitor.testnet",
+          description: "Apply for a seat for visitor.testnet\nApplication bond: 0.1 NEAR attached",
           kind: { FunctionCall: { receiver_id: chainConfig.seatNftAccountId, actions: [{
             method_name: "approve_application",
             args: expect.any(String),
@@ -45,6 +47,22 @@ describe("flow transaction builders", () => {
       applicant: "visitor.testnet",
       expires_in_ns: APPLICATION_DURATION_NS,
     });
+  });
+
+  it("builds an application description without a reason", () => {
+    expect(buildApplyDescription("visitor.testnet", "100000000000000000000000"))
+      .toBe("Apply for a seat for visitor.testnet\nApplication bond: 0.1 NEAR attached");
+  });
+
+  it("adds a sanitized reason to the application description", () => {
+    expect(buildApplyDescription(
+      "visitor.testnet",
+      "100000000000000000000000",
+      "I want\u0000 to join\nthis club.",
+    )).toBe(
+      "Apply for a seat for visitor.testnet\nWhy you want to join: I want to join this club.\nApplication bond: 0.1 NEAR attached",
+    );
+    expect(sanitizeApplicationReason("x".repeat(281))).toHaveLength(280);
   });
 
   it("builds Claim with the exact deposit and gas", () => {

@@ -9,7 +9,7 @@ import {
   checkFunds,
   FaucetLink,
   friendly,
-  InsufficientFundsError,
+  insufficientFundsError,
   isInsufficientFundsError,
   near,
   PageHead,
@@ -58,7 +58,7 @@ export function BuySeatFlow() {
     try {
       const request = buildBuyRequest(tokenId, price);
       if (!await checkFunds(account, request)) {
-        throw new InsufficientFundsError(`This account needs ${near(request.deposit)} NEAR for the deposit and about ${gasEstimate ?? "the current"} testnet NEAR for the network fee.`);
+        throw insufficientFundsError(request);
       }
       const tx = await viewer.callContract(request);
       setHashes((previous) => ({ ...previous, [tokenId]: tx.hash }));

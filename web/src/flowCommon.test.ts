@@ -10,11 +10,13 @@ const rpc = vi.hoisted(() => ({
 vi.mock("./chain/rpc", () => rpc);
 
 import {
+  canAffordRequest,
   checkFunds,
   FaucetLink,
   friendly,
   InsufficientFundsError,
   isInsufficientFundsError,
+  requiredWalletBalance,
   TESTNET_FAUCET_URL,
 } from "./flowCommon";
 
@@ -28,6 +30,13 @@ describe("friendly", () => {
 
   it("doesn't treat ordinary network wording as a wallet error", () => {
     expect(friendly(new Error("This needs a network fee"))).toBe("This needs a network fee");
+  });
+
+  it("maps wallet balance errors to the low-balance message and faucet path", () => {
+    const error = new Error("Account has 4.74 NEAR but needs 4.81 NEAR to complete the request.");
+
+    expect(friendly(error)).toBe("You need at least 4.81 NEAR in your wallet.");
+    expect(isInsufficientFundsError(error)).toBe(true);
   });
 
   it("uses the wallet confirmation message for timeouts and failed fetches", () => {
@@ -62,15 +71,41 @@ describe("checkFunds", () => {
       methodName: "add_proposal",
       args: {},
       gas: 0n,
-      deposit: 999000000000000000000001n,
+      deposit: 989000000000000000000001n,
     })).resolves.toBe(false);
     await expect(checkFunds("member.testnet", {
       receiverId: "dao.testnet",
       methodName: "add_proposal",
       args: {},
       gas: 0n,
-      deposit: 999000000000000000000001n,
+      deposit: 989000000000000000000001n,
     })).resolves.toBe(true);
+  });
+
+  it("requires the deposit, 0.001 NEAR per Tgas, and a 0.01 NEAR margin", () => {
+    const request = {
+      receiverId: "seat-nft.testnet",
+      methodName: "claim_seat",
+      args: {},
+      gas: 300_000_000_000_000n,
+      deposit: 4_500_000_000_000_000_000_000_000n,
+    };
+
+    expect(requiredWalletBalance(request)).toBe(4_810_000_000_000_000_000_000_000n);
+  });
+
+  it("blocks the request below the required balance", () => {
+    const request = {
+      receiverId: "seat-nft.testnet",
+      methodName: "claim_seat",
+      args: {},
+      gas: 300_000_000_000_000n,
+      deposit: 4_500_000_000_000_000_000_000_000n,
+    };
+    const required = requiredWalletBalance(request);
+
+    expect(canAffordRequest(required - 1n, request)).toBe(false);
+    expect(canAffordRequest(required, request)).toBe(true);
   });
 });
 

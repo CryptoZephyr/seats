@@ -13,8 +13,29 @@ export class InsufficientFundsError extends Error {}
 
 export const TESTNET_FAUCET_URL = "https://near-faucet.io/";
 
-export function isInsufficientFundsError(error: unknown): error is InsufficientFundsError {
-  return error instanceof InsufficientFundsError;
+function errorMessage(error: unknown): string | null {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  if (typeof error === "object" && error !== null && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string") return message;
+  }
+  return null;
+}
+
+function requiredBalanceFromWalletError(error: unknown): string | null {
+  const match = errorMessage(error)?.match(
+    /\bhas\s+[\d,]+(?:\.\d+)?\s+NEAR\s*,?\s*but\s+needs\s+([\d,]+(?:\.\d+)?)\s+NEAR\b/i,
+  );
+  return match?.[1]?.replaceAll(",", "") ?? null;
+}
+
+function lowBalanceMessage(requiredNear: string): string {
+  return `You need at least ${requiredNear} NEAR in your wallet.`;
+}
+
+export function isInsufficientFundsError(error: unknown): boolean {
+  return error instanceof InsufficientFundsError || requiredBalanceFromWalletError(error) !== null;
 }
 
 export function near(value: bigint): string {
@@ -24,6 +45,8 @@ export function near(value: bigint): string {
 }
 
 export function friendly(error: unknown): string {
+  const requiredNear = requiredBalanceFromWalletError(error);
+  if (requiredNear !== null) return lowBalanceMessage(requiredNear);
   if (error instanceof InsufficientFundsError) return error.message;
   const code = contractErrorCode(error);
   if (code) return friendlyContractError(code);
@@ -34,9 +57,23 @@ export function friendly(error: unknown): string {
 }
 
 export async function checkFunds(accountId: string, request: FunctionCallRequest): Promise<boolean> {
-  const [account, gasPrice] = await Promise.all([getAccountInfo(accountId), getGasPrice()]);
+  const account = await getAccountInfo(accountId);
   const spendable = BigInt(account.amount) - BigInt(account.storage_usage) * 10n ** 19n;
-  return spendable >= request.deposit + request.gas * gasPrice;
+  return canAffordRequest(spendable, request);
+}
+
+export function requiredWalletBalance(request: FunctionCallRequest): bigint {
+  return request.deposit
+    + request.gas * 1_000_000_000n
+    + 10_000_000_000_000_000_000_000n;
+}
+
+export function canAffordRequest(spendable: bigint, request: FunctionCallRequest): boolean {
+  return spendable >= requiredWalletBalance(request);
+}
+
+export function insufficientFundsError(request: FunctionCallRequest): InsufficientFundsError {
+  return new InsufficientFundsError(lowBalanceMessage(near(requiredWalletBalance(request))));
 }
 
 export function useGasEstimate(gas: bigint): string | null {

@@ -23,6 +23,7 @@ export const VAULT_ESTIMATE_BUFFER = 500_000_000_000n;
 export const APPLICATION_DURATION_NS = 7 * 24 * 60 * 60 * 1_000_000_000;
 export const SALE_LEVY_BPS = 500n;
 export const SET_BRIEF_GAS = 30_000_000_000_000n;
+export const MAX_APPLICATION_REASON_LENGTH = 280;
 
 export interface FunctionCallRequest {
   receiverId: string;
@@ -44,17 +45,38 @@ export function toBase64Json(value: object): string {
   return btoa(binary);
 }
 
+export function sanitizeApplicationReason(reason: string): string {
+  return Array.from(
+    reason.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ").replace(/\s+/g, " "),
+  ).slice(0, MAX_APPLICATION_REASON_LENGTH).join("");
+}
+
+export function buildApplyDescription(
+  applicant: string,
+  proposalBond: string | number,
+  reason = "",
+): string {
+  const bond = String(proposalBond);
+  if (!/^\d+$/.test(bond)) throw new Error("DAO returned an invalid proposal bond.");
+  const cleanReason = sanitizeApplicationReason(reason).trim();
+  return [
+    `Apply for a seat for ${applicant}`,
+    ...(cleanReason ? [`Why you want to join: ${cleanReason}`] : []),
+    `Application bond: ${formatNearAmount(bond)} NEAR attached`,
+  ].join("\n");
+}
+
 export function buildApplyRequest(
   applicant: string,
   proposalBond: string | number,
+  reason = "",
 ): FunctionCallRequest {
-  if (!/^\d+$/.test(String(proposalBond))) throw new Error("DAO returned an invalid proposal bond.");
   return {
     receiverId: chainConfig.daoAccountId,
     methodName: "add_proposal",
     args: {
       proposal: {
-        description: `Apply for a seat for ${applicant}`,
+        description: buildApplyDescription(applicant, proposalBond, reason),
         kind: {
           FunctionCall: {
             receiver_id: chainConfig.seatNftAccountId,
