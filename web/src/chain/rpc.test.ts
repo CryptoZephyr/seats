@@ -13,6 +13,14 @@ const successResponse = () => new Response(JSON.stringify({ result: { value: "ok
 });
 
 describe("rpcRequest", () => {
+  it("keeps FastNear first and uses dRPC as the final read fallback", () => {
+    expect(chainConfig.readRpcUrls).toEqual([
+      "https://rpc.testnet.fastnear.com",
+      "https://test.rpc.fastnear.com",
+      "https://near-testnet.drpc.org",
+    ]);
+  });
+
   it("retries a read on the second URL after a fetch error", async () => {
     vi.useFakeTimers();
     const fetchMock = vi.fn()

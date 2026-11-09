@@ -30,7 +30,7 @@ function assertTestnetRpcUrl(value: string): string {
 const ownerCredential = credentialFromPrivateKey(ownerAccountId, required("BRIEF_OWNER_PRIVATE_KEY"));
 const rpcUrls = [
   assertTestnetRpcUrl(required("NEAR_RPC_URL")),
-  ...(process.env.NEAR_RPC_FALLBACK_URLS ?? "https://test.rpc.fastnear.com,https://rpc.testnet.near.org")
+  ...(process.env.NEAR_RPC_FALLBACK_URLS ?? "https://test.rpc.fastnear.com,https://near-testnet.drpc.org")
     .split(",").map((url) => url.trim()).filter(Boolean).map(assertTestnetRpcUrl),
 ];
 const rpc = new NearAgentRpc([...new Set(rpcUrls)], ownerCredential, [ownerCredential]);

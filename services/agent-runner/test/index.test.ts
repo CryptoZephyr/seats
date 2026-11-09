@@ -56,7 +56,7 @@ describe("runner configuration", () => {
     expect(config.rpcUrls).toEqual([
       "https://rpc.testnet.fastnear.com",
       "https://test.rpc.fastnear.com",
-      "https://rpc.testnet.near.org",
+      "https://near-testnet.drpc.org",
     ]);
   });
 
@@ -65,7 +65,7 @@ describe("runner configuration", () => {
       NEAR_RPC_FALLBACK_URLS: [
         "https://rpc.testnet.fastnear.com/",
         "https://custom.testnet.example",
-        "https://rpc.testnet.near.org",
+        "https://near-testnet.drpc.org",
         "https://custom.testnet.example",
       ].join(", "),
     }));
@@ -73,7 +73,7 @@ describe("runner configuration", () => {
     expect(config.rpcUrls).toEqual([
       "https://rpc.testnet.fastnear.com",
       "https://custom.testnet.example",
-      "https://rpc.testnet.near.org",
+      "https://near-testnet.drpc.org",
     ]);
   });
 

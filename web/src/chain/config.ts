@@ -6,7 +6,7 @@ export const chainConfig = {
   readRpcUrls: [
     "https://rpc.testnet.fastnear.com",
     "https://test.rpc.fastnear.com",
-    "https://rpc.testnet.near.org",
+    "https://near-testnet.drpc.org",
   ],
   explorerTxBaseUrl: "https://testnet.nearblocks.io/txns/",
   daoAccountId: deployment.accounts.dao,
