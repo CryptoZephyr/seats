@@ -567,6 +567,7 @@
 }
 .receiptStep {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: baseline;
   gap: var(--space-4);
@@ -585,6 +586,8 @@
 }
 .receiptLabel {
   flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .receiptTx {
   display: inline-flex;
