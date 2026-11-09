@@ -31,7 +31,11 @@ function createRpc(urls = rpcUrls): NearAgentRpc {
     "voter.testnet",
     KeyPair.fromRandom("ed25519").toString(),
   );
-  return new NearAgentRpc(urls, keeper, [voter]);
+  const profileOwner = credentialFromPrivateKey(
+    "owner.testnet",
+    KeyPair.fromRandom("ed25519").toString(),
+  );
+  return new NearAgentRpc(urls, keeper, [voter, profileOwner]);
 }
 
 function stubSendJsonRpc(handler: (call: ProviderCall) => unknown | Promise<unknown>): ProviderCall[] {
@@ -67,6 +71,43 @@ function successfulRpcResponse({ method, params }: ProviderCall): unknown {
 }
 
 describe("runner RPC failover", () => {
+  it("reads voter defaults and caches the current agent hash for at most 60 seconds", async () => {
+    vi.useFakeTimers();
+    const hash = "a".repeat(64);
+    const calls = stubSendJsonRpc(() => ({
+      result: Array.from(Buffer.from(JSON.stringify({ agent_wasm_sha256: hash }))),
+    }));
+    const rpc = createRpc();
+
+    await expect(rpc.getAgentWasmSha256("seatsnft.testnet")).resolves.toBe(hash);
+    await expect(rpc.getAgentWasmSha256("seatsnft.testnet")).resolves.toBe(hash);
+    expect(calls).toHaveLength(1);
+    expect((calls[0].params as { method_name: string }).method_name).toBe("get_voter_defaults");
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    await expect(rpc.getAgentWasmSha256("seatsnft.testnet")).resolves.toBe(hash);
+    expect(calls).toHaveLength(2);
+  });
+
+  it("uses the supplied agent hash for the OutLayer store accessor", async () => {
+    const rpc = createRpc();
+    const internalRpc = rpc as unknown as { call: (...args: unknown[]) => Promise<string> };
+    const call = vi.spyOn(internalRpc, "call").mockResolvedValue("profile-store-tx");
+    const hash = "b".repeat(64);
+
+    await expect(rpc.storeProfile("owner.testnet", "seat-1", "encrypted", hash))
+      .resolves.toBe("profile-store-tx");
+
+    expect(call).toHaveBeenCalledWith(
+      expect.anything(),
+      "outlayer.testnet",
+      "store_secrets",
+      expect.objectContaining({ accessor: { WasmHash: { hash } } }),
+      50n,
+      100_000_000_000_000_000_000_000n,
+    );
+  });
+
   it("moves a read from the primary URL to the next URL after a -429 error", async () => {
     vi.useFakeTimers();
     vi.spyOn(Math, "random").mockReturnValue(0);

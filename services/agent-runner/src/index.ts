@@ -339,14 +339,21 @@ async function main(): Promise<void> {
         getSeatVoterId: (tokenId) => rpc.getSeatVoterId(config.seatNftId as string, tokenId),
         getVoterController: rpc.getVoterController.bind(rpc),
         getAccountInfo: rpc.getAccountInfo.bind(rpc),
-        storeProfile: async (profile, secretsJson) => {
+        getAgentWasmSha256: () => rpc.getAgentWasmSha256(config.seatNftId as string),
+        storeProfile: async (profile, secretsJson, agentWasmSha256) => {
           const pubkey = await fetchOutlayerSecretsPubkey(
             config.briefRelay!.ownerAccountId,
             profile,
             secretsJson,
+            agentWasmSha256,
           );
           const encrypted = encryptProfileSecrets(pubkey, secretsJson);
-          return rpc.storeProfile(config.briefRelay!.ownerAccountId, profile, encrypted);
+          return rpc.storeProfile(
+            config.briefRelay!.ownerAccountId,
+            profile,
+            encrypted,
+            agentWasmSha256,
+          );
         },
       },
     })
