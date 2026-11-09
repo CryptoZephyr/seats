@@ -1,12 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import fixture from "./__fixtures__/proposal-6-override.json";
 import {
   isCurrentVoteOverridden,
+  loadFastNearTransactions,
   originalDelegateVote,
   parseLatestMemberChange,
   type AccountTransactionSummary,
   type FastNearTransaction,
 } from "./history";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 const voterId = "s1.seatsnft3-1793848334.testnet";
 const controller = "rb.seatsfund1-1793846395.testnet";
@@ -188,5 +193,25 @@ describe("parseLatestMemberChange", () => {
     expect(originalDelegateVote(history.firstOverride)).toBe("Approve");
     expect(isCurrentVoteOverridden(history, history.latest?.vote ?? null, "member")).toBe(false);
     expect(isCurrentVoteOverridden(history, history.latest?.vote ?? null, "pending")).toBe(true);
+  });
+});
+
+describe("loadFastNearTransactions", () => {
+  it("fetches details only for successful function-call candidates in one batch", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ transactions: [] }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await loadFastNearTransactions([
+      { ...accountTransaction("success"), is_function_call: true },
+      { ...accountTransaction("failed", false), is_function_call: true },
+      { ...accountTransaction("not-a-call"), is_function_call: false },
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const request = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(JSON.parse(String(request.body))).toEqual({ tx_hashes: ["success"] });
   });
 });

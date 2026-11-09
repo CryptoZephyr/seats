@@ -74,7 +74,7 @@ describe("rpcRequest", () => {
     ]);
   });
 
-  it("limits concurrent read requests to six", async () => {
+  it("limits concurrent read requests to four", async () => {
     let active = 0;
     let peak = 0;
     const fetchMock = vi.fn(async () => {
@@ -88,6 +88,6 @@ describe("rpcRequest", () => {
 
     await Promise.all(Array.from({ length: 20 }, () => rpcRequest("query", {})));
 
-    expect(peak).toBe(6);
+    expect(peak).toBe(4);
   });
 });

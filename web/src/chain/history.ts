@@ -2,6 +2,13 @@ export interface AccountTransactionSummary {
   transaction_hash: string;
   tx_block_timestamp: string | number;
   is_success: boolean;
+  is_function_call?: boolean;
+}
+
+interface ExecutionOutcome {
+  outcome?: {
+    logs?: string[];
+  };
 }
 
 export interface FastNearTransaction {
@@ -12,10 +19,13 @@ export interface FastNearTransaction {
       FunctionCall?: {
         method_name: string;
         args: string;
+        deposit?: string;
       };
     }>;
     hash: string;
   };
+  execution_outcome?: ExecutionOutcome;
+  receipts?: Array<{ execution_outcome?: ExecutionOutcome }>;
 }
 
 export interface MemberChange {
@@ -157,21 +167,18 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!response.ok) throw new Error(`Vote history returned HTTP ${response.status}.`);
+  if (!response.ok) throw new Error(`NEAR testnet history returned HTTP ${response.status}.`);
   return response.json() as Promise<T>;
 }
 
-export async function latestMemberChange(
-  voterId: string,
-  proposalId: number,
-): Promise<MemberChangeHistory> {
+export async function loadFastNearAccountTransactions(accountId: string): Promise<AccountTransactionSummary[]> {
   const accountTransactions: AccountTransactionSummary[] = [];
   const seenTokens = new Set<string>();
   let resumeToken: string | undefined;
 
   for (let page = 0; page < MAX_HISTORY_PAGES; page += 1) {
     const body: Record<string, unknown> = {
-      account_id: voterId,
+      account_id: accountId,
       is_function_call: true,
       limit: ACCOUNT_PAGE_LIMIT,
     };
@@ -185,9 +192,15 @@ export async function latestMemberChange(
     resumeToken = nextToken;
   }
 
+  return accountTransactions;
+}
+
+export async function loadFastNearTransactions(
+  accountTransactions: AccountTransactionSummary[],
+): Promise<FastNearTransaction[]> {
   const hashes = [...new Set(
     accountTransactions
-      .filter((item) => item.is_success)
+      .filter((item) => item.is_success && item.is_function_call !== false)
       .map((item) => item.transaction_hash),
   )];
   const transactionBatches = await Promise.all(
@@ -199,10 +212,37 @@ export async function latestMemberChange(
     ),
   );
 
-  return parseLatestMemberChange(
-    accountTransactions,
-    transactionBatches.flatMap((batch) => batch.transactions),
-    voterId,
+  return transactionBatches.flatMap((batch) => batch.transactions);
+}
+
+export function parseMemberChangeHistories(
+  accountTransactions: AccountTransactionSummary[],
+  transactions: FastNearTransaction[],
+  voterId: string,
+  proposalIds: number[],
+): Map<number, MemberChangeHistory> {
+  return new Map([...new Set(proposalIds)].map((proposalId) => [
     proposalId,
-  );
+    parseLatestMemberChange(accountTransactions, transactions, voterId, proposalId),
+  ]));
+}
+
+export async function latestMemberChanges(
+  voterId: string,
+  proposalIds: number[],
+): Promise<Map<number, MemberChangeHistory>> {
+  if (proposalIds.length === 0) return new Map();
+  const accountTransactions = await loadFastNearAccountTransactions(voterId);
+  const transactions = await loadFastNearTransactions(accountTransactions);
+  return parseMemberChangeHistories(accountTransactions, transactions, voterId, proposalIds);
+}
+
+export async function latestMemberChange(
+  voterId: string,
+  proposalId: number,
+): Promise<MemberChangeHistory> {
+  return (await latestMemberChanges(voterId, [proposalId])).get(proposalId) ?? {
+    latest: null,
+    firstOverride: null,
+  };
 }

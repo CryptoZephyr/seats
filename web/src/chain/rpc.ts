@@ -13,8 +13,8 @@ export interface AccountInfo {
 }
 
 const READ_METHODS = new Set(["query", "gas_price", "tx", "EXPERIMENTAL_tx_status", "block"]);
-const READ_CONCURRENCY_LIMIT = 6;
-const RETRY_DELAYS_MS = [300, 900, 2_000, 4_000];
+const READ_CONCURRENCY_LIMIT = 4;
+const RETRY_DELAYS_MS = [500, 1_500, 3_000, 6_000];
 let activeReadRequests = 0;
 const queuedReadRequests: Array<() => void> = [];
 

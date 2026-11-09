@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { chainConfig } from "./chain/config";
 import type { ProposalView } from "./chain/types";
 import { callView } from "./chain/rpc";
-import { useClubData } from "./chain/useClubData";
+import { INITIAL_LOAD_RETRY_DELAYS_MS, retryInitialLoad, useClubData } from "./chain/useClubData";
 import { useViewer, waitForOwnedSeats } from "./chain/WalletProvider";
+import { SeatArtwork } from "./SeatArtwork";
 import {
   buildApplyRequest,
   buildClaimRequest,
@@ -30,6 +31,7 @@ import s from "./screens.module.css";
 
 type ApplyAction = "apply" | "claim";
 type ApplyResult = { hash: string; action: ApplyAction };
+type MintStatus = "waiting" | "confirmed" | "unresolved";
 
 export async function recordSuccessfulAction(
   action: ApplyAction,
@@ -83,18 +85,39 @@ export function ApplyClaimPage() {
   const [needsFaucet, setNeedsFaucet] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ApplyResult | null>(null);
+  const [successAccountId, setSuccessAccountId] = useState<string | null>(null);
+  const [mintedSeatId, setMintedSeatId] = useState<string | null>(null);
+  const [mintStatus, setMintStatus] = useState<MintStatus | null>(null);
   const claimWindowOpen = expiry !== null && BigInt(Date.now()) * 1_000_000n < BigInt(expiry);
   const gasEstimate = useGasEstimate(claimWindowOpen ? CLAIM_SEAT_GAS : PROPOSAL_CALL_GAS);
 
   useEffect(() => {
     let active = true;
+    let retryTimer: number | undefined;
+    if (state.status !== "ready") {
+      return () => { active = false; };
+    }
     if (!viewer.accountId) {
       setExpiry(null);
       setApprovalState("ready");
       return () => { active = false; };
     }
     setApprovalState("loading");
-    void callView(chainConfig.seatNftAccountId, "get_application_approval", { applicant: viewer.accountId })
+    const wait = (milliseconds: number) => new Promise<void>((resolve, reject) => {
+      if (!active) {
+        reject(new Error("Approval read was cancelled."));
+        return;
+      }
+      retryTimer = window.setTimeout(() => {
+        retryTimer = undefined;
+        resolve();
+      }, milliseconds);
+    });
+    void retryInitialLoad(
+      () => callView(chainConfig.seatNftAccountId, "get_application_approval", { applicant: viewer.accountId! }),
+      INITIAL_LOAD_RETRY_DELAYS_MS,
+      wait,
+    )
       .then((value) => {
         if (active) {
           setExpiry(value == null ? null : String(value));
@@ -102,7 +125,10 @@ export function ApplyClaimPage() {
         }
       })
       .catch(() => { if (active) setApprovalState("error"); });
-    return () => { active = false; };
+    return () => {
+      active = false;
+      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
+    };
   }, [viewer.accountId, state.status, attempt]);
 
   if (state.status === "loading") return <main className={s.page}><LoadingStatus>Reading testnet applications…</LoadingStatus></main>;
@@ -122,9 +148,12 @@ export function ApplyClaimPage() {
     setError("");
     setNeedsFaucet(false);
     setResult(null);
+    setSuccessAccountId(null);
+    setMintedSeatId(null);
+    setMintStatus(null);
     const account = viewer.accountId;
     if (!account) return;
-    const before = viewer.seatIds.length;
+    const beforeSeatIds = new Set(viewer.seatIds);
     const request = action === "apply"
       ? buildApplyRequest(account, state.data.proposalBond)
       : buildClaimRequest(chainConfig.runnerAgentPublicKey);
@@ -134,9 +163,29 @@ export function ApplyClaimPage() {
         throw new InsufficientFundsError(`This account needs ${near(request.deposit)} NEAR for the deposit and about ${gasEstimate ?? "the current"} testnet NEAR for the network fee.`);
       }
       const tx = await viewer.callContract(request);
+      if (action === "claim") {
+        setSuccessAccountId(account);
+        setMintStatus("waiting");
+      }
       await recordSuccessfulAction(action, tx.hash, setResult, async () => {
-        await waitForOwnedSeats(account, (tokenIds) => tokenIds.length > before);
+        if (action === "claim") {
+          let newSeatId: string | undefined;
+          const appeared = await waitForOwnedSeats(account, (tokenIds) => {
+            newSeatId = tokenIds.find((tokenId) => !beforeSeatIds.has(tokenId));
+            return newSeatId !== undefined;
+          });
+          if (appeared && newSeatId) {
+            setMintedSeatId(newSeatId);
+            setMintStatus("confirmed");
+          } else {
+            setMintStatus("unresolved");
+          }
+        }
         viewer.retry();
+        try {
+          await state.refresh();
+        } catch {
+        }
       });
     } catch (cause) {
       const insufficientFunds = isInsufficientFundsError(cause);
@@ -155,7 +204,7 @@ export function ApplyClaimPage() {
   const rejectCount = tallies.reduce((sum, tally) => sum + tally[1], 0);
   return <main className={s.page}>
     <PageHead eyebrow="Join the club" title="Apply for a seat">
-      <p className={s.lede}>Members vote on each application. Once approved, you claim your seat here.</p>
+      <p className={s.lede}>Members vote on each application. Once approved, mint your seat here.</p>
     </PageHead>
     <RuledSection title="Your application">
       {!viewer.accountId ? <p className={s.muted}>Sign in with a NEAR testnet account to apply.</p>
@@ -167,7 +216,7 @@ export function ApplyClaimPage() {
           <p>Tally: {approveCount} approve, {rejectCount} reject.</p>
           <Deadline value={BigInt(application.submission_time) + BigInt(state.data.proposalPeriodNs)} />
         </> : claimable && expiryNs !== null ? <>
-          <p><ResultStamp result="Approved" /> Claim your seat before this approval expires.</p>
+          <p><ResultStamp result="Approved" /> Mint your seat before this approval expires.</p>
           <p>Approval expires <time>{formatProposalDate(expiryNs).text}</time>.</p>
         </> : <>
           {approvalExpired ? <p>The seat approval expired. You can apply again.</p>
@@ -176,13 +225,14 @@ export function ApplyClaimPage() {
         </>}
       {viewer.accountId && !viewer.error && !viewer.isLoading && !viewer.isSeatHolder && !inVote && approvalState === "ready" && (
         <>
+          {claimable && <p className={s.note}>Claim mints your seat NFT and sets up your delegate in one transaction.</p>}
           <dl className={s.facts}>
             {!claimable && <Fact label="Deposit">{near(BigInt(state.data.proposalBond))} NEAR, returned when the proposal is decided</Fact>}
             {claimable && <Fact label="Deposit">4.5 NEAR funds your delegate. Nearly all is returned after each vote.</Fact>}
             <Fact label="Network fee">{gasEstimate ? `About ${gasEstimate} testnet NEAR` : "Checking the testnet network fee"}</Fact>
           </dl>
           <GraphicButton glyph="seat" onClick={() => void submit(claimable ? "claim" : "apply")} disabled={busy}>
-            {claimable ? "Claim seat" : "Apply"}
+            {claimable ? "Mint your seat" : "Apply"}
           </GraphicButton>
         </>
       )}
@@ -190,7 +240,20 @@ export function ApplyClaimPage() {
       {error && <ErrorStatus>{error}{needsFaucet && <> <FaucetLink /></>}</ErrorStatus>}
       {busy && !result && <LoadingStatus>Waiting for your wallet…</LoadingStatus>}
       {result && <SuccessStatus>
-        {result.action === "apply" ? "Application submitted." : <>Seat claimed. <a href="#/brief">Save your delegate's brief so it can vote for you.</a></>}
+        {result.action === "apply" ? "Application submitted." : <>
+          {mintStatus === "confirmed" && mintedSeatId
+            ? <>Seat {mintedSeatId} minted to <span className="mono">{successAccountId}</span>.</>
+            : mintStatus === "unresolved"
+              ? <>Mint transaction completed for <span className="mono">{successAccountId}</span>. Seat ownership hasn't appeared yet.</>
+              : <>Minting your seat NFT for <span className="mono">{successAccountId}</span>.</>}
+          {mintedSeatId && state.status === "ready" && (
+            <SeatArtwork
+              seatId={mintedSeatId}
+              media={state.data.seats.find((seat) => seat.token.token_id === mintedSeatId)?.token.metadata?.media}
+            />
+          )}
+          {" "}<a href="#/brief">Save your delegate's brief so it can vote for you.</a>
+        </>}
         {" "}<TxLink hash={result.hash} />
       </SuccessStatus>}
       {!viewer.accountId && <p className={s.note}>Use a testnet NEAR wallet. <FaucetLink />.</p>}
