@@ -12,3 +12,5 @@ services/agent-runner/state.json.tmp
 services/agent-runner/voters.json
 services/agent-runner/dist/
 scripts/deploy-testnet.json
+.vercel
+.vercel
