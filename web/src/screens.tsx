@@ -296,7 +296,7 @@ export function ClubPage() {
   const { data } = state;
   const clubName = data.config.name.trim() || chainConfig.daoAccountId;
   const saleApprovals = activeSaleApprovals(data.seats, nowNs);
-  const saleProposals = saleListings(data.proposals);
+  const saleProposals = saleListings(data.proposals, data.proposalPeriodNs, nowNs);
   const seats = data.seats.map((seat) => ({
     seat: seat.token.token_id,
     ownerId: seat.token.owner_id,

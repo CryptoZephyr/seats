@@ -22,10 +22,15 @@ function saleArgs(args: string): Pick<SaleProposalListing, "seatId" | "buyerId" 
   }
 }
 
-export function saleListings(proposals: ProposalView[]): SaleProposalListing[] {
+export function saleListings(
+  proposals: ProposalView[],
+  proposalPeriodNs: string | bigint,
+  nowNs: bigint,
+): SaleProposalListing[] {
   return proposals.flatMap((proposal) => {
     if (
       proposal.status !== "InProgress" ||
+      BigInt(proposal.submission_time) + BigInt(proposalPeriodNs) <= nowNs ||
       typeof proposal.kind !== "object" ||
       proposal.kind === null ||
       !("FunctionCall" in proposal.kind)
