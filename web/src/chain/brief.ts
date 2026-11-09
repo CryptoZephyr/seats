@@ -1,3 +1,7 @@
+export function buildBriefRelayUrl(baseUrl: string): string {
+  return `${baseUrl.replace(/\/+$/, "")}/brief`;
+}
+
 export function buildBriefMessage(tokenId: string, hash: string, issuedAt: number): string {
   if (!/^\d+$/.test(tokenId) || !/^[0-9a-f]{64}$/.test(hash) || !Number.isSafeInteger(issuedAt)) {
     throw new Error("The brief signature data is invalid.");

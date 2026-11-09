@@ -4,8 +4,7 @@ import { fileURLToPath } from "node:url";
 import type { Server } from "node:http";
 import { SeatVoterDiscovery, mergeVoterSources, type VoterSource } from "./discovery.js";
 import { credentialFromPrivateKey, loadCredential, NearAgentRpc, type KeyFileCredential } from "./rpc.js";
-import { createBriefHandler } from "./briefRelay.js";
-import { encryptProfileSecrets, fetchOutlayerSecretsPubkey } from "./profileCrypto.js";
+import { createBriefRelayFromEnv } from "./briefRelayFactory.js";
 import {
   parseKeepaliveConfig,
   startHealthServer,
@@ -328,35 +327,7 @@ async function main(): Promise<void> {
     [...voters.map((voter) => voter.credential), ...(briefOwnerCredential ? [briefOwnerCredential] : [])],
   );
   const briefHandler = config.briefRelay && config.seatNftId
-    ? createBriefHandler({
-      ownerAccountId: config.briefRelay.ownerAccountId,
-      apiKey: config.briefRelay.apiKey,
-      recipient: config.briefRelay.recipient,
-      webOrigins: config.briefRelay.webOrigins,
-      rpc: {
-        isFullAccessKey: rpc.isFullAccessKey.bind(rpc),
-        getTokenOwner: (tokenId) => rpc.getTokenOwner(config.seatNftId as string, tokenId),
-        getSeatVoterId: (tokenId) => rpc.getSeatVoterId(config.seatNftId as string, tokenId),
-        getVoterController: rpc.getVoterController.bind(rpc),
-        getAccountInfo: rpc.getAccountInfo.bind(rpc),
-        getAgentWasmSha256: () => rpc.getAgentWasmSha256(config.seatNftId as string),
-        storeProfile: async (profile, secretsJson, agentWasmSha256) => {
-          const pubkey = await fetchOutlayerSecretsPubkey(
-            config.briefRelay!.ownerAccountId,
-            profile,
-            secretsJson,
-            agentWasmSha256,
-          );
-          const encrypted = encryptProfileSecrets(pubkey, secretsJson);
-          return rpc.storeProfile(
-            config.briefRelay!.ownerAccountId,
-            profile,
-            encrypted,
-            agentWasmSha256,
-          );
-        },
-      },
-    })
+    ? createBriefRelayFromEnv(process.env, rpc)
     : undefined;
   const fileVoterIds = voters.map((voter) => voter.voterId);
   let discoveredVoterIds: string[] = [];

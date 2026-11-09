@@ -16,6 +16,7 @@ export interface BriefRelayRpc {
   getVoterController(voterId: string): Promise<string | null>;
   getAccountInfo(accountId: string): Promise<{ amount: string; storageUsage: number }>;
   getAgentWasmSha256(): Promise<string>;
+  profileExists(ownerId: string, profile: string, agentWasmSha256: string): Promise<boolean>;
   storeProfile(profile: string, secretsJson: string, agentWasmSha256: string): Promise<string>;
 }
 
@@ -35,6 +36,7 @@ export interface BriefRelayOptions {
   ownerAccountId: string;
   recipient?: string;
   webOrigins?: string;
+  allowSameOrigin?: boolean;
   now?: () => number;
 }
 
@@ -147,14 +149,19 @@ export function createBriefHandler(options: BriefRelayOptions) {
 
   return async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
     const origin = request.headers.origin;
-    if (origin && allowedOrigins.has(origin)) {
+    const sameOrigin = options.allowSameOrigin
+      && typeof origin === "string"
+      && typeof request.headers.host === "string"
+      && origin === `https://${request.headers.host}`;
+    const originAllowed = typeof origin === "string" && (allowedOrigins.has(origin) || sameOrigin);
+    if (originAllowed) {
       response.setHeader("access-control-allow-origin", origin);
       response.setHeader("access-control-allow-methods", "POST, OPTIONS");
       response.setHeader("access-control-allow-headers", "content-type");
       response.setHeader("vary", "Origin");
     }
     if (request.method === "OPTIONS") {
-      response.writeHead(origin && !allowedOrigins.has(origin) ? 403 : 204);
+      response.writeHead(origin && !originAllowed ? 403 : 204);
       response.end();
       return;
     }
@@ -255,19 +262,28 @@ export function createBriefHandler(options: BriefRelayOptions) {
         sendJson(response, 403, { error: "NOT_VOTER_CONTROLLER" });
         return;
       }
+      const profile = briefProfileName(message.tokenId, message.hash);
+      const agentWasmSha256 = await options.rpc.getAgentWasmSha256();
+      if (await options.rpc.profileExists(options.ownerAccountId, profile, agentWasmSha256)) {
+        sendJson(response, 200, {
+          secrets_account_id: options.ownerAccountId,
+          profile,
+          brief_hash: message.hash,
+          already_stored: true,
+        });
+        return;
+      }
       const owner = await options.rpc.getAccountInfo(options.ownerAccountId);
       const spendableBalance = BigInt(owner.amount) - BigInt(owner.storageUsage) * 10n ** 19n;
       if (spendableBalance < MIN_OWNER_BALANCE) {
         sendJson(response, 503, { error: "BRIEF_OWNER_LOW_BALANCE" });
         return;
       }
-      const profile = briefProfileName(message.tokenId, message.hash);
       const secretsJson = JSON.stringify({
         BRIEF: body.brief,
         SALT: body.salt,
         NEAR_AI_API_KEY: options.apiKey,
       });
-      const agentWasmSha256 = await options.rpc.getAgentWasmSha256();
       const txHash = await options.rpc.storeProfile(profile, secretsJson, agentWasmSha256);
       sendJson(response, 200, {
         secrets_account_id: options.ownerAccountId,

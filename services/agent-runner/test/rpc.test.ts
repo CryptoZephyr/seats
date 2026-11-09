@@ -71,6 +71,32 @@ function successfulRpcResponse({ method, params }: ProviderCall): unknown {
 }
 
 describe("runner RPC failover", () => {
+  it("checks whether an OutLayer profile exists with a read-only get_secrets call", async () => {
+    const hash = "a".repeat(64);
+    const calls = stubSendJsonRpc((call) => {
+      const params = call.params as { method_name?: string };
+      if (call.method === "query" && params.method_name === "get_secrets") {
+        return { result: Array.from(Buffer.from(JSON.stringify({ access: "AllowAll" }))) };
+      }
+      return successfulRpcResponse(call);
+    });
+    const rpc = createRpc();
+
+    await expect(rpc.profileExists("owner.testnet", "s1-profile", hash)).resolves.toBe(true);
+    const call = calls.find(({ method, params }) =>
+      method === "query" && (params as { method_name?: string }).method_name === "get_secrets");
+    expect(call?.params).toMatchObject({ account_id: "outlayer.testnet", method_name: "get_secrets" });
+    const args = JSON.parse(Buffer.from(
+      (call?.params as { args_base64: string }).args_base64,
+      "base64",
+    ).toString("utf8"));
+    expect(args).toEqual({
+      accessor: { WasmHash: { hash } },
+      profile: "s1-profile",
+      owner: "owner.testnet",
+    });
+  });
+
   it("reads voter defaults and caches the current agent hash for at most 60 seconds", async () => {
     vi.useFakeTimers();
     const hash = "a".repeat(64);

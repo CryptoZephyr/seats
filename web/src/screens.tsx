@@ -20,7 +20,7 @@ import type { PendingView, ProposalView, VoteResult } from "./chain/types";
 import { formatProposalDate } from "./proposalDate";
 import { isProposalVotingClosed, newestFirst } from "./proposals";
 import { saleListings } from "./chain/sales";
-import { buildBriefMessage, buildBriefRequestBody, hashBrief, randomBriefSalt } from "./chain/brief";
+import { buildBriefMessage, buildBriefRelayUrl, buildBriefRequestBody, hashBrief, randomBriefSalt } from "./chain/brief";
 import { buildSetBriefRequest, SET_BRIEF_GAS } from "./chain/transactions";
 import { friendly, useGasEstimate } from "./flowCommon";
 import { SeatPlan, VoteMark, type VoteKind } from "./seatplan";
@@ -655,7 +655,7 @@ export function DelegateBrief() {
   const gasEstimate = useGasEstimate(SET_BRIEF_GAS);
   const [brief, setBrief] = useState("");
   const [selectedSeatId, setSelectedSeatId] = useState("");
-  const [profile, setProfile] = useState<{ secrets_account_id: string; profile: string; brief_hash: string; tx_hash: string } | null>(null);
+  const [profile, setProfile] = useState<{ secrets_account_id: string; profile: string; brief_hash: string } | null>(null);
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -687,7 +687,7 @@ export function DelegateBrief() {
       const message = buildBriefMessage(selectedSeat.token.token_id, hash, Date.now());
       const signed = await viewer.signMessage(message, nonce, "seats-agent-runner");
       setStep(2);
-      const response = await fetch(`${chainConfig.runnerUrl}/brief`, {
+      const response = await fetch(buildBriefRelayUrl(chainConfig.runnerUrl), {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(buildBriefRequestBody(
@@ -705,9 +705,16 @@ export function DelegateBrief() {
         profile?: string;
         brief_hash?: string;
         tx_hash?: string;
+        already_stored?: boolean;
         error?: string;
       };
-      if (!response.ok || !result.secrets_account_id || !result.profile || !result.brief_hash || !result.tx_hash) {
+      if (
+        !response.ok
+        || !result.secrets_account_id
+        || !result.profile
+        || !result.brief_hash
+        || (!result.tx_hash && result.already_stored !== true)
+      ) {
         throw new Error(result.error ? briefRelayError(result.error) : "The private brief couldn't be stored.");
       }
       profileStored = true;
@@ -715,7 +722,6 @@ export function DelegateBrief() {
         secrets_account_id: result.secrets_account_id,
         profile: result.profile,
         brief_hash: result.brief_hash,
-        tx_hash: result.tx_hash,
       });
       setStep(5);
       await saveFingerprint(result.secrets_account_id, result.profile, result.brief_hash);

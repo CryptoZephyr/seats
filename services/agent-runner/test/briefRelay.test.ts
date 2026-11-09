@@ -19,6 +19,7 @@ function rpc(overrides: Partial<BriefRelayRpc> = {}): BriefRelayRpc {
     getVoterController: async (voterId) => `account-${voterId.slice("voter-".length).replace(".testnet", "")}.testnet`,
     getAccountInfo: async () => ({ amount: "1000000000000000000000000", storageUsage: 0 }),
     getAgentWasmSha256: async () => "a".repeat(64),
+    profileExists: async () => false,
     storeProfile: async () => "profile-store-tx",
     ...overrides,
   };
@@ -142,6 +143,29 @@ describe("brief relay", () => {
     expect(storeProfile).not.toHaveBeenCalled();
   });
 
+  it("returns an existing profile without paying to store it again", async () => {
+    const storeProfile = vi.fn(async () => "profile-store-tx");
+    const getAccountInfo = vi.fn(async () => ({ amount: "0", storageUsage: 0 }));
+    const url = await serve(createBriefHandler({
+      rpc: rpc({ profileExists: async () => true, storeProfile, getAccountInfo }),
+      apiKey,
+      ownerAccountId: ownerId,
+      now: () => nowValue,
+    }));
+    const signed = await signedBody();
+    const { response, json } = await post(url, signed);
+
+    expect(response.status).toBe(200);
+    expect(json).toEqual({
+      secrets_account_id: ownerId,
+      profile: briefProfileName("1", briefHash(signed.salt, signed.brief)),
+      brief_hash: briefHash(signed.salt, signed.brief),
+      already_stored: true,
+    });
+    expect(storeProfile).not.toHaveBeenCalled();
+    expect(getAccountInfo).not.toHaveBeenCalled();
+  });
+
   it("rejects a non-FullAccess key", async () => {
     const url = await serve(createBriefHandler({
       rpc: rpc({ isFullAccessKey: async () => false }),
@@ -159,6 +183,17 @@ describe("brief relay", () => {
     const { response, json } = await post(url, await signedBody({ action: "wrong-action" }));
     expect(response.status).toBe(400);
     expect(json.error).toBe("INVALID_MESSAGE");
+  });
+
+  it("returns INVALID_JSON for a malformed JSON body", async () => {
+    const url = await serve(createBriefHandler({ rpc: rpc(), apiKey, ownerAccountId: ownerId, now: () => nowValue }));
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{",
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "INVALID_JSON" });
   });
 
   it("rejects an invalid Ed25519 signature", async () => {
@@ -291,5 +326,28 @@ describe("brief relay", () => {
     const blocked = await fetch(url, { method: "OPTIONS", headers: { origin: "https://attacker.example" } });
     expect(blocked.status).toBe(403);
     expect(blocked.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  it("allows the request host as an origin only when same-origin access is enabled", async () => {
+    const url = await serve(createBriefHandler({
+      rpc: rpc(),
+      apiKey,
+      ownerAccountId: ownerId,
+      webOrigins: "",
+      allowSameOrigin: true,
+    }));
+    const hostOrigin = `https://${new URL(url).host}`;
+    const allowed = await fetch(url, { method: "OPTIONS", headers: { origin: hostOrigin } });
+    expect(allowed.headers.get("access-control-allow-origin")).toBe(hostOrigin);
+
+    const blockedUrl = await serve(createBriefHandler({
+      rpc: rpc(),
+      apiKey,
+      ownerAccountId: ownerId,
+      webOrigins: "",
+    }));
+    const blockedOrigin = `https://${new URL(blockedUrl).host}`;
+    const blocked = await fetch(blockedUrl, { method: "OPTIONS", headers: { origin: blockedOrigin } });
+    expect(blocked.status).toBe(403);
   });
 });
