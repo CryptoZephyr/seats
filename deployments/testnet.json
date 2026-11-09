@@ -205,6 +205,13 @@
       "secrets_profile": "s1-ad583f34b7478b80"
     }
   },
+  "production_brief_save": {
+    "network": "testnet",
+    "method": "set_brief",
+    "tx_hash": "4ottXJRAnTtK66T3pYBg5TzWGan3o1x3d3CEXA5NwLsz",
+    "block_height": 276878826,
+    "endpoint": "https://seats-near.vercel.app/api/brief"
+  },
   "status": "deployed",
   "accounts": {
     "verifier": "tdxv-1793838446.testnet",
@@ -348,10 +355,73 @@
       "model": "deepseek-ai/DeepSeek-V4.1-Flash-1017"
     },
     "pinned_agent": {
+      "url": "https://raw.githubusercontent.com/CryptoZephyr/outlayer-spike/0865d88dbe264f72c2a8cdf3039327c2c96705d3/releases/brief-agent-v0.2.1/brief-agent.wasm",
+      "sha256": "cdbd2c1fb58a2eee865c1d7349c5d28a39bf4def15e116ac60dd4d124a550a0e",
+      "pin_tx_hash": "C75jozYeLA18hiF3ZY3Ukf7JH6AWrua1HwsugP44iDKi"
+    },
+    "historical_pinned_agent": {
       "url": "https://github.com/CryptoZephyr/outlayer-spike/releases/download/brief-agent-v0.1.0/brief-agent.wasm",
-      "sha256": "a2db80036766e04aab58c50b09387c033f0617a7cb3580d82482ca8756b6519d"
+      "sha256": "a2db80036766e04aab58c50b09387c033f0617a7cb3580d82482ca8756b6519d",
+      "status": "superseded_for_seat_1"
     }
   },
+  "current_voter_defaults": {
+    "model_signer_hex": "0xfe0071895500a9755c18044948ab4f4e1a7f337e",
+    "model": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+    "agent_wasm_url": "https://raw.githubusercontent.com/CryptoZephyr/outlayer-spike/0865d88dbe264f72c2a8cdf3039327c2c96705d3/releases/brief-agent-v0.2.1/brief-agent.wasm",
+    "agent_wasm_sha256": "cdbd2c1fb58a2eee865c1d7349c5d28a39bf4def15e116ac60dd4d124a550a0e",
+    "set_by_proposal": {
+      "proposal_id": 29,
+      "submit_tx_hash": "G4xUKsRKmtpoaz3jRcTZVbaTYqpc3jPTV3n4wBsJccv1",
+      "execute_tx_hash": "8VjPrEUhMWcdSAPCfQjJz6t1XCqAMXQPZ27oiH5Edhin"
+    },
+    "verified_by": "get_voter_defaults",
+    "finality": "final",
+    "read_block_height": 276888613,
+    "read_block_hash": "7eQJmnH45yP2bPAMUPkKVNKaZ87A6g8wc9KdmYmsqHZm"
+  },
+  "voter_agent_pins": [
+    {
+      "seat_token_id": "1",
+      "voter_id": "s1.seatsnft3-1793848334.testnet",
+      "url": "https://raw.githubusercontent.com/CryptoZephyr/outlayer-spike/0865d88dbe264f72c2a8cdf3039327c2c96705d3/releases/brief-agent-v0.2.1/brief-agent.wasm",
+      "sha256": "cdbd2c1fb58a2eee865c1d7349c5d28a39bf4def15e116ac60dd4d124a550a0e",
+      "pin_tx_hash": "C75jozYeLA18hiF3ZY3Ukf7JH6AWrua1HwsugP44iDKi",
+      "finality": "final",
+      "read_block_height": 276888655,
+      "read_block_hash": "2hTrqjyGAu5xB6FPArrTKurS9LerNnNUTtuH4KRXiMh7"
+    },
+    {
+      "seat_token_id": "3",
+      "voter_id": "s3.seatsnft3-1793848334.testnet",
+      "url": "https://github.com/CryptoZephyr/outlayer-spike/releases/download/brief-agent-v0.1.0/brief-agent.wasm",
+      "sha256": "a2db80036766e04aab58c50b09387c033f0617a7cb3580d82482ca8756b6519d",
+      "finality": "final",
+      "read_block_height": 276888655,
+      "read_block_hash": "2hTrqjyGAu5xB6FPArrTKurS9LerNnNUTtuH4KRXiMh7"
+    },
+    {
+      "seat_token_id": "4",
+      "voter_id": "s4.seatsnft3-1793848334.testnet",
+      "url": "https://raw.githubusercontent.com/CryptoZephyr/outlayer-spike/0865d88dbe264f72c2a8cdf3039327c2c96705d3/releases/brief-agent-v0.2.1/brief-agent.wasm",
+      "sha256": "cdbd2c1fb58a2eee865c1d7349c5d28a39bf4def15e116ac60dd4d124a550a0e",
+      "pin_tx_hash": "C75jozYeLA18hiF3ZY3Ukf7JH6AWrua1HwsugP44iDKi",
+      "finality": "final",
+      "read_block_height": 276888655,
+      "read_block_hash": "2hTrqjyGAu5xB6FPArrTKurS9LerNnNUTtuH4KRXiMh7"
+    },
+    {
+      "seat_token_id": "5",
+      "voter_id": "s5.seatsnft3-1793848334.testnet",
+      "url": "https://raw.githubusercontent.com/CryptoZephyr/outlayer-spike/0865d88dbe264f72c2a8cdf3039327c2c96705d3/releases/brief-agent-v0.2.1/brief-agent.wasm",
+      "sha256": "cdbd2c1fb58a2eee865c1d7349c5d28a39bf4def15e116ac60dd4d124a550a0e",
+      "pin_tx_hash": "8VjPrEUhMWcdSAPCfQjJz6t1XCqAMXQPZ27oiH5Edhin",
+      "pin_receipt_id": "GQ8htz9Bhe6RED5XXDSeEwxokoCTenthULiP7bKuo1xN",
+      "finality": "final",
+      "read_block_height": 276888656,
+      "read_block_hash": "FcmfcpE83wmm1eFF4ZxQzoJmhH2ohC1RZcDMoRgqdn8R"
+    }
+  ],
   "runner_voters_file": "/home/ubuntu/near-spike/secrets/voters.json",
   "e2e": {
     "agent_vote": {
@@ -547,6 +617,33 @@
       "holder_tx_hash": "ELsR2uSj4mdm1RiLhhitGepBevPDDpeQeFVb7J74x3A4",
       "seller_tx_hash": "HvJkMAJdhY4q3bqUUoJSQiaRsSFY3v75wBhrMdcPYFdm",
       "note": "The v0.1.0 WASM hardcoded the old spike NFT, reversing the expected outputs. These results are superseded by the v0.2.0 runs above."
+    },
+    "seat4_post_sale_seller_check": {
+      "status": "skipped_no_local_key",
+      "seat_token_id": "4",
+      "former_holder": "seats-buyer-1794158448.testnet",
+      "current_holder": "seats-final-1794157607.testnet",
+      "previous_acquisition_tx_hash": "J29XAdseALfDtPpPmV8TNPCAvGP6Arvknz37eYo7gco4",
+      "sale_back_tx_hash": "DiNLcScc7K81KTFXve1p9P7nxu55DxywcHhbrSPJJDgh",
+      "ownership_check": {
+        "method": "nft_tokens_for_owner",
+        "account_id": "seats-buyer-1794158448.testnet",
+        "token_ids": [],
+        "finality": "final",
+        "block_height": 276888880,
+        "block_hash": "2NxsEUMBFDfWgANNVQmboYLRVjZ2qqVGSbsux3aaNJXr"
+      },
+      "key_check": {
+        "local_near_credentials_checked": true,
+        "known_voter_key_file_checked": true,
+        "key_found": false
+      },
+      "vault_open": {
+        "status": "not_attempted",
+        "reason": "No local signing key for the former holder. The app checks current seat ownership before requesting a wallet transaction.",
+        "app_path": "web/src/VaultPageFlow.tsx",
+        "cost_near": "0"
+      }
     }
   },
   "stage3_recovery": {
