@@ -1,42 +1,34 @@
 ---
 title: Troubleshooting
-summary: Use the message on screen to find the next safe step.
-lastVerified: 2026-11-08
-commit: 241724d
+summary: Use the page message to choose the next safe step.
+lastVerified: 2026-11-09
+commit: 7165ac0
 ---
 
-## The page doesn't load
+## A page can't read testnet
 
-Check that you're running `npm run dev` from the `web` folder and opening `http://127.0.0.1:5199`.
+Choose the page's retry action. If the error remains, try again later. Don't sign a second transaction until you check whether the first one landed.
 
-## A route shows the club page
+## Your seat doesn't appear
 
-The route name is wrong. Use one of the hash routes listed in the [quickstart](/docs/get-started/quickstart).
+Refresh the seat page. If you just minted, check the transaction link and wait for the public ownership record to update.
 
-## The vault says only holders can open it
+## The brief didn't update
 
-You don't hold a seat, or the seat was sold. This is the intended refusal.
+Check the fingerprint. If the page offers `Retry on-chain save`, use that rather than storing the brief again.
 
-## The window says closed
+## The vote window is closed
 
-The override window has passed. The vote is cast or about to be cast. Read the receipt.
+The change period has ended. You can't override or cancel that vote. Open the proposal to read the recorded result.
 
-## A vote change was refused
+## The vault refused your request
 
-- "This account doesn't control this seat." Sign in with the account that controls the seat.
-- "This vote is no longer waiting to be sent." Refresh the proposal. The vote may already be cast or canceled.
-- "The time to change this vote has passed." The override window has closed. Read the vote status or receipt.
-- "Your delegate's vote is already being sent." Wait for the cast status to update before trying again.
-- "That vote choice isn't allowed." A vote can only be changed to Approve or Reject.
+Only the current seat holder can open it. Sign in with the wallet that holds the seat.
 
-## The vote change couldn't be confirmed
+## Your history won't load
 
-A wallet timeout or network error can happen after a testnet transaction lands. Refresh the proposal and its change history before trying again.
+Choose `Retry` on the history page. Holder and transaction records come from the testnet explorer and may be delayed.
 
-## Change history couldn't be loaded
+## You need testnet NEAR
 
-Choose retry to load FastNear transaction history again. The screen doesn't show an override badge unless the history confirms one.
-
-## A screen says it couldn't read the chain
-
-The read from the testnet RPC failed. Choose try again on the message. Every number on the functional screens comes from a live read, so nothing is shown until that read succeeds.
+Use the [NEAR testnet faucet](https://near-faucet.io/). Testnet NEAR has no real-world value.

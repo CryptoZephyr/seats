@@ -1,34 +1,30 @@
 ---
-title: FAQ
-summary: Short answers about how Seats behaves today.
-lastVerified: 2026-11-07
-commit: b8daa5d
+title: Questions and answers
+summary: Quick answers about seats, votes, costs, and privacy.
+lastVerified: 2026-11-09
+commit: 7165ac0
 ---
 
-## Is this on mainnet?
+## Is this real money?
 
-No. Seats runs on NEAR testnet only, with test money.
+No. Seats runs on NEAR testnet. Testnet NEAR has no real-world value.
 
-## Can a seat be transferred directly?
+## How much does a seat cost?
 
-No. The seat contract refuses plain transfers and marketplace listings. A seat moves only through a club-approved sale.
+Applying uses a 0.1 NEAR bond, returned when the club decides. Minting an approved seat requires a 4.5 NEAR deposit to fund your delegate. Almost all of it comes back after each vote. Network fees are separate.
 
 ## Can my delegate move my money?
 
-No. Its key can only request votes. It can't move funds.
+No. Its key can request votes, but it can't move funds or change your vote.
 
-## Can I change a vote after the deadline?
+## Can I change a vote?
 
-No. After the window closes, the vote is cast and can't be changed.
+Yes, during the 2-minute window shown on the vote page. After the deadline, the contract refuses a change.
 
-## Who can open the vault?
+## Is my brief private?
 
-Current seat holders. Former members are refused.
+The saved brief is encrypted in private storage outside the public testnet record. The fingerprint, votes, and one-line reasons are public. Older test votes before the fixed delegate included brief text in public receipts. See [Data and privacy](/docs/security/data-and-privacy).
 
-## Is the brief private?
+## Can I see who held a seat?
 
-The brief text stays off-chain in an encrypted OutLayer profile. The contract stores only its fingerprint and profile reference. Saving requires a wallet signature and an on-chain transaction.
-
-## Can the site send a transaction?
-
-Yes. Apply/Claim, Sell, Buy, Vault, brief saving, and vote overrides are available on NEAR testnet. See [limitations](/docs/reference/limitations).
+Yes. Open the seat's history from the club or seat page, or follow [Read a seat's history](/docs/guides/seat-history).

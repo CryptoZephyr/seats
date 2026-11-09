@@ -1,28 +1,23 @@
 ---
-title: Deployment
-summary: The live testnet accounts for the DAO, seat contract, voter, and verifier, and where to check them.
-lastVerified: 2026-11-07
-commit: b8daa5d
+title: Testnet records
+summary: Find the public testnet accounts and transactions for the club.
+lastVerified: 2026-11-09
+commit: 7165ac0
 ---
 
 ## Network
 
-NEAR testnet. Status in the deployment record is deployed. Do not deploy these contracts to mainnet.
+Seats runs on NEAR testnet only. The club's tokens are for testing and have no real-world value.
 
-## Accounts
+## Public accounts
 
-The club DAO is `seats2-1793847972.sputnikv2.testnet`.
+- Club voting account: `seats2-1793847972.sputnikv2.testnet`
+- Seat contract: `seatsnft3-1793848334.testnet`
+- Seat 1 vote account: `s1.seatsnft3-1793848334.testnet`
+- Hardware-check account: `tdxv-1793838446.testnet`
 
-The seat contract is `seatsnft3-1793848334.testnet`.
+These accounts are programs that enforce the club's rules. Paste an account or transaction ID into a NEAR testnet explorer to read its public record. The app also links to transactions after a successful action.
 
-The voter account for seat 1 is `s1.seatsnft3-1793848334.testnet`.
+## What the records show
 
-The TDX verifier is `tdxv-1793838446.testnet`.
-
-## Where to check
-
-Each account and transaction is on the testnet explorer. The deployment record in the repository lists every transaction hash, and the [evidence pages](/docs/evidence/live-deployment) explain what each one shows.
-
-## What the record doesn't cover
-
-The record shows that these contracts ran on testnet. The frontend reads their public views, and it can't send write actions yet.
+The public record can show who owns a seat, its brief fingerprint, votes, one-line reasons, and transactions. It can't prove that every future vote or service request will work.

@@ -1,22 +1,20 @@
 ---
-title: Fees and split
-summary: The levy on a sale, the seller's share, and the costs the testnet runs measured.
-lastVerified: 2026-11-06
-commit: 886500f
+title: Costs and sale split
+summary: See the testnet bond, seat deposit, measured vote cost, and sale payout.
+lastVerified: 2026-11-09
+commit: 7165ac0
 ---
+
+## Joining and minting
+
+The current application bond is 0.1 NEAR. The club returns it when the application proposal is decided. After approval, minting your seat requires a 4.5 NEAR deposit. It funds your delegate, and almost all of it is returned after each vote.
+
+## Vote costs
+
+One recorded testnet vote cycle reduced the seat account by about 0.004 NEAR for the request and cast. This is a measured example, not a fixed price. The wallet shows the network fee before you sign.
 
 ## Sale split
 
-The levy is 500 basis points, which is 5%. The seller receives the remaining 95%. The levy goes to the club's treasury. The split is fixed by the club and shown before you sign.
+When a sale completes, the seller receives 95% of the price and the club receives 5%. The app shows the amounts before you sign. If the sale does not complete, the buyer is refunded in full.
 
-## Testnet measurements
-
-A sale of 0.5 NEAR paid the seller 0.475 NEAR and the DAO 0.025 NEAR.
-
-A vote cycle measured about 0.004 testnet NEAR in network fees. Each OutLayer request temporarily deposits 4.0000005 NEAR, and most is refunded.
-
-Each voter account locked about 1.93 NEAR of storage in the voter spike. Testnet makes that free to use, but it would be a real cost on mainnet. Global contracts or a smaller voter contract could lower it.
-
-## Key allowance
-
-The delegate's signing key has a 1 NEAR allowance and can call only the vote request method.
+These are testnet amounts. Testnet NEAR has no real-world value.

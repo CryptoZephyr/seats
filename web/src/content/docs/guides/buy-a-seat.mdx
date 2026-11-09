@@ -1,26 +1,25 @@
 ---
 title: Buy a seat
-summary: Buy an existing seat through the club's approval, with your payment held in escrow until the vote settles.
-lastVerified: 2026-11-06
-commit: 886500f
+summary: Buy a seat reserved for you after the club approves its sale.
+lastVerified: 2026-11-09
+commit: 7165ac0
 ---
 
-## What you see
+## What you need
 
-A listing shows the seat number, named buyer, price, expiry, and 95% seller / 5% club split. Only the named buyer can sign the purchase.
+The seller must name your `.testnet` account and the club must approve the sale. Keep enough testnet NEAR for the exact seat price and network fees. [Get testnet NEAR from the faucet](https://near-faucet.io/).
 
-## What you do
+## Steps
 
-Deposit: the exact approved price. The network fee estimate appears before you sign.
+1. Connect the named buyer account.
+2. Open `#/buy` and find the seat under `For sale`.
+3. Check the price and the displayed 95% seller, 5% club split.
+4. Choose `Buy for [amount] NEAR` and approve the wallet request.
 
-## What the club does
+## What you'll see
 
-The club votes on the offer. While it waits, the screen shows the tally and the expiry.
+The purchase transaction appears on the page. After it succeeds, the seat is yours. You can open its history and write a new delegate brief.
 
-## How you know it worked
+## If it goes wrong
 
-After success the page refreshes your seats. The testnet explorer link shows the transaction.
-
-## If nothing changes
-
-If the approval expires before you buy, the contract refuses the purchase. The seller must submit a new offer.
+Only the named buyer can purchase. If the approval expires or the transaction is refused, ask the seller to submit a new offer. After a wallet timeout, refresh and check the seat owner before retrying.

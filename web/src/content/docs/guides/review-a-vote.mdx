@@ -1,30 +1,26 @@
 ---
 title: Review a vote
-summary: Read your delegate's vote and reason, then change or cancel it before the window closes.
-lastVerified: 2026-11-08
-commit: 241724d
+summary: Read your delegate's choice and change or cancel it before the deadline.
+lastVerified: 2026-11-09
+commit: 7165ac0
 ---
 
-## What you see
+## What you need
 
-The vote screen shows the proposal, your delegate's choice, its one-line reason, and a window bar draining to the deadline. The deadline appears as a clock time and a countdown. If you changed the vote, the screen marks it as overridden and labels the reason as your delegate's reasoning for the original choice.
+The wallet that controls your seat and a little testnet NEAR for the network fee. There is no deposit. [Get testnet NEAR from the faucet](https://near-faucet.io/).
 
-## What you do
+## Steps
 
-If you agree, do nothing. Your delegate's vote is cast at the deadline. If you disagree, choose the other vote inside the window.
+1. Open `#/seat` and choose `Review vote` beside the proposal.
+2. Read the proposal, your delegate's choice, and its one-line reason.
+3. Check the clock time and countdown. The change window lasts 2 minutes.
+4. If you disagree, choose `Change vote to Approve` or `Change vote to Reject`.
+5. To skip the vote, choose `Cancel this vote`, then `Confirm cancellation`. Choose `Keep this vote` to go back.
 
-You can also cancel the pending vote. Confirming cancellation means your seat won't vote on this proposal. The cancellation is recorded, and the vote runner skips it.
+## What you'll see
 
-## What Seats does
+The page confirms a successful change and shows a transaction link when available. After the deadline, it shows the vote recorded for your seat.
 
-The contract accepts an override or cancellation only from the seat's controller and before the override deadline. These actions don't require a deposit. After the deadline, the contract refuses changes and your delegate's vote is cast under your seat's voter account.
+## If it goes wrong
 
-## How you know it worked
-
-After an override or cancellation, the screen shows a success status and a testnet transaction link when its hash is available. The screen also reads testnet transaction history to show an override or cancellation after you reload.
-
-After the window closes, the screen shows the vote as cast, with the result from the DAO and the receipt.
-
-## If nothing changes
-
-If the window has closed, the vote can't be changed. Read the receipt for what was cast. See [what happens at the deadline](/docs/concepts/what-happens-at-the-deadline) and [troubleshooting](/docs/help/troubleshooting).
+You can't change or cancel after the window closes. Refresh the page and check the vote record. If the wallet times out, check the transaction history before trying again.

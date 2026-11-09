@@ -4,9 +4,8 @@ export type DocPage = { group: string; slug: string; title: string; summary: str
 export type DocGroup = { slug: string; title: string; pages: DocPage[] };
 
 const LAYOUT: [string, string, string[]][] = [
-  ["get-started", "Get started", ["introduction", "how-it-works", "quickstart"]],
-  ["guides", "Guides", ["join-a-club", "buy-a-seat", "sell-your-seat", "write-your-brief", "review-a-vote", "open-the-vault"]],
-  ["concepts", "Concepts", ["overview", "the-seat", "the-delegate", "what-happens-at-the-deadline", "how-the-money-moves"]],
+  ["get-started", "Get started", ["introduction", "how-it-works"]],
+  ["guides", "Guides", ["join-a-club", "buy-a-seat", "sell-your-seat", "write-your-brief", "review-a-vote", "open-the-vault", "seat-history"]],
   ["reference", "Reference", ["states", "fees-and-split", "deployment", "limitations"]],
   ["security", "Security", ["trust-model", "permissions", "data-and-privacy", "failure-and-recovery"]],
   ["evidence", "Evidence", ["live-deployment", "verified-examples"]],

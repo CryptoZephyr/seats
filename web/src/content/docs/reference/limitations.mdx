@@ -1,36 +1,24 @@
 ---
-title: Limitations
-summary: Current boundaries, and what Seats doesn't do yet.
-lastVerified: 2026-11-07
-commit: b8daa5d
+title: What to know before using Seats
+summary: The testnet limits, service dependencies, and privacy boundaries.
+lastVerified: 2026-11-09
+commit: 7165ac0
 ---
 
 ## Testnet only
 
-Seats has only run on NEAR testnet with test money. It hasn't been deployed to mainnet, and it hasn't been audited.
+Seats has not launched on mainnet and has not had a full security audit. Testnet NEAR has no real-world value.
 
-## Web flows
+## Services can be slow or unavailable
 
-The app reads testnet views and can submit Apply/Claim, Sell, Buy, Vault, brief-saving, and vote-override transactions with a NEAR wallet.
+The app reads NEAR testnet and sends wallet transactions. Saving a brief and preparing a vote also depends on the profile service and NEAR AI. If a service is asleep or a network request fails, check the on-screen status and transaction record before retrying.
 
-## Sign-in
+## Brief privacy depends on delegate code
 
-Sign in with a NEAR testnet wallet. Email sign-in isn't built.
+The fixed delegate stops if a response includes reasoning that could expose your brief. Older test votes made before that fix show brief text in public receipts. Seats that still use older delegate code may have different behavior. See [Data and privacy](/docs/security/data-and-privacy).
 
-## Brief entry
+## Hardware check
 
-The brief editor asks for a wallet signature, stores the encrypted brief in an OutLayer profile, then writes its fingerprint and profile reference to the seat's voter contract. The editor is testnet-only and requires the profile relay to be available.
+Verified public OS on genuine Intel and NVIDIA hardware.
 
-## Hardware attestation
-
-The TDX quote and the GPU evidence are checked off-chain before a club registers the model signer. The contract checks the receipt against that signer, but it can't check the hardware quotes itself.
-
-The hardware measurement covers the public OS. It doesn't show which inference containers served a given answer.
-
-## The keeper
-
-The keeper service runs on a free hosting tier, and anyone can cast a vote after its deadline. A slow keeper can delay a cast, but it can't cast early or change a vote.
-
-## Demand
-
-Real club demand hasn't been tested. The target is one real club and three operator quotes.
+The hardware check doesn't prove which private software served a particular vote. A service can fail, and testnet evidence from one run doesn't prove every future run.

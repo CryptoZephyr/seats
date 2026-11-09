@@ -1,26 +1,26 @@
 ---
-title: Failure and recovery
-summary: What happens when a sale, a vote, or a cast doesn't go through.
-lastVerified: 2026-11-06
-commit: 886500f
+title: If something fails
+summary: Check what happened before you repeat a wallet action.
+lastVerified: 2026-11-09
+commit: 7165ac0
 ---
 
-## A sale that fails
+## Wallet or network timeout
 
-If the controller change fails, the buyer is refunded in full. If the club declines or the sale times out, the buyer is refunded and the seller keeps the seat.
+A wallet can time out after a transaction reaches testnet. Refresh the page and check the seat, proposal, or transaction record before trying again.
 
-## A vote that is replayed
+## Brief storage or fingerprint save
 
-The voter contract rejects a receipt it has already seen.
+Private storage and the public fingerprint save are separate steps. If the page says the brief was stored and offers `Retry on-chain save`, retry that step only. Check the fingerprint before starting another save.
 
-## A cast that is late
+## Vote change after the deadline
 
-A cast after the DAO's proposal period ends can be recorded as expired. The overridden result may still be recorded, as in the testnet run. Check the DAO record.
+The contract refuses a change after the deadline. The page shows the recorded vote and its receipt. You can't reopen the window.
 
-## A transaction hash you can't see
+## Failed sale or vault request
 
-Some tool output doesn't print a hash for a failed call. The evidence pages mark those runs as not captured instead of guessing a hash.
+If a sale is declined or expires, the buyer is refunded and the seller keeps the seat. If a vault request fails, check the transaction and retry only after the page can read the current seat and cost.
 
-## A stuck DAO
+## Missing public record
 
-The testnet record documents one superseded attempt, where council votes weighed zero and the DAO couldn't act. That attempt is kept in the record, not hidden.
+A transaction hash or history entry may take time to appear. Use the page's retry action. Don't guess a result from a loading screen.
