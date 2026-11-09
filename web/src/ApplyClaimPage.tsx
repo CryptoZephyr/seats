@@ -12,6 +12,7 @@ import {
   contractErrorCode,
   friendlyContractError,
   PROPOSAL_CALL_GAS,
+  sanitizeApplicationReason,
 } from "./chain/transactions";
 import { formatProposalDate } from "./proposalDate";
 import { isProposalVotingClosed } from "./proposals";
@@ -20,7 +21,7 @@ import {
   checkFunds,
   FaucetLink,
   friendly,
-  InsufficientFundsError,
+  insufficientFundsError,
   isInsufficientFundsError,
   near,
   PageHead,
@@ -84,6 +85,7 @@ export function ApplyClaimPage() {
   const [error, setError] = useState("");
   const [needsFaucet, setNeedsFaucet] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [applicationReason, setApplicationReason] = useState("");
   const [result, setResult] = useState<ApplyResult | null>(null);
   const [successAccountId, setSuccessAccountId] = useState<string | null>(null);
   const [mintedSeatId, setMintedSeatId] = useState<string | null>(null);
@@ -155,12 +157,12 @@ export function ApplyClaimPage() {
     if (!account) return;
     const beforeSeatIds = new Set(viewer.seatIds);
     const request = action === "apply"
-      ? buildApplyRequest(account, state.data.proposalBond)
+      ? buildApplyRequest(account, state.data.proposalBond, applicationReason)
       : buildClaimRequest(chainConfig.runnerAgentPublicKey);
     setBusy(true);
     try {
       if (!await checkFunds(account, request)) {
-        throw new InsufficientFundsError(`This account needs ${near(request.deposit)} NEAR for the deposit and about ${gasEstimate ?? "the current"} testnet NEAR for the network fee.`);
+        throw insufficientFundsError(request);
       }
       const tx = await viewer.callContract(request);
       if (action === "claim") {
@@ -226,6 +228,19 @@ export function ApplyClaimPage() {
       {viewer.accountId && !viewer.error && !viewer.isLoading && !viewer.isSeatHolder && !inVote && approvalState === "ready" && (
         <>
           {claimable && <p className={s.note}>Claim mints your seat NFT and sets up your delegate in one transaction.</p>}
+          {!claimable && <>
+            <label className={s.fieldLabel}>Why you want to join
+              <textarea
+                className={s.briefInput}
+                rows={4}
+                value={applicationReason}
+                aria-describedby="application-reason-note application-reason-count"
+                onChange={(event) => setApplicationReason(sanitizeApplicationReason(event.target.value))}
+              />
+            </label>
+            <p className={s.note} id="application-reason-note">This is public on-chain and your club's delegates read it.</p>
+            <p className={s.muted} id="application-reason-count">{Array.from(applicationReason).length}/280 characters</p>
+          </>}
           <dl className={s.facts}>
             {!claimable && <Fact label="Deposit">{near(BigInt(state.data.proposalBond))} NEAR, returned when the proposal is decided</Fact>}
             {claimable && <Fact label="Deposit">4.5 NEAR funds your delegate. Nearly all is returned after each vote.</Fact>}

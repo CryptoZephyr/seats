@@ -9,7 +9,7 @@ import {
   checkFunds,
   FaucetLink,
   friendly,
-  InsufficientFundsError,
+  insufficientFundsError,
   isInsufficientFundsError,
   near,
   PageHead,
@@ -66,7 +66,7 @@ export function VaultPageFlow() {
       const requester = Array.from(keyPair.publicKey, (byte) => byte.toString(16).padStart(2, "0")).join("");
       const request = buildVaultRequest(requester, cost);
       if (!await checkFunds(viewer.accountId, request)) {
-        throw new InsufficientFundsError(`Your balance must cover the ${near(request.deposit)} NEAR deposit and about ${gasEstimate ?? "the current"} testnet NEAR for the network fee.`);
+        throw insufficientFundsError(request);
       }
       const tx = await viewer.callContract(request);
       setHash(tx.hash);
