@@ -63,12 +63,37 @@ fn build_request(proposal_id: u64, proposal: &Value, brief: &str) -> Vec<u8> {
         "model": MODEL,
         "max_tokens": 400,
         "temperature": 0,
+        "chat_template_kwargs": {"thinking": false},
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user}
         ]
     }))
     .expect("request serialization")
+}
+
+fn has_nonempty_reasoning(value: &Value) -> bool {
+    match value {
+        Value::Object(fields) => fields.iter().any(|(key, value)| {
+            let key = key.to_ascii_lowercase();
+            let reasoning_field =
+                key.contains("reasoning") || matches!(key.as_str(), "analysis" | "thinking");
+            (reasoning_field && is_nonempty(value)) || has_nonempty_reasoning(value)
+        }),
+        Value::Array(values) => values.iter().any(has_nonempty_reasoning),
+        _ => false,
+    }
+}
+
+fn is_nonempty(value: &Value) -> bool {
+    match value {
+        Value::Null => false,
+        Value::Bool(value) => *value,
+        Value::Number(value) => value.as_f64().map(|number| number != 0.0).unwrap_or(true),
+        Value::String(value) => !value.is_empty(),
+        Value::Array(value) => !value.is_empty(),
+        Value::Object(value) => !value.is_empty(),
+    }
 }
 
 fn rpc_view(account: &str, method: &str, args: Value) -> Result<Value, String> {
@@ -158,6 +183,9 @@ fn run(input: Input) -> Result<Value, String> {
     )?;
     let completion: Value =
         serde_json::from_slice(&response_body).map_err(|_| "completion json")?;
+    if has_nonempty_reasoning(&completion) {
+        return Err("reasoning present".into());
+    }
     let chat_id = completion["id"].as_str().ok_or("completion id")?;
     let response_hash = hex::encode(Sha256::digest(&response_body));
     let signed_text = format!("{MODEL}:{request_hash}:{response_hash}");
@@ -218,7 +246,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_request, STANDARD};
+    use super::{build_request, has_nonempty_reasoning, STANDARD};
     use base64::Engine as _;
     use serde_json::{json, Value};
 
@@ -257,6 +285,78 @@ mod tests {
                 .expect("request JSON");
 
         assert_eq!(request["temperature"], 0);
+    }
+
+    #[test]
+    fn request_disables_thinking() {
+        let request: Value =
+            serde_json::from_slice(&build_request(15, &proposal("guest.testnet"), "brief"))
+                .expect("request JSON");
+
+        assert_eq!(request["chat_template_kwargs"]["thinking"], false);
+    }
+
+    #[test]
+    fn reasoning_content_is_rejected() {
+        let completion = json!({
+            "choices": [{
+                "message": {
+                    "content": "{\"proposal_id\":15,\"vote\":\"approve\",\"reason\":\"ok\"}",
+                    "reasoning_content": "private reasoning"
+                }
+            }]
+        });
+
+        assert!(has_nonempty_reasoning(&completion));
+    }
+
+    #[test]
+    fn completion_without_reasoning_is_accepted() {
+        let completions = [
+            json!({
+                "choices": [{
+                    "message": {
+                        "content": "{\"proposal_id\":15,\"vote\":\"approve\",\"reason\":\"ok\"}"
+                    }
+                }]
+            }),
+            json!({
+                "choices": [{
+                    "message": {
+                        "content": "{\"proposal_id\":15,\"vote\":\"approve\",\"reason\":\"ok\"}",
+                        "reasoning_content": null
+                    }
+                }]
+            }),
+            json!({
+                "choices": [{
+                    "message": {
+                        "content": "{\"proposal_id\":15,\"vote\":\"approve\",\"reason\":\"ok\"}",
+                        "reasoning_content": ""
+                    }
+                }]
+            }),
+        ];
+
+        for completion in completions {
+            assert!(!has_nonempty_reasoning(&completion));
+        }
+    }
+
+    #[test]
+    fn other_nonempty_reasoning_fields_are_rejected() {
+        let completion = json!({
+            "choices": [{
+                "message": {
+                    "reasoning_details": [{"text": "private reasoning"}]
+                }
+            }]
+        });
+
+        assert!(has_nonempty_reasoning(&completion));
+        assert!(has_nonempty_reasoning(
+            &json!({"usage": {"reasoning_tokens": 1}})
+        ));
     }
 
     #[test]
