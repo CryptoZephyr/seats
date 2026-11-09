@@ -72,15 +72,28 @@ fn build_request(proposal_id: u64, proposal: &Value, brief: &str) -> Vec<u8> {
     .expect("request serialization")
 }
 
-fn has_nonempty_reasoning(value: &Value) -> bool {
+fn has_nonempty_reasoning(completion: &Value) -> bool {
+    completion
+        .get("choices")
+        .and_then(Value::as_array)
+        .is_some_and(|choices| {
+            choices.iter().any(|choice| {
+                choice
+                    .get("message")
+                    .is_some_and(has_nonempty_reasoning_field)
+            })
+        })
+}
+
+fn has_nonempty_reasoning_field(value: &Value) -> bool {
     match value {
         Value::Object(fields) => fields.iter().any(|(key, value)| {
             let key = key.to_ascii_lowercase();
             let reasoning_field =
                 key.contains("reasoning") || matches!(key.as_str(), "analysis" | "thinking");
-            (reasoning_field && is_nonempty(value)) || has_nonempty_reasoning(value)
+            (reasoning_field && is_nonempty(value)) || has_nonempty_reasoning_field(value)
         }),
-        Value::Array(values) => values.iter().any(has_nonempty_reasoning),
+        Value::Array(values) => values.iter().any(has_nonempty_reasoning_field),
         _ => false,
     }
 }
@@ -354,9 +367,20 @@ mod tests {
         });
 
         assert!(has_nonempty_reasoning(&completion));
-        assert!(has_nonempty_reasoning(
-            &json!({"usage": {"reasoning_tokens": 1}})
-        ));
+        let usage_only = json!({
+            "choices": [{
+                "message": {
+                    "content": "{\"proposal_id\":15,\"vote\":\"approve\",\"reason\":\"ok\"}"
+                }
+            }],
+            "usage": {
+                "completion_tokens_details": {
+                    "reasoning_tokens": 5
+                }
+            }
+        });
+
+        assert!(!has_nonempty_reasoning(&usage_only));
     }
 
     #[test]
